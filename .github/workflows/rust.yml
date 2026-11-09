@@ -23,5 +23,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: rust-linux-release
-        path: backend/target/release/my-app
+        path: backend/target/release/nio-swap-history-backend
         if-no-files-found: error
