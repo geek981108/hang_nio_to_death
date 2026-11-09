@@ -1,0 +1,6180 @@
+{
+  "components": {
+    "schemas": {
+      "ActionInput": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "unlock-doors"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "UNLOCK DOORS"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "unlock-start"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "UNLOCK AND START"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "lock"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "LOCK VEHICLE"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "guard-on"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "ENABLE GUARD MODE"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "guard-off"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "DISABLE GUARD MODE"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "mirror-expand"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "EXPAND MIRRORS"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "find"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "FIND VEHICLE"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "find-stop"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "STOP FINDING"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "ac-on"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "START AC"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "ac-off"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "STOP AC"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "seat-heat-off"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            },
+            "then": {
+              "properties": {
+                "confirmation": {
+                  "const": "STOP SEAT HEATING"
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "recirculation": {
+                  "type": "null"
+                },
+                "temperature": {
+                  "type": "null"
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "ac-on"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "expand_mirrors": {
+                  "const": true
+                }
+              },
+              "required": [
+                "expand_mirrors"
+              ]
+            },
+            "then": {
+              "properties": {
+                "action": {
+                  "enum": [
+                    "guard-on",
+                    "guard-off"
+                  ]
+                },
+                "mirror_confirmation": {
+                  "const": "EXPAND MIRRORS"
+                }
+              },
+              "required": [
+                "mirror_confirmation"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "mirror_confirmation": {
+                  "const": "EXPAND MIRRORS"
+                }
+              },
+              "required": [
+                "mirror_confirmation"
+              ]
+            },
+            "then": {
+              "properties": {
+                "expand_mirrors": {
+                  "const": true
+                }
+              },
+              "required": [
+                "expand_mirrors"
+              ]
+            }
+          }
+        ],
+        "description": "单次车辆指令。只接受以下字段，不允许传入 PIN、Token、证书或其他未定义字段。",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/VehicleAction"
+          },
+          "confirmation": {
+            "description": "必须与 action 对应的确认文字完全一致，见 VehicleAction.x-confirmations。",
+            "type": "string"
+          },
+          "expand_mirrors": {
+            "default": false,
+            "description": "仅 guard-on / guard-off 可追加展开后视镜；需要独立确认，不是解锁的副作用。",
+            "type": "boolean"
+          },
+          "mirror_confirmation": {
+            "anyOf": [
+              {
+                "description": "后视镜确认。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "expand_mirrors=true 时必须为 EXPAND MIRRORS；不展开时不能提供该精确确认文字。"
+          },
+          "recirculation": {
+            "anyOf": [
+              {
+                "enum": [
+                  0,
+                  1
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅 ac-on 可提供，取值 0 或 1；其他动作提供该参数会被拒绝。"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "maximum": 30,
+                "minimum": 16,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅 ac-on 可提供，范围 16…30℃；可省略，其他动作提供该参数会被拒绝。"
+          }
+        },
+        "required": [
+          "action",
+          "confirmation"
+        ],
+        "type": "object"
+      },
+      "ActionOutcome": {
+        "description": "车辆指令结果；accepted_unverified 不是已确认成功。",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/VehicleAction"
+          },
+          "mirrors": {
+            "anyOf": [
+              {
+                "description": "后视镜结果。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "追加后视镜动作的结果，无追加动作时为 null。"
+          },
+          "status": {
+            "description": "already_desired、verified 或 accepted_unverified。",
+            "type": "string"
+          },
+          "verified": {
+            "description": "服务端是否确认目标状态或已处于目标状态。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "status",
+          "verified",
+          "mirrors"
+        ],
+        "type": "object"
+      },
+      "ActiveServiceOrder": {
+        "description": "当前进行中的服务订单，不等同于已完成换电记录。",
+        "properties": {
+          "baseline_captured_at": {
+            "anyOf": [
+              {
+                "description": "基线时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "为订单获取站点库存基线的时间。"
+          },
+          "estimated_wait_minutes": {
+            "anyOf": [
+              {
+                "description": "预计等待分钟数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "优先使用官方订单状态 swap_wait_expected_time；否则按前方车辆数估算。"
+          },
+          "estimated_wait_source": {
+            "anyOf": [
+              {
+                "description": "等待时间来源。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "swap_order_status 或 station_queue_estimate。"
+          },
+          "first_seen_at": {
+            "description": "首次观察时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "description": "最近观察时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "order_created_at": {
+            "description": "上游订单创建时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "order_no": {
+            "description": "订单号。",
+            "type": "string"
+          },
+          "order_status": {
+            "anyOf": [
+              {
+                "description": "状态代码。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游状态代码。"
+          },
+          "order_status_name": {
+            "anyOf": [
+              {
+                "description": "状态名称。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单状态名称。"
+          },
+          "order_type": {
+            "description": "订单类型。",
+            "type": "string"
+          },
+          "queue_number": {
+            "anyOf": [
+              {
+                "description": "换电号。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单详情返回的换电号。"
+          },
+          "queue_status_text": {
+            "anyOf": [
+              {
+                "description": "排队状态文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "优先使用订单详情的 order_title（如“等待换电”），缺失时回退到官方状态描述或站点排队文案。"
+          },
+          "queue_updated_at": {
+            "anyOf": [
+              {
+                "description": "排队信息更新时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次成功读取站点排队信息的时间。"
+          },
+          "station_address": {
+            "anyOf": [
+              {
+                "description": "地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点地址。"
+          },
+          "station_key": {
+            "anyOf": [
+              {
+                "description": "站点 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从订单详情补充的稳定站点 ID。"
+          },
+          "station_name": {
+            "anyOf": [
+              {
+                "description": "站名。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点名称。"
+          },
+          "target_battery_cap_level": {
+            "anyOf": [
+              {
+                "description": "目标电池档位。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 为标续，2 为长续。"
+          },
+          "vehicles_ahead": {
+            "anyOf": [
+              {
+                "description": "前方车辆数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "优先使用官方订单状态 waiting_count；缺失时回退到目标电池档位的实时排队数。"
+          }
+        },
+        "required": [
+          "order_no",
+          "order_type",
+          "order_status",
+          "order_status_name",
+          "order_created_at",
+          "station_key",
+          "station_name",
+          "station_address",
+          "baseline_captured_at",
+          "queue_number",
+          "target_battery_cap_level",
+          "vehicles_ahead",
+          "estimated_wait_minutes",
+          "estimated_wait_source",
+          "queue_status_text",
+          "queue_updated_at",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "type": "object"
+      },
+      "ActiveServiceOrderPage": {
+        "description": "进行中订单集合。",
+        "properties": {
+          "items": {
+            "description": "当前进行中的订单，最多 20 条。",
+            "items": {
+              "$ref": "#/components/schemas/ActiveServiceOrder"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "AvailableCouponsPage": {
+        "description": "当前账号可用卡券分页结果；amount 是上游合并条目数，实际券张数看 coupon_groups 和 page_coupon_count。原始 coupon 对象仍保留上游字段。",
+        "properties": {
+          "amount": {
+            "description": "上游返回的合并条目总数，不是实际券张数。",
+            "type": "integer"
+          },
+          "coupon_groups": {
+            "description": "当前页每个合并条目的实际张数、分类和可识别面额。",
+            "items": {
+              "$ref": "#/components/schemas/CouponGroupCount"
+            },
+            "type": "array"
+          },
+          "coupons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "本次每页条数。",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "本次偏移。",
+            "type": "integer"
+          },
+          "page_coupon_count": {
+            "anyOf": [
+              {
+                "description": "当前页实际券张数之和。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "任一条目数量无效时为 null。"
+          },
+          "total_coupon_count": {
+            "anyOf": [
+              {
+                "description": "所有页的实际券张数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "只有从第0页取全且上游无更多页时才有值；否则为 null。"
+          }
+        },
+        "required": [
+          "amount",
+          "coupons",
+          "has_more",
+          "coupon_groups",
+          "page_coupon_count",
+          "total_coupon_count",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "BatteryObservation": {
+        "description": "站点观察到的单块电池。",
+        "properties": {
+          "battery_id": {
+            "description": "电池 ID。",
+            "type": "string"
+          },
+          "battery_type": {
+            "anyOf": [
+              {
+                "description": "类型。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游电池类型文字。"
+          },
+          "capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "容量，kWh。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析出的容量，kWh。"
+          },
+          "occupied": {
+            "description": "是否被占用。",
+            "type": "boolean"
+          },
+          "production_date": {
+            "anyOf": [
+              {
+                "description": "生产日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可核验生产日期；无法解析时为 null。"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "description": "仓位。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仓位编号，无法解析时为 null。"
+          },
+          "soc_percent": {
+            "anyOf": [
+              {
+                "description": "电量，%。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "电量，%；无法取得时为 null。"
+          }
+        },
+        "required": [
+          "battery_id",
+          "slot_id",
+          "battery_type",
+          "capacity_kwh",
+          "soc_percent",
+          "occupied",
+          "production_date"
+        ],
+        "type": "object"
+      },
+      "CheckInOutcome": {
+        "description": "一次每日签到的结果；时间戳为上游秒级 Unix 时间。",
+        "properties": {
+          "checked_in": {
+            "type": "boolean"
+          },
+          "checkin_time": {
+            "description": "签到时间。",
+            "type": "integer"
+          },
+          "continuous_days": {
+            "description": "连续签到天数。",
+            "type": "integer"
+          },
+          "credit": {
+            "description": "本次获得的积分。",
+            "type": "integer"
+          },
+          "credit_amount": {
+            "description": "连续签到统计中的积分数。",
+            "type": "integer"
+          },
+          "server_time": {
+            "description": "上游服务时间。",
+            "type": "integer"
+          },
+          "tip": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "checked_in",
+          "tip",
+          "credit",
+          "server_time",
+          "checkin_time",
+          "continuous_days",
+          "credit_amount"
+        ],
+        "type": "object"
+      },
+      "CouponGroupCount": {
+        "description": "合并卡券条目的实际张数。面额仅从明确的券标题识别，不能用 full_price 门槛代替。",
+        "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "description": "上游卡券分类。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "description": "该合并条目代表的实际张数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "merge_count 无效时为 null。"
+          },
+          "count_source": {
+            "description": "merge_count 或 single_item。",
+            "type": "string"
+          },
+          "face_value_cny": {
+            "anyOf": [
+              {
+                "description": "从明确的“X元优惠券”标题解析的面额，人民币元。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "标题不明确时为 null。"
+          },
+          "face_value_source": {
+            "anyOf": [
+              {
+                "description": "面额来源，为 coupon_title 或 coupon_name。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "面额未知时为 null。"
+          },
+          "title": {
+            "description": "券标题。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "classification",
+          "count",
+          "count_source",
+          "face_value_cny",
+          "face_value_source"
+        ],
+        "type": "object"
+      },
+      "CreateSwapOrderInput": {
+        "additionalProperties": false,
+        "description": "一键换电下单输入。服务端拒绝坐标、车辆、车型、电池档位等额外字段。",
+        "properties": {
+          "confirmation": {
+            "const": "CREATE SWAP ORDER",
+            "description": "必须精确匹配，表示用户确认创建真实订单。",
+            "type": "string"
+          },
+          "station_id": {
+            "description": "目标换电站 ID。",
+            "maxLength": 128,
+            "pattern": "^PS-NIO-[A-Za-z0-9_-]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_id",
+          "confirmation"
+        ],
+        "type": "object"
+      },
+      "CreateSwapOrderOutcome": {
+        "description": "完成站点定位查询、scan 预检和真实下单后的结果。上游创建响应可能暂时返回电池档位 0，requested_battery_cap_level 保留服务端实际请求值。",
+        "properties": {
+          "battery_cap_level": {
+            "anyOf": [
+              {
+                "description": "上游创建响应电池档位。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "响应未给出时为 null。"
+          },
+          "latitude": {
+            "description": "从站点详情 location 解析出的纬度。",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "从站点详情 location 解析出的经度。",
+            "type": "number"
+          },
+          "order_id": {
+            "description": "已创建的真实换电订单号。",
+            "type": "string"
+          },
+          "ps_resource_model": {
+            "anyOf": [
+              {
+                "description": "换电站设备型号。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "响应未给出时为 null。"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "创建订单请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游未返回时为 null。"
+          },
+          "requested_battery_cap_level": {
+            "description": "服务端配置并实际发送的目标电池档位。",
+            "type": "integer"
+          },
+          "scan_request_id": {
+            "anyOf": [
+              {
+                "description": "scan 请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游未返回时为 null。"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "description": "创建响应服务端 Unix 毫秒时间。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游未返回时为 null。"
+          },
+          "station_id": {
+            "description": "目标换电站 ID。",
+            "type": "string"
+          },
+          "target_battery_cap_level": {
+            "anyOf": [
+              {
+                "description": "上游创建响应目标档位。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "响应未给出时为 null。"
+          }
+        },
+        "required": [
+          "station_id",
+          "latitude",
+          "longitude",
+          "scan_request_id",
+          "request_id",
+          "server_time",
+          "order_id",
+          "requested_battery_cap_level",
+          "battery_cap_level",
+          "target_battery_cap_level",
+          "ps_resource_model"
+        ],
+        "type": "object"
+      },
+      "EnergyStats": {
+        "description": "区间统计；known 字段只汇总有证据的记录，充电电量优先功率积分，缺功率时依据最近换上电池容量与 SOC 增量估算。",
+        "properties": {
+          "actual_paid_cny_known": {
+            "description": "已知实际支付额，元。",
+            "type": "number"
+          },
+          "charging_energy_kwh_estimated": {
+            "anyOf": [
+              {
+                "description": "按功率积分或电池容量乘 SOC 增量估算的充电电量，kWh。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "没有可估算采样段时为 null。"
+          },
+          "charging_energy_kwh_from_power": {
+            "description": "功率积分得到的充电电量，kWh。",
+            "type": "number"
+          },
+          "charging_energy_kwh_from_soc": {
+            "description": "缺功率时由上次换上电池容量与 SOC 增量估算的充电电量，kWh。",
+            "type": "number"
+          },
+          "charging_energy_share_percent_of_known": {
+            "anyOf": [
+              {
+                "description": "充电电量在已知总量中的比例。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "总量为零时为 null。"
+          },
+          "charging_sample_count": {
+            "description": "纳入计算窗口的充电采样数。",
+            "type": "integer"
+          },
+          "charging_segments_from_power": {
+            "description": "功率积分覆盖的采样段数。",
+            "type": "integer"
+          },
+          "charging_segments_from_soc": {
+            "description": "SOC 回退覆盖的采样段数。",
+            "type": "integer"
+          },
+          "charging_segments_uncovered": {
+            "description": "缺功率且缺少可信容量或 SOC 的采样段数。",
+            "type": "integer"
+          },
+          "coupon_discount_cny_known": {
+            "description": "已知优惠券减免额，元，正数。",
+            "type": "number"
+          },
+          "current_month_swap_count": {
+            "description": "北京时间当前自然月换电次数。",
+            "type": "integer"
+          },
+          "current_month_timezone": {
+            "const": "Asia/Shanghai",
+            "type": "string"
+          },
+          "energy_coverage_complete": {
+            "description": "换电电量全部有记录且充电采样段无缺口时为 true；为 false 时占比仅代表已知部分。",
+            "type": "boolean"
+          },
+          "fee_breakdown_covered_count": {
+            "description": "具有费用分项的换电笔数。",
+            "type": "integer"
+          },
+          "from": {
+            "description": "含起点。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "paid_amount_covered_count": {
+            "description": "具有实际支付额的换电笔数。",
+            "type": "integer"
+          },
+          "swap_count": {
+            "description": "区间换电次数。",
+            "type": "integer"
+          },
+          "swap_electricity_fee_cny_known": {
+            "description": "已知换电电费，元。",
+            "type": "number"
+          },
+          "swap_energy_covered_count": {
+            "description": "具有精确换电电量的笔数。",
+            "type": "integer"
+          },
+          "swap_energy_kwh_known": {
+            "description": "已知换电电量，kWh。",
+            "type": "number"
+          },
+          "swap_energy_share_percent_of_known": {
+            "anyOf": [
+              {
+                "description": "换电电量在已知总量中的比例。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "总量为零时为 null。"
+          },
+          "swap_service_fee_cny_known": {
+            "description": "已知换电服务费，元。",
+            "type": "number"
+          },
+          "swap_total_fee_cny_known": {
+            "description": "已知换电电费与服务费之和，元。",
+            "type": "number"
+          },
+          "to": {
+            "description": "不含终点。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "total_energy_kwh_known": {
+            "description": "已知换电电量与估算充电电量之和，kWh。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "swap_count",
+          "swap_electricity_fee_cny_known",
+          "swap_service_fee_cny_known",
+          "swap_total_fee_cny_known",
+          "coupon_discount_cny_known",
+          "actual_paid_cny_known",
+          "fee_breakdown_covered_count",
+          "paid_amount_covered_count",
+          "swap_energy_kwh_known",
+          "swap_energy_covered_count",
+          "charging_energy_kwh_estimated",
+          "charging_energy_kwh_from_power",
+          "charging_energy_kwh_from_soc",
+          "charging_segments_from_power",
+          "charging_segments_from_soc",
+          "charging_segments_uncovered",
+          "charging_sample_count",
+          "total_energy_kwh_known",
+          "swap_energy_share_percent_of_known",
+          "charging_energy_share_percent_of_known",
+          "energy_coverage_complete",
+          "current_month_swap_count",
+          "current_month_timezone"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "description": "服务端 JSON 错误；查询参数提取错误可能使用 text/plain。",
+        "properties": {
+          "error": {
+            "description": "稳定错误代码。",
+            "type": "string"
+          },
+          "message": {
+            "description": "可读错误说明；不包含密钥或 PIN。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "HTTP 服务健康。",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "description": "服务可响应。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ImportedBattery": {
+        "description": "订单导入可提供的电池资料，所有字段都可省略或为 null。",
+        "properties": {
+          "battery_id": {
+            "anyOf": [
+              {
+                "description": "电池 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "前后空白会移除，空字符串规范为 null。"
+          },
+          "capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "容量，kWh。",
+                "maximum": 300.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "容量，0…300 kWh。"
+          },
+          "production_date": {
+            "anyOf": [
+              {
+                "description": "生产日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO 日期 yyyy-MM-dd。"
+          },
+          "soc_percent": {
+            "anyOf": [
+              {
+                "description": "SOC，%。",
+                "maximum": 100.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "电量，0…100%。"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "ImportedOrder": {
+        "description": "按订单号幂等导入。未提供的可选字段不会要求客户端推算。",
+        "properties": {
+          "energy_kwh": {
+            "anyOf": [
+              {
+                "description": "订单精确换电量，kWh。",
+                "maximum": 300.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单给出的精确换电量，0…300 kWh；缺失时为 null。"
+          },
+          "incoming_battery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportedBattery"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换到车上的电池。"
+          },
+          "occurred_at": {
+            "description": "订单完成/发生时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "order_no": {
+            "description": "前后空白移除后的订单号；服务端按 UTF-8 字节长度限制到 256。",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "order_status_name": {
+            "anyOf": [
+              {
+                "description": "订单状态。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单状态名称。"
+          },
+          "outgoing_battery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportedBattery"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从车上换下的电池。"
+          },
+          "payment_items": {
+            "description": "支付分项，省略时默认空数组；不要把总费用与分项重复加总。",
+            "items": {
+              "$ref": "#/components/schemas/SwapPaymentItem"
+            },
+            "type": "array"
+          },
+          "price_amount": {
+            "anyOf": [
+              {
+                "description": "订单金额。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "精确金额（若上游有返回）。"
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "description": "货币。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "货币代码，例如 CNY。"
+          },
+          "price_description": {
+            "anyOf": [
+              {
+                "description": "支付说明。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "支付说明文字。"
+          },
+          "raw_payload": {
+            "description": "可选原始订单 JSON，用于保留证据；请勿提交 Token、PIN 或私钥。"
+          },
+          "station_address": {
+            "anyOf": [
+              {
+                "description": "站点地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点地址。"
+          },
+          "station_key": {
+            "anyOf": [
+              {
+                "description": "站点 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选站点 ID；去除空白，空值规范为 null。"
+          },
+          "station_name": {
+            "anyOf": [
+              {
+                "description": "站名。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站名；去除空白，空值规范为 null。"
+          }
+        },
+        "required": [
+          "order_no",
+          "occurred_at"
+        ],
+        "type": "object"
+      },
+      "NearbyStation": {
+        "description": "上游视窗内的换电站图钉。",
+        "properties": {
+          "latitude": {
+            "description": "站点纬度。",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "站点经度。",
+            "type": "number"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "description": "站点名称。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游详情缺失时为 null。"
+          },
+          "station_id": {
+            "description": "站点 ID。",
+            "type": "string"
+          },
+          "straight_line_distance_km": {
+            "description": "从查询中心到站点的地理直线距离，公里。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "station_id",
+          "name",
+          "latitude",
+          "longitude",
+          "straight_line_distance_km"
+        ],
+        "type": "object"
+      },
+      "NearbyStationResult": {
+        "description": "NIO 地图视窗搜索结果，不保证半径内完整。",
+        "properties": {
+          "coverage": {
+            "description": "结果覆盖范围说明。",
+            "type": "string"
+          },
+          "fetched_at": {
+            "description": "查询完成时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "description": "数据源，固定 nio_cn_around_recall。",
+            "type": "string"
+          },
+          "stations": {
+            "description": "换电站图钉。",
+            "items": {
+              "$ref": "#/components/schemas/NearbyStation"
+            },
+            "type": "array"
+          },
+          "viewport_screen_ratio": {
+            "description": "请求的屏幕比例。",
+            "type": "number"
+          },
+          "viewport_zoom_level": {
+            "description": "请求的地图缩放等级。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "fetched_at",
+          "viewport_zoom_level",
+          "viewport_screen_ratio",
+          "coverage",
+          "stations"
+        ],
+        "type": "object"
+      },
+      "NearbyStationsRequest": {
+        "description": "地图查询中心坐标。",
+        "properties": {
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "type": "object"
+      },
+      "NioLoginInput": {
+        "description": "提交短信验证码。",
+        "properties": {
+          "challenge_id": {
+            "description": "前一步返回的 UUID。",
+            "type": "string"
+          },
+          "verification_code": {
+            "description": "6 位数字验证码。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "verification_code"
+        ],
+        "type": "object"
+      },
+      "NioLoginResult": {
+        "description": "敏感的 NIO 登录凭据；不要写入日志。",
+        "properties": {
+          "backend_config_saved": {
+            "anyOf": [
+              {
+                "description": "租户模式下，新 token 是否已加密写入 PostgreSQL。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "原有单租户模式不返回此字段。"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "NIO 返回的 access_token、refresh_token、token_key、token_type、过期时间及账户字段。",
+            "type": "object"
+          },
+          "result_code": {
+            "description": "成功时为 success。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_code",
+          "data"
+        ],
+        "type": "object"
+      },
+      "NioSmsChallenge": {
+        "description": "单次登录挑战。",
+        "properties": {
+          "challenge_id": {
+            "description": "UUID，提交验证码时原样带回。",
+            "type": "string"
+          },
+          "expires_in_seconds": {
+            "description": "有效期，固定 600 秒。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "expires_in_seconds"
+        ],
+        "type": "object"
+      },
+      "NioSmsInput": {
+        "description": "发送登录短信。",
+        "properties": {
+          "mobile": {
+            "description": "中国大陆 11 位手机号。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mobile"
+        ],
+        "type": "object"
+      },
+      "PollOutcome": {
+        "description": "单次站点轮询结果。",
+        "properties": {
+          "battery_count": {
+            "anyOf": [
+              {
+                "description": "电池数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "快照中的电池数量；跳过时为 null。"
+          },
+          "candidate_event_id": {
+            "anyOf": [
+              {
+                "description": "候选 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "形成唯一站点差分候选时返回 ID。"
+          },
+          "message": {
+            "description": "含触发来源和结果的说明。",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "success 或 skipped；执行失败使用 HTTP 错误响应。",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "description": "快照 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "保存的快照 ID。"
+          }
+        },
+        "required": [
+          "outcome",
+          "snapshot_id",
+          "candidate_event_id",
+          "battery_count",
+          "message"
+        ],
+        "type": "object"
+      },
+      "PollRunSummary": {
+        "description": "最近一次站点轮询记录。",
+        "properties": {
+          "finished_at": {
+            "description": "轮询结束时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "description": "说明。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "轮询结果说明。"
+          },
+          "outcome": {
+            "description": "success、skipped 或 error。",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "description": "快照 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "成功保存的快照 ID，失败/跳过时为 null。"
+          },
+          "started_at": {
+            "description": "轮询开始时间。",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "started_at",
+          "finished_at",
+          "outcome",
+          "snapshot_id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ServiceStatus": {
+        "description": "配置、轮询状态和本地数据量。",
+        "properties": {
+          "candidate_count": {
+            "description": "未确认候选数量。",
+            "type": "integer"
+          },
+          "confirmed_count": {
+            "description": "已确认换电记录数量。",
+            "type": "integer"
+          },
+          "last_poll": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PollRunSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近站点轮询；尚未轮询时为 null。"
+          },
+          "observed_service_order_count": {
+            "description": "观察到的订单数量。",
+            "type": "integer"
+          },
+          "poll_in_progress": {
+            "description": "站点轮询当前是否占用执行锁。",
+            "type": "boolean"
+          },
+          "poll_interval_seconds": {
+            "description": "默认站点轮询间隔，秒。",
+            "type": "integer"
+          },
+          "service_order_configured": {
+            "description": "订单同步是否已配置。",
+            "type": "boolean"
+          },
+          "service_order_poll_interval_seconds": {
+            "description": "订单同步间隔，秒。",
+            "type": "integer"
+          },
+          "snapshot_count": {
+            "description": "站点快照数量。",
+            "type": "integer"
+          },
+          "station_configured": {
+            "description": "默认站点轮询是否已配置。",
+            "type": "boolean"
+          },
+          "station_template_configured": {
+            "description": "动态站点请求模板是否已配置。",
+            "type": "boolean"
+          },
+          "vehicle_configured": {
+            "description": "车辆只读凭证是否已配置。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "station_configured",
+          "vehicle_configured",
+          "service_order_configured",
+          "station_template_configured",
+          "poll_interval_seconds",
+          "service_order_poll_interval_seconds",
+          "poll_in_progress",
+          "last_poll",
+          "snapshot_count",
+          "candidate_count",
+          "confirmed_count",
+          "observed_service_order_count"
+        ],
+        "type": "object"
+      },
+      "StationBatteryReadiness": {
+        "description": "站内电池充电进度与预计完成时间；充电完成不保证可立即换入。不会返回电池 ID。",
+        "properties": {
+          "battery_occupied": {
+            "anyOf": [
+              {
+                "description": "上游 battery_occupied 标志。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          },
+          "capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "由上游电池描述识别的容量，kWh。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无法识别时为 null。"
+          },
+          "charging_remaining_minutes": {
+            "anyOf": [
+              {
+                "description": "上游明确给出的剩余分钟数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "非纯数字或无效时为 null。"
+          },
+          "charging_time_description": {
+            "anyOf": [
+              {
+                "description": "上游 charging_time_desc 原文。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          },
+          "estimated_charge_complete_at": {
+            "anyOf": [
+              {
+                "description": "接收时间加上上游剩余分钟数得到的估计充电完成时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无可信分钟数时为 null；不是保证可换时间。"
+          },
+          "progress_percent": {
+            "anyOf": [
+              {
+                "description": "上游 progress 百分比。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失或超范围时为 null。"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "description": "站内槽位编号。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          }
+        },
+        "required": [
+          "slot_id",
+          "capacity_kwh",
+          "progress_percent",
+          "battery_occupied",
+          "charging_time_description",
+          "charging_remaining_minutes",
+          "estimated_charge_complete_at"
+        ],
+        "type": "object"
+      },
+      "StationFeeItem": {
+        "description": "站点实时费率分项，金额保留上游字符串。",
+        "properties": {
+          "currency": {
+            "description": "上游货币符号。",
+            "type": "string"
+          },
+          "fee": {
+            "description": "金额字符串。",
+            "type": "string"
+          },
+          "fee_type": {
+            "anyOf": [
+              {
+                "description": "上游费用类型。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          },
+          "is_total": {
+            "description": "是否为总费用；不能与分项再次相加。",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "费用分项名称。",
+            "type": "string"
+          },
+          "unit": {
+            "description": "上游计费单位。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fee_type",
+          "name",
+          "fee",
+          "unit",
+          "currency",
+          "is_total"
+        ],
+        "type": "object"
+      },
+      "StationFeePeriod": {
+        "description": "上游给出的完整分时费率。时间段保留原文，不推断缺失的时区。",
+        "properties": {
+          "fees": {
+            "description": "该时段全部费用分项，含服务费、电费和总额（若上游提供）。",
+            "items": {
+              "$ref": "#/components/schemas/StationFeeItem"
+            },
+            "type": "array"
+          },
+          "time_period": {
+            "description": "上游原始时段文字。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_period",
+          "fees"
+        ],
+        "type": "object"
+      },
+      "StationLiveQueue": {
+        "description": "站点详情中的排队观察；该接口没有已验证的预计等待分钟数或上游更新时间字段。",
+        "properties": {
+          "estimated_wait_minutes": {
+            "anyOf": [
+              {
+                "description": "预计等待分钟数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "该站点响应未提供已验证字段时为 null；可另看进行中订单的估算。"
+          },
+          "navigation_count": {
+            "anyOf": [
+              {
+                "description": "上游导航前往站点的数量。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "observed_at": {
+            "description": "后端收到这次站点响应的时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "upstream_updated_at": {
+            "anyOf": [
+              {
+                "description": "上游队列更新时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无法确认时为 null。"
+          },
+          "vehicles_ahead": {
+            "anyOf": [
+              {
+                "description": "排在前方的车辆数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          },
+          "waiting_description": {
+            "anyOf": [
+              {
+                "description": "上游排队说明。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          }
+        },
+        "required": [
+          "vehicles_ahead",
+          "waiting_description",
+          "navigation_count",
+          "estimated_wait_minutes",
+          "upstream_updated_at",
+          "observed_at"
+        ],
+        "type": "object"
+      },
+      "StationLiveStatus": {
+        "description": "一次实时站点查询结果。",
+        "properties": {
+          "available_75_batteries": {
+            "description": "所有可换 75 kWh 电池，未截断到 Widget 展示条数。",
+            "items": {
+              "$ref": "#/components/schemas/BatteryObservation"
+            },
+            "type": "array"
+          },
+          "available_75_count": {
+            "description": "满足可换筛选条件的 75 kWh 电池数量。",
+            "type": "integer"
+          },
+          "battery_readiness": {
+            "description": "站内电池充电进度，不等于保证可换。",
+            "items": {
+              "$ref": "#/components/schemas/StationBatteryReadiness"
+            },
+            "type": "array"
+          },
+          "captured_at": {
+            "description": "查询完成时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "current_fees": {
+            "description": "当前费率分项。",
+            "items": {
+              "$ref": "#/components/schemas/StationFeeItem"
+            },
+            "type": "array"
+          },
+          "fee_notices": {
+            "description": "上游费率特殊说明和适用条件。",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "fee_periods": {
+            "description": "上游完整分时费率，不只包含当前时段。",
+            "items": {
+              "$ref": "#/components/schemas/StationFeePeriod"
+            },
+            "type": "array"
+          },
+          "fee_timezone": {
+            "anyOf": [
+              {
+                "description": "上游显式提供的费率时区。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未提供时为 null；time_period 保留原文。"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/StationLiveQueue"
+          },
+          "station_id": {
+            "description": "站点 ID。",
+            "type": "string"
+          },
+          "station_name": {
+            "description": "目录名称，未知目录时使用站点 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_id",
+          "station_name",
+          "captured_at",
+          "current_fees",
+          "fee_periods",
+          "fee_notices",
+          "fee_timezone",
+          "queue",
+          "battery_readiness",
+          "available_75_count",
+          "available_75_batteries"
+        ],
+        "type": "object"
+      },
+      "StraightLineEnergyEstimate": {
+        "description": "地理直线距离与每日最近100公里能耗缓存的只读试算；不代表道路绕行成本。",
+        "properties": {
+          "distance_kind": {
+            "description": "固定为 geodesic_straight_line。",
+            "type": "string"
+          },
+          "energy_cache": {
+            "$ref": "#/components/schemas/TripEnergyCacheState"
+          },
+          "estimated_energy_for_straight_line_kwh": {
+            "anyOf": [
+              {
+                "description": "直线距离×缓存百公里能耗/100；缓存不完整时仅为已知部分粗估。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "首次无缓存或无有效能耗时为 null；实际驾车耗电通常不同。"
+          },
+          "road_distance_km": {
+            "anyOf": [
+              {
+                "description": "道路行驶距离。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前无路线服务，始终为 null。"
+          },
+          "road_travel_time_minutes": {
+            "anyOf": [
+              {
+                "description": "道路行驶时间。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前无路线服务，始终为 null。"
+          },
+          "station_coordinates_source": {
+            "description": "known_directory 或 caller_supplied；后者只校验范围、不核验与站点ID的关联。",
+            "type": "string"
+          },
+          "station_id": {
+            "description": "站点 ID。",
+            "type": "string"
+          },
+          "station_record_updated_at": {
+            "anyOf": [
+              {
+                "description": "本地站点记录更新时间；不代表坐标实测时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "使用调用方提供的站点坐标时为 null。"
+          },
+          "straight_line_distance_km": {
+            "description": "地理直线距离，保留一位小数，公里。",
+            "type": "number"
+          },
+          "traffic_and_tolls_included": {
+            "description": "固定为 false。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "station_id",
+          "station_coordinates_source",
+          "station_record_updated_at",
+          "straight_line_distance_km",
+          "energy_cache",
+          "estimated_energy_for_straight_line_kwh",
+          "distance_kind",
+          "road_distance_km",
+          "road_travel_time_minutes",
+          "traffic_and_tolls_included"
+        ],
+        "type": "object"
+      },
+      "StraightLineEnergyRequest": {
+        "additionalProperties": false,
+        "dependentRequired": {
+          "station_latitude": [
+            "station_longitude"
+          ],
+          "station_longitude": [
+            "station_latitude"
+          ]
+        },
+        "description": "车辆坐标只用于本次计算，不写入响应。可选站点坐标从附近查询取得，必须成对提供。",
+        "properties": {
+          "latitude": {
+            "description": "车辆纬度。",
+            "maximum": 90,
+            "minimum": -90,
+            "type": "number"
+          },
+          "longitude": {
+            "description": "车辆经度。",
+            "maximum": 180,
+            "minimum": -180,
+            "type": "number"
+          },
+          "station_latitude": {
+            "anyOf": [
+              {
+                "maximum": 90,
+                "minimum": -90,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "目录无有效坐标时可提供附近查询结果的站点纬度；不独立验证站点身份。"
+          },
+          "station_longitude": {
+            "anyOf": [
+              {
+                "maximum": 180,
+                "minimum": -180,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "目录无有效坐标时可提供附近查询结果的站点经度；必须与 station_latitude 成对。"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "type": "object"
+      },
+      "SwapEvent": {
+        "description": "换电记录，候选与订单确认的数据来源分开标注。",
+        "properties": {
+          "battery_source": {
+            "description": "电池身份来源标志。",
+            "type": "string"
+          },
+          "confidence": {
+            "description": "记录证据可信度标志。",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "本地记录创建时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "energy_source": {
+            "description": "换电量来源标志，按实现实际值返回。",
+            "type": "string"
+          },
+          "estimated_energy_kwh": {
+            "anyOf": [
+              {
+                "description": "估算电量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点证据产生的估算量，kWh；不是精确值。"
+          },
+          "evidence": {
+            "description": "站点差分和订单匹配证据，或 null。"
+          },
+          "exact_energy_kwh": {
+            "anyOf": [
+              {
+                "description": "精确电量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅来自订单的精确换电量，kWh。"
+          },
+          "id": {
+            "description": "本地记录 ID。",
+            "type": "string"
+          },
+          "incoming_battery_id": {
+            "anyOf": [
+              {
+                "description": "电池 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换到车上的电池 ID。"
+          },
+          "incoming_capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "容量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换到车上的电池容量，kWh。"
+          },
+          "incoming_production_date": {
+            "anyOf": [
+              {
+                "description": "生产日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换到车上的电池生产日期。"
+          },
+          "incoming_soc_percent": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换到车上的电池电量，%。"
+          },
+          "occurred_at": {
+            "description": "换电记录时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "order_no": {
+            "anyOf": [
+              {
+                "description": "订单号。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "匹配的订单号；站点候选尚未匹配时为 null。"
+          },
+          "order_status_name": {
+            "anyOf": [
+              {
+                "description": "状态。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单状态名称。"
+          },
+          "outgoing_battery_id": {
+            "anyOf": [
+              {
+                "description": "电池 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从车上换下的电池 ID。"
+          },
+          "outgoing_capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "容量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从车上换下的电池容量，kWh。"
+          },
+          "outgoing_production_date": {
+            "anyOf": [
+              {
+                "description": "生产日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从车上换下的电池生产日期。"
+          },
+          "outgoing_soc_percent": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "从车上换下的电池电量，%。"
+          },
+          "payment_items": {
+            "description": "支付分项。",
+            "items": {
+              "$ref": "#/components/schemas/SwapPaymentItem"
+            },
+            "type": "array"
+          },
+          "price_amount": {
+            "anyOf": [
+              {
+                "description": "金额。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "订单金额。"
+          },
+          "price_currency": {
+            "anyOf": [
+              {
+                "description": "货币。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "货币代码。"
+          },
+          "price_description": {
+            "anyOf": [
+              {
+                "description": "支付说明。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "支付说明。"
+          },
+          "station_address": {
+            "anyOf": [
+              {
+                "description": "地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点地址。"
+          },
+          "station_key": {
+            "anyOf": [
+              {
+                "description": "站点 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点 ID。"
+          },
+          "station_name": {
+            "anyOf": [
+              {
+                "description": "站名。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点名称。"
+          },
+          "status": {
+            "description": "confirmed 或 observed_candidate。",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "本地记录更新时间。",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "occurred_at",
+          "station_key",
+          "station_name",
+          "station_address",
+          "order_no",
+          "order_status_name",
+          "price_amount",
+          "price_currency",
+          "price_description",
+          "payment_items",
+          "exact_energy_kwh",
+          "estimated_energy_kwh",
+          "energy_source",
+          "battery_source",
+          "confidence",
+          "evidence",
+          "created_at",
+          "updated_at",
+          "outgoing_battery_id",
+          "outgoing_production_date",
+          "outgoing_capacity_kwh",
+          "outgoing_soc_percent",
+          "incoming_battery_id",
+          "incoming_production_date",
+          "incoming_capacity_kwh",
+          "incoming_soc_percent"
+        ],
+        "type": "object"
+      },
+      "SwapEventPage": {
+        "description": "分页集合。",
+        "properties": {
+          "items": {
+            "description": "返回的数据项。",
+            "items": {
+              "$ref": "#/components/schemas/SwapEvent"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "本次请求经夹取后的条数上限。",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "分页偏移。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "SwapPaymentItem": {
+        "description": "订单支付分项。",
+        "properties": {
+          "amount": {
+            "description": "金额；货币由所属订单 price_currency 指定。",
+            "type": "number"
+          },
+          "name": {
+            "description": "支付分项名称。",
+            "type": "string"
+          },
+          "payment_type": {
+            "anyOf": [
+              {
+                "description": "支付类型代码。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游支付类型代码。"
+          }
+        },
+        "required": [
+          "name",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "SwapStation": {
+        "description": "由订单观察建立的本地站点目录项。",
+        "properties": {
+          "first_seen_at": {
+            "description": "首次观察时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "description": "最近观察时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "description": "纬度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "尚未完成坐标补全时为 null。"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "description": "经度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "尚未完成坐标补全时为 null。"
+          },
+          "operator_id": {
+            "anyOf": [
+              {
+                "description": "运营商 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "运营商 ID。"
+          },
+          "operator_name": {
+            "anyOf": [
+              {
+                "description": "运营商名称。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "运营商名称。"
+          },
+          "source_order_no": {
+            "anyOf": [
+              {
+                "description": "来源订单。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "发现该站点的订单号。"
+          },
+          "station_address": {
+            "anyOf": [
+              {
+                "description": "地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "站点地址。"
+          },
+          "station_id": {
+            "description": "稳定站点 ID。",
+            "type": "string"
+          },
+          "station_name": {
+            "description": "站点名称。",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "目录更新记录时间。",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_id",
+          "station_name",
+          "station_address",
+          "latitude",
+          "longitude",
+          "operator_id",
+          "operator_name",
+          "source_order_no",
+          "first_seen_at",
+          "last_seen_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SwapStationPage": {
+        "description": "分页集合。",
+        "properties": {
+          "items": {
+            "description": "返回的数据项。",
+            "items": {
+              "$ref": "#/components/schemas/SwapStation"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "本次请求经夹取后的条数上限。",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "分页偏移。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "SwapStationSearchItem": {
+        "description": "名称搜索返回的换电站。本地旧记录在后台补全完成前可能暂时缺少坐标。",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "description": "站点地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未知时为 null。"
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "description": "远端图标 URL。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游未提供时为 null。"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "description": "纬度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本地旧记录尚未补全时为 null。"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "description": "经度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本地旧记录尚未补全时为 null。"
+          },
+          "name": {
+            "description": "站点名称。",
+            "type": "string"
+          },
+          "station_id": {
+            "description": "PS-NIO-* 换电站 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_id",
+          "name",
+          "address",
+          "longitude",
+          "latitude",
+          "icon_url"
+        ],
+        "type": "object"
+      },
+      "SwapStationSearchResult": {
+        "description": "一次本地优先的名称搜索结果；远端兜底结果已过滤掉普通 POI、充电站、洗车和福利项目。",
+        "properties": {
+          "query": {
+            "description": "去除首尾空白后的名称关键词。",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "上游请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游未提供时为 null。"
+          },
+          "source": {
+            "description": "本次结果来自本地目录还是远端兜底。",
+            "enum": [
+              "local",
+              "remote"
+            ],
+            "type": "string"
+          },
+          "stations": {
+            "description": "匹配的换电站。",
+            "items": {
+              "$ref": "#/components/schemas/SwapStationSearchItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "source",
+          "request_id",
+          "stations"
+        ],
+        "type": "object"
+      },
+      "TripEnergyCacheState": {
+        "description": "最近一次成功计算的持久化缓存与最近尝试状态；读取不会触发行程请求或数据库写入。",
+        "properties": {
+          "last_attempt_day": {
+            "anyOf": [
+              {
+                "description": "最近一次后台计算尝试的北京时间日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未曾尝试时为 null。"
+          },
+          "last_attempt_failed": {
+            "description": "最近一次后台计算是否失败。",
+            "type": "boolean"
+          },
+          "last_attempt_status": {
+            "anyOf": [
+              {
+                "description": "最近一次任务状态。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未曾尝试时为 null。"
+          },
+          "stale": {
+            "description": "缓存已过36小时，或最近计算失败/中断。",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "fresh、stale、last_attempt_failed、attempt_incomplete 或 unknown。",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripEnergySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "首次尚无成功结果时为 null，不默认零。"
+          }
+        },
+        "required": [
+          "status",
+          "stale",
+          "last_attempt_failed",
+          "last_attempt_day",
+          "last_attempt_status",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "TripEnergySummary": {
+        "description": "后台每日取最近累计100公里行程后写入的结果。边界行程若只需部分距离，以整段平均能耗按比例折算，绝非该段实测；缺能耗行程占据时间窗口，但不以零能耗计入。",
+        "properties": {
+          "actual_distance_km": {
+            "description": "时间序列窗口中纳入的实际里程，最多100公里，含缺能耗行程。",
+            "type": "number"
+          },
+          "boundary_method": {
+            "description": "whole_trips、proportional_from_trip_average 或 distance_only_energy_unavailable。",
+            "type": "string"
+          },
+          "boundary_trip_full_distance_km": {
+            "anyOf": [
+              {
+                "description": "边界行程完整里程。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "没有部分边界行程时为 null。"
+          },
+          "boundary_trip_used_distance_km": {
+            "anyOf": [
+              {
+                "description": "边界行程纳入的里程。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "没有部分边界行程时为 null。"
+          },
+          "computed_at": {
+            "description": "后台完成计算的时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "consumption_kwh_per_100km": {
+            "anyOf": [
+              {
+                "description": "已知能耗/已覆盖里程×100；有缺口时只代表已知部分。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无有效能耗时为 null。"
+          },
+          "coverage_complete": {
+            "description": "是否完整覆盖最近100公里且无已知缺口。",
+            "type": "boolean"
+          },
+          "coverage_status": {
+            "description": "complete、incomplete_data、insufficient_distance 或 query_limit_reached。",
+            "type": "string"
+          },
+          "covered_distance_km": {
+            "description": "窗口中有有效能耗的里程。",
+            "type": "number"
+          },
+          "energy_known_trip_count": {
+            "description": "纳入窗口且能耗已知的行程数。",
+            "type": "integer"
+          },
+          "history_fetch_incomplete": {
+            "description": "达到分页上限或游标停滞且不足100公里。",
+            "type": "boolean"
+          },
+          "included_energy_kwh": {
+            "description": "已知能耗之和；边界行程可能使用整段平均比例折算。",
+            "type": "number"
+          },
+          "included_trip_count": {
+            "description": "纳入时间窗口的行程数，含缺能耗行程。",
+            "type": "integer"
+          },
+          "inspected_trip_count": {
+            "description": "后台实际检查的去重行程数。",
+            "type": "integer"
+          },
+          "missing_energy_distance_km": {
+            "description": "窗口中能耗未知的里程。",
+            "type": "number"
+          },
+          "missing_energy_trip_count": {
+            "description": "纳入窗口但能耗未知的行程数。",
+            "type": "integer"
+          },
+          "pages_fetched": {
+            "description": "后台获取的行程分页数。",
+            "type": "integer"
+          },
+          "sample_cutoff_at": {
+            "description": "后台查询行程时的样本截止时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "skipped_invalid_trip_count": {
+            "description": "因时间或距离无效而跳过的行程数。",
+            "type": "integer"
+          },
+          "target_distance_km": {
+            "description": "目标里程，固定100公里。",
+            "type": "number"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "description": "窗口最新纳入行程的结束时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无行程时为 null。"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "description": "窗口最早纳入行程的开始时间；部分边界行程无法给出精确分段时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无行程时为 null。"
+          }
+        },
+        "required": [
+          "target_distance_km",
+          "actual_distance_km",
+          "covered_distance_km",
+          "missing_energy_distance_km",
+          "included_energy_kwh",
+          "consumption_kwh_per_100km",
+          "window_start",
+          "window_end",
+          "sample_cutoff_at",
+          "computed_at",
+          "included_trip_count",
+          "energy_known_trip_count",
+          "missing_energy_trip_count",
+          "skipped_invalid_trip_count",
+          "inspected_trip_count",
+          "pages_fetched",
+          "coverage_complete",
+          "coverage_status",
+          "boundary_method",
+          "boundary_trip_used_distance_km",
+          "boundary_trip_full_distance_km",
+          "history_fetch_incomplete"
+        ],
+        "type": "object"
+      },
+      "UpstreamVehicleStatus": {
+        "description": "NIO 车辆状态透传 JSON。仅约束信封，不承诺固定字段集合；调用方需检查 result_code。",
+        "properties": {
+          "data": {
+            "description": "原样透传的上游 data，允许任意 JSON 类型与字段。"
+          },
+          "result_code": {
+            "description": "NIO 业务结果码，例如 success；HTTP 200 不自动等于业务成功。",
+            "type": "string"
+          },
+          "server_time": {
+            "description": "上游时间，字段形状由 NIO 协议决定。"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "UpstreamWidgetInfo": {
+        "description": "NIO Widget 信息透传 JSON，车辆状态通常位于 data.status。",
+        "properties": {
+          "data": {
+            "description": "原样透传的上游 data，允许任意 JSON 类型与字段。"
+          },
+          "result_code": {
+            "description": "NIO 业务结果码，例如 success；HTTP 200 不自动等于业务成功。",
+            "type": "string"
+          },
+          "server_time": {
+            "description": "上游时间，字段形状由 NIO 协议决定。"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "VehicleAction": {
+        "description": "服务端支持的动作名称，不代表所有动作默认已启用。unlock-start 涉及启动授权，与 unlock-doors 不同。",
+        "enum": [
+          "unlock-doors",
+          "unlock-start",
+          "lock",
+          "guard-on",
+          "guard-off",
+          "mirror-expand",
+          "find",
+          "find-stop",
+          "ac-on",
+          "ac-off",
+          "seat-heat-off"
+        ],
+        "type": "string",
+        "x-confirmations": {
+          "ac-off": "STOP AC",
+          "ac-on": "START AC",
+          "find": "FIND VEHICLE",
+          "find-stop": "STOP FINDING",
+          "guard-off": "DISABLE GUARD MODE",
+          "guard-on": "ENABLE GUARD MODE",
+          "lock": "LOCK VEHICLE",
+          "mirror-expand": "EXPAND MIRRORS",
+          "seat-heat-off": "STOP SEAT HEATING",
+          "unlock-doors": "UNLOCK DOORS",
+          "unlock-start": "UNLOCK AND START"
+        }
+      },
+      "VehicleChargingSample": {
+        "description": "一次充电状态采样。",
+        "properties": {
+          "charge_state": {
+            "description": "上游充电状态代码；会话采样保留实际原始值。",
+            "type": "integer"
+          },
+          "charging_current": {
+            "anyOf": [
+              {
+                "description": "电流。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "充电电流，A。"
+          },
+          "charging_power": {
+            "anyOf": [
+              {
+                "description": "功率。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "充电功率，W；UI 展示 kW 时需除以 1000。"
+          },
+          "charging_voltage": {
+            "anyOf": [
+              {
+                "description": "电压。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "充电电压，V。"
+          },
+          "sampled_at": {
+            "description": "采样时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "soc": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "电量，%。"
+          },
+          "vehicle_id": {
+            "description": "车辆 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "sampled_at",
+          "soc",
+          "charge_state",
+          "charging_current",
+          "charging_power",
+          "charging_voltage"
+        ],
+        "type": "object"
+      },
+      "VehicleChargingSamplePage": {
+        "description": "按时间正序排列的会话采样及功率曲线积分电量。充电中每次请求实时计算；结束后固化，历史缺失时在详情请求中补算。",
+        "properties": {
+          "energy_finalized": {
+            "description": "true 表示充电结束后已持久化；false 表示当前请求实时计算。",
+            "type": "boolean"
+          },
+          "energy_kwh": {
+            "anyOf": [
+              {
+                "description": "积分电量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "按相邻功率采样梯形积分得到的充入电量，kWh；不足两个有效点时为空。"
+          },
+          "items": {
+            "description": "采样点；无数据时空数组。",
+            "items": {
+              "$ref": "#/components/schemas/VehicleChargingSample"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "energy_kwh",
+          "energy_finalized"
+        ],
+        "type": "object"
+      },
+      "VehicleChargingSession": {
+        "description": "按历史采样生成的充电会话摘要。",
+        "properties": {
+          "duration_seconds": {
+            "description": "首末采样间隔，秒。",
+            "type": "integer"
+          },
+          "end_soc": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最新可用 SOC，%。"
+          },
+          "ended_at": {
+            "description": "会话最新采样时间，不必是实际充电结束时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "energy_kwh": {
+            "anyOf": [
+              {
+                "description": "积分电量。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "已结束会话持久化的充入电量，kWh。"
+          },
+          "id": {
+            "description": "起始采样 Unix 毫秒与车辆 ID 组合的会话 ID。",
+            "type": "string"
+          },
+          "peak_power_watts": {
+            "anyOf": [
+              {
+                "description": "峰值功率。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "历史采样中的峰值功率，W。"
+          },
+          "sample_count": {
+            "description": "会话采样点数量。",
+            "type": "integer"
+          },
+          "start_soc": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最早可用 SOC，%。"
+          },
+          "started_at": {
+            "description": "会话起始采样时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "vehicle_id": {
+            "description": "车辆 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "vehicle_id",
+          "started_at",
+          "ended_at",
+          "duration_seconds",
+          "start_soc",
+          "end_soc",
+          "peak_power_watts",
+          "energy_kwh",
+          "sample_count"
+        ],
+        "type": "object"
+      },
+      "VehicleChargingSessionPage": {
+        "description": "分页集合。",
+        "properties": {
+          "items": {
+            "description": "返回的数据项。",
+            "items": {
+              "$ref": "#/components/schemas/VehicleChargingSession"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "本次请求经夹取后的条数上限。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "VehicleSnapshot": {
+        "description": "车辆 GPS 采样；不能替代官方行程。",
+        "properties": {
+          "inside_temperature": {
+            "anyOf": [
+              {
+                "description": "温度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "车内温度，℃。"
+          },
+          "latitude": {
+            "description": "纬度，度。",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "经度，度。",
+            "type": "number"
+          },
+          "mileage": {
+            "anyOf": [
+              {
+                "description": "里程。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "车辆累计里程，km。"
+          },
+          "outside_temperature": {
+            "anyOf": [
+              {
+                "description": "温度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "车外温度，℃。"
+          },
+          "remaining_actual_range": {
+            "anyOf": [
+              {
+                "description": "动态续航。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "动态剩余续航，km。"
+          },
+          "remaining_range": {
+            "anyOf": [
+              {
+                "description": "标准续航。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "标准剩余续航，km。"
+          },
+          "sampled_at": {
+            "description": "车辆位置采样时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "soc": {
+            "anyOf": [
+              {
+                "description": "SOC。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "车辆电量，%。"
+          },
+          "vehicle_id": {
+            "description": "车辆 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "sampled_at",
+          "latitude",
+          "longitude",
+          "soc",
+          "remaining_range",
+          "remaining_actual_range",
+          "mileage",
+          "inside_temperature",
+          "outside_temperature"
+        ],
+        "type": "object"
+      },
+      "VehicleSnapshotPage": {
+        "description": "分页集合。",
+        "properties": {
+          "items": {
+            "description": "返回的数据项。",
+            "items": {
+              "$ref": "#/components/schemas/VehicleSnapshot"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "本次请求经夹取后的条数上限。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "VehicleTrip": {
+        "description": "NIO 官方行程及实际详情返回的能耗。",
+        "properties": {
+          "average_energy_consumption_kwh_per_100km": {
+            "anyOf": [
+              {
+                "description": "百公里能耗。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅在详情提供可用 trip_eng 且距离>0 时计算，kWh/100km；缺失为 null。"
+          },
+          "average_speed_kph": {
+            "anyOf": [
+              {
+                "description": "平均速度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "平均速度，km/h。"
+          },
+          "distance_kilometers": {
+            "description": "行程里程，km。列表 distance 为整公里；若详情里程表差值有效且落在同一整公里区间，使用差值保留小数，否则保留列表值。",
+            "type": "number"
+          },
+          "duration_minutes": {
+            "description": "行程时长，分钟。",
+            "type": "integer"
+          },
+          "end_location": {
+            "$ref": "#/components/schemas/VehicleTripLocation"
+          },
+          "ended_at": {
+            "description": "结束时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "energy_consumed_kwh": {
+            "anyOf": [
+              {
+                "description": "能耗。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "详情 trip_eng 的实际行程耗电量，kWh；缺失为 null。"
+          },
+          "id": {
+            "description": "上游 journey_id。",
+            "type": "string"
+          },
+          "is_combined": {
+            "description": "是否为上游合并行程。",
+            "type": "boolean"
+          },
+          "maximum_speed_kph": {
+            "anyOf": [
+              {
+                "description": "最高速度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最高速度，km/h。"
+          },
+          "odometer_kilometers": {
+            "anyOf": [
+              {
+                "description": "累计里程。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "行程时车辆里程表，km。"
+          },
+          "rapid_acceleration_count": {
+            "anyOf": [
+              {
+                "description": "急加速次数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "急加速次数。"
+          },
+          "rapid_deceleration_count": {
+            "anyOf": [
+              {
+                "description": "急减速次数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "急减速次数。"
+          },
+          "rapid_swerve_count": {
+            "anyOf": [
+              {
+                "description": "急转弯次数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "急转弯次数。"
+          },
+          "start_location": {
+            "$ref": "#/components/schemas/VehicleTripLocation"
+          },
+          "started_at": {
+            "description": "开始时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "trip_id": {
+            "anyOf": [
+              {
+                "description": "单次行程 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游 trip_id，可能为空。"
+          }
+        },
+        "required": [
+          "id",
+          "trip_id",
+          "started_at",
+          "ended_at",
+          "distance_kilometers",
+          "duration_minutes",
+          "start_location",
+          "end_location",
+          "average_speed_kph",
+          "average_energy_consumption_kwh_per_100km",
+          "energy_consumed_kwh",
+          "maximum_speed_kph",
+          "odometer_kilometers",
+          "rapid_acceleration_count",
+          "rapid_deceleration_count",
+          "rapid_swerve_count",
+          "is_combined"
+        ],
+        "type": "object"
+      },
+      "VehicleTripLocation": {
+        "description": "官方行程地点；地址字段可缺失，不按 GPS 采样拼造地点。",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "description": "完整地址",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "完整地址"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "description": "城市",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "城市"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "description": "区县",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "区县"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "description": "纬度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "纬度，度。"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "description": "经度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "经度，度。"
+          },
+          "poi": {
+            "anyOf": [
+              {
+                "description": "地点名称",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "地点名称"
+          },
+          "province": {
+            "anyOf": [
+              {
+                "description": "省份",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "省份"
+          },
+          "road_name": {
+            "anyOf": [
+              {
+                "description": "道路名称",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "道路名称"
+          },
+          "town": {
+            "anyOf": [
+              {
+                "description": "乡镇/街道",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "乡镇/街道"
+          }
+        },
+        "required": [
+          "address",
+          "poi",
+          "road_name",
+          "town",
+          "district",
+          "city",
+          "province",
+          "latitude",
+          "longitude"
+        ],
+        "type": "object"
+      },
+      "VehicleTripPage": {
+        "description": "数据库中已保存的行程分页结果。",
+        "properties": {
+          "has_more": {
+            "description": "数据库中是否有更早的行程。",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "行程列表。",
+            "items": {
+              "$ref": "#/components/schemas/VehicleTrip"
+            },
+            "type": "array"
+          },
+          "next_query_time": {
+            "anyOf": [
+              {
+                "description": "分页时间。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "下一页 query_time，Unix 秒。"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "description": "上游时间。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "数据库查询时为 null。"
+          }
+        },
+        "required": [
+          "items",
+          "has_more",
+          "next_query_time",
+          "server_time"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "description": "普通 API_KEY 的另一种传法。若同时提供该头和 Bearer，服务端优先检查 X-API-Key。仅 loopback 环境可不配置 API_KEY。",
+        "in": "header",
+        "name": "X-API-Key",
+        "type": "apiKey"
+      },
+      "BearerAuth": {
+        "description": "普通 API_KEY。配置后按 Bearer <key> 比较；不在文档中保存真实密钥。",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "VehicleControlKey": {
+        "description": "独立 NIO_CONTROL_API_KEY，用于车控和真实换电下单，不能代替普通 API_KEY。App 保存该 Key 不会启用服务端能力。",
+        "in": "header",
+        "name": "X-Vehicle-Control-Key",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "Actix Web / PostgreSQL + Diesel 后端的实际 HTTP 契约。注释写在 description 中，文件保持合法 JSON。所有日期时间为 RFC3339，距离为 km，功率为 W，电量为 kWh。车控、订单确认、候选匹配、分组与采样分段规则以服务端实现为准。公开只读接口与受保护接口的区别在每个 operation 中明确标注。export-openapi 是离线文档命令，不会启动服务或发送车辆指令。",
+    "title": "NIOPowerSwapAssist Rust API",
+    "version": "0.1.0"
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "openapi": "3.1.0",
+  "paths": {
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "operationId": "mcpAuthorizationServerMetadata",
+        "responses": {
+          "200": {
+            "description": "OAuth 已启用"
+          },
+          "404": {
+            "description": "OAuth 未启用"
+          }
+        },
+        "summary": "OAuth 授权服务器元数据"
+      }
+    },
+    "/.well-known/oauth-protected-resource/mcp": {
+      "get": {
+        "operationId": "mcpProtectedResourceMetadata",
+        "responses": {
+          "200": {
+            "description": "OAuth 已启用"
+          },
+          "404": {
+            "description": "OAuth 未启用"
+          }
+        },
+        "summary": "MCP OAuth 资源元数据"
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "挑战在发送上游请求前即消费；请求结果不明时也不重试。成功响应含敏感 token，Cache-Control: no-store。租户模式加密回写 PostgreSQL，需重启后供现有业务客户端使用。",
+        "operationId": "loginWithNioSms",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NioLoginInput"
+              }
+            }
+          },
+          "description": "使用最近一条短信请求的 challenge_id 与 6 位验证码。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NioLoginResult"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "验证码或挑战无效、过期、已使用。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "NIO 拒绝登录或上游不可用。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "缺少 API_KEY 或 NIO_DEVICE_ID。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "提交 NIO 短信验证码",
+        "tags": [
+          "账户"
+        ]
+      }
+    },
+    "/api/v1/auth/sms": {
+      "post": {
+        "description": "需配置 API_KEY 与 32 位 NIO_DEVICE_ID；每次调用只向 NIO 发送一条短信请求。进程内只保留一个挑战，600 秒有效；不自动重试。上游请求不带 Black-Box。",
+        "operationId": "sendNioLoginSms",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NioSmsInput"
+              }
+            }
+          },
+          "description": "中国大陆 11 位手机号；只用于本次上游请求。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NioSmsChallenge"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "手机号无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "NIO 拒绝请求或上游不可用。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "缺少 API_KEY 或 NIO_DEVICE_ID。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "发送 NIO 登录验证码",
+        "tags": [
+          "账户"
+        ]
+      }
+    },
+    "/api/v1/check-in": {
+      "post": {
+        "description": "手动调用一次国内版每日签到，与服务器每日随机签到共用北京时间日期去重记录；没有自动重试。返回本次签到状态、积分和连续天数。",
+        "operationId": "checkIn",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "check_in_already_attempted：该北京时间日期已有签到尝试。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "rewards_disabled：NIO 账号未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "立即签到",
+        "tags": [
+          "卡券与签到"
+        ],
+        "x-no-automatic-retry": true,
+        "x-side-effects": "performs-daily-check-in"
+      }
+    },
+    "/api/v1/coupons/available": {
+      "get": {
+        "description": "按国内版卡包的 available 状态查询，可分页；使用服务端已配置的 NIO 账号，不接受客户端上游凭据。",
+        "operationId": "availableCoupons",
+        "parameters": [
+          {
+            "description": "每页条数，1…100。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "从 0 开始的分页偏移。",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableCouponsPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "rewards_disabled：NIO 账号未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "可用卡券",
+        "tags": [
+          "卡券与签到"
+        ]
+      }
+    },
+    "/api/v1/energy/stats": {
+      "get": {
+        "description": "按 [from,to) 统计已确认换电；当月换电次数按北京时间自然月单独统计。费用和换电电量仅汇总已知数据并附覆盖条数；充电电量优先由相邻功率采样积分，缺功率时用最近一次换上电池容量乘 SOC 增量估算；超过 15 分钟的采样间隔不推算。",
+        "operationId": "energyStats",
+        "parameters": [
+          {
+            "description": "起点，含；RFC3339。",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "终点，不含；RFC3339，最多十年。",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnergyStats"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "换电与充电区间统计",
+        "tags": [
+          "换电与订单"
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "description": "只读 SSE。首次连接发送 ready；Last-Event-ID 在最近 256 条窗口内按序补发，否则发送 resync。车辆与订单事件仅在规范化状态变化时发送；15 秒 comment heartbeat 不触发刷新。每租户独立事件表和广播通道。App 应在 ready/resync 后合并防抖地刷新 dashboard 和 active orders；业务事件按 id 去重并刷新对应 REST 接口。断线重连使用 Last-Event-ID，401/403 等待凭证更新，429/5xx/超时使用带 jitter 的指数退避（1s、2s、4s，最高 30s）。前台只保持一条连接，进入后台取消连接。",
+        "operationId": "subscribeEvents",
+        "parameters": [
+          {
+            "description": "上次已处理的业务事件 id；省略时发送 ready。",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "examples": {
+                  "changed": {
+                    "value": "id: 43\nevent: vehicle_changed\nretry: 3000\ndata: {\"schema_version\":1,\"revision\":43,\"reason\":\"vehicle_status_changed\",\"occurred_at\":\"2026-11-05T00:00:03Z\"}\n\n"
+                  },
+                  "ready": {
+                    "value": "id: 42\nevent: ready\nretry: 3000\ndata: {\"schema_version\":1,\"revision\":42,\"reason\":\"initial_connect\",\"occurred_at\":\"2026-11-05T00:00:00Z\"}\n\n"
+                  },
+                  "resync": {
+                    "value": "id: 43\nevent: resync\nretry: 3000\ndata: {\"schema_version\":1,\"revision\":43,\"reason\":\"cursor_unavailable\",\"occurred_at\":\"2026-11-05T00:01:00Z\"}\n\n"
+                  }
+                },
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "SSE stream；retry: 3000，id 为租户内递增整数；响应头含 no-cache 和 X-Accel-Buffering: no。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "订阅租户车辆与进行中订单变化",
+        "tags": [
+          "服务"
+        ]
+      }
+    },
+    "/api/v1/orders/active": {
+      "get": {
+        "description": "最多返回 20 条当前进行中的订单，与已完成换电历史分开。站点身份只有取得可核验 ID 后才补充。",
+        "operationId": "activeOrders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveServiceOrderPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "进行中服务订单",
+        "tags": [
+          "换电与订单"
+        ]
+      }
+    },
+    "/api/v1/orders/import": {
+      "post": {
+        "description": "按 order_no 幂等插入或更新本地记录，保留现有候选匹配与电量来源规则。满足匹配窗口和站点条件时会异步触发一次站点轮询。请求体上限 256 KiB。",
+        "operationId": "importOrder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportedOrder"
+              }
+            }
+          },
+          "description": "已完成订单资料；精确换电量仅由 energy_kwh 提供。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapEvent"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request：JSON、订单号或电池/电量数值无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "导入已完成换电订单",
+        "tags": [
+          "维护"
+        ],
+        "x-side-effects": "database-write-and-conditional-upstream-read"
+      }
+    },
+    "/api/v1/poll": {
+      "post": {
+        "description": "请求一次已配置站点库存读取并保存快照，可能形成站点差分候选。已有轮询时返回 skipped；不会排队重复请求。候选不等同于已确认订单。",
+        "operationId": "manualPoll",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PollOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "station_not_configured：站点轮询未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "手动站点轮询",
+        "tags": [
+          "维护"
+        ],
+        "x-side-effects": "database-write-and-upstream-read"
+      }
+    },
+    "/api/v1/stations": {
+      "get": {
+        "description": "读取由订单同步发现的站点目录；不是全量蔚来地图站点搜索。",
+        "operationId": "listStations",
+        "parameters": [
+          {
+            "description": "每页条数，越界数值夹到 1…200。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "从 0 开始的分页偏移。",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "可选搜索词，去除前后空白；在站点 ID、名称、地址和运营商名称中做不区分大小写的包含匹配。",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapStationPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "站点目录与搜索",
+        "tags": [
+          "站点"
+        ]
+      }
+    },
+    "/api/v1/stations/nearby": {
+      "post": {
+        "description": "使用 NIO CN 只读地图接口按给定坐标查询当前视窗中的换电站图钉。结果不是半径内完整站点列表，不返回输入坐标。",
+        "operationId": "nearbySwapStations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NearbyStationsRequest"
+              }
+            }
+          },
+          "description": "搜索中心坐标仅发送给上游地图接口，不写入响应。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NearbyStationResult"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request：经纬度无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：NIO 会话未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "附近换电站地图结果",
+        "tags": [
+          "站点"
+        ],
+        "x-read-only-calculation": true
+      }
+    },
+    "/api/v1/stations/search": {
+      "get": {
+        "description": "先在本地 swap_stations 目录按名称搜索；有结果时直接返回。没有结果时请求蔚来远端地图，仅保留 recharge 分类中 sub_type=PowerSwap 且 ID 为 PS-NIO-* 的项目，并把名称、ID、地址和经纬度幂等写回本地目录。",
+        "operationId": "searchSwapStations",
+        "parameters": [
+          {
+            "description": "换电站名称关键词；服务端移除首尾空白，限制为 1…100 个非控制字符。",
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapStationSearchResult"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request：名称为空、过长或含控制字符。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：远端搜索所需 NIO 会话未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "本地优先按名称搜索换电站",
+        "tags": [
+          "站点"
+        ]
+      }
+    },
+    "/api/v1/stations/{id}": {
+      "get": {
+        "description": "只读取本地站点目录，不请求实时库存。",
+        "operationId": "getStation",
+        "parameters": [
+          {
+            "description": "站点 ID。",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapStation"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "station_not_found：目录中不存在该站点。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "站点目录详情",
+        "tags": [
+          "站点"
+        ]
+      }
+    },
+    "/api/v1/stations/{id}/live": {
+      "get": {
+        "description": "通过已配置站点模板发送一次实时只读请求。保留上游完整分时费率、当前费率和说明，队列及电池充电时间字段明确区分未知；可换 75 kWh 电池仍按容量=75、未占用、progress≥92 筛选，但不保证到站即可换。未知目录 ID 仍可通过有效模板查询。",
+        "operationId": "liveStation",
+        "parameters": [
+          {
+            "description": "PS-NIO- 开头的站点 ID，最长 128 字节，只允许 ASCII 字母、数字、连字符与下划线。",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^PS-NIO-[A-Za-z0-9_-]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationLiveStatus"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request：站点 ID 无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "station_template_not_configured：站点请求模板未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "站点实时库存与费率",
+        "tags": [
+          "站点"
+        ]
+      }
+    },
+    "/api/v1/stations/{id}/straight-line-energy": {
+      "post": {
+        "description": "只读试算：使用请求体中的车辆坐标与站点坐标计算地理直线距离，能耗只读取后端每日计算并持久化的最近累计100公里缓存；本请求不查询行程上游、不写数据库。未知目录站点可同时提供附近查询得到的站点坐标，坐标只做范围校验，不独立核验其与站点ID的对应关系。不会返回车辆原始坐标；不是道路驾车路线，不含实时路况或通行费。",
+        "operationId": "estimateStraightLineEnergy",
+        "parameters": [
+          {
+            "description": "PS-NIO- 开头的站点 ID；目录未知时需在请求体提供站点坐标。",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^PS-NIO-[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StraightLineEnergyRequest"
+              }
+            }
+          },
+          "description": "车辆坐标只用于本次直线计算，不写入结果；可选站点坐标必须成对提供。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StraightLineEnergyEstimate"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request：站点 ID、车辆坐标或可选站点坐标无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "station_not_found：目录中不存在该站点，且未提供站点坐标。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "station_coordinates_unavailable：目录站点无有效坐标，且未提供站点坐标。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "energy_cache_error：每日能耗缓存读取失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "直线距离与粗估电耗",
+        "tags": [
+          "站点"
+        ],
+        "x-read-only-calculation": true
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "description": "返回配置标志、轮询状态与本地数据库计数。原有单租户模式公开；PostgreSQL 多租户模式要求租户 API key。",
+        "operationId": "serviceStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [],
+        "summary": "服务配置与轮询状态",
+        "tags": [
+          "服务"
+        ]
+      }
+    },
+    "/api/v1/swap-orders": {
+      "post": {
+        "description": "有真实订单副作用。客户端只提交换电站 ID 和精确确认文字；后端先通过加密站点详情接口解析 location（经度,纬度），再顺序执行一次 /swap/scan 和一次 /swap。请求字段与国内 6.9.6 客户端对齐（scan 仅传 spot_id/vehicle_id，create 传 action/service_type/scene，model_type_year 固定为 G1.2）。车辆、车型和目标电池档位全部来自服务端配置，任何一步失败都不会自动重试。",
+        "operationId": "createSwapOrder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSwapOrderInput"
+              }
+            }
+          },
+          "description": "仅接受站点 ID 和精确确认文字；不接受客户端坐标、车辆 ID、车型或电池档位。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSwapOrderOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_swap_order：JSON、站点 ID 或确认文字无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 或复用的车控 Key 缺失/不匹配。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "swap_order_rejected：scan 或真实下单被上游业务拒绝；不得自动重试。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error / swap_order_failed：站点查询、解密、签名、传输或响应处理失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "swap_order_disabled / station_template_not_configured：换电下单或站点模板未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": [],
+            "VehicleControlKey": []
+          },
+          {
+            "ApiKeyAuth": [],
+            "VehicleControlKey": []
+          }
+        ],
+        "summary": "一键创建换电订单",
+        "tags": [
+          "换电与订单"
+        ],
+        "x-no-automatic-retry": true,
+        "x-side-effects": "creates-real-swap-order"
+      }
+    },
+    "/api/v1/swaps": {
+      "get": {
+        "description": "默认只返回 confirmed 记录；include_candidates=true 时包含站点观察候选。多租户模式要求租户 API key。",
+        "operationId": "listSwaps",
+        "parameters": [
+          {
+            "description": "每页条数；服务端会将越界数值夹到 1…200。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "从 0 开始的分页偏移。",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "是否包含未由订单确认的候选记录。",
+            "in": "query",
+            "name": "include_candidates",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapEventPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [],
+        "summary": "换电历史",
+        "tags": [
+          "换电与订单"
+        ]
+      }
+    },
+    "/api/v1/swaps/{id}": {
+      "get": {
+        "description": "按本地记录 ID 查询，不以订单号替代记录 ID。多租户模式要求租户 API key。",
+        "operationId": "getSwap",
+        "parameters": [
+          {
+            "description": "本地换电记录 ID。",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapEvent"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "not_found：记录不存在。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [],
+        "summary": "换电记录详情",
+        "tags": [
+          "换电与订单"
+        ]
+      }
+    },
+    "/api/v1/vehicle/action": {
+      "post": {
+        "description": "有真实车辆副作用。需普通 API Key 和独立车控 Key；车控默认关闭。客户端必须显式确认，禁止自动重试。解锁车门与启动授权是不同动作。服务端保留车控配置、PIN、TLS、状态检查和单指令互斥规则。",
+        "operationId": "vehicleAction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionInput"
+              }
+            }
+          },
+          "description": "单次车控指令。PIN、Token 与证书始终来自服务端，不能由客户端提交。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_request / invalid_vehicle_action：JSON、确认文字或动作参数无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 或独立车控 Key 缺失/不匹配。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_state_unsafe / vehicle_action_unverified：状态不安全，或已接受指令但未确认目标状态；不得自动重试。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_action_failed：TLS、上游传输、动作接受或响应处理失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_control_disabled / vehicle_pin_unavailable：服务端车控未配置或缺少可用 PIN。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": [],
+            "VehicleControlKey": []
+          },
+          {
+            "ApiKeyAuth": [],
+            "VehicleControlKey": []
+          }
+        ],
+        "summary": "远程车辆指令",
+        "tags": [
+          "车控"
+        ],
+        "x-side-effects": "physical-vehicle-control"
+      }
+    },
+    "/api/v1/vehicle/charging/current": {
+      "get": {
+        "description": "读取最近最多 5000 个充电采样点，按车辆变化或相邻点间隔超过 15 分钟划分会话，再以时间正序返回最新会话。最新会话不必仍在充电。",
+        "operationId": "currentCharging",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleChargingSamplePage"
+                }
+              }
+            },
+            "description": "最新充电会话采样；没有数据时 items=[]。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "最新充电会话采样",
+        "tags": [
+          "充电"
+        ]
+      }
+    },
+    "/api/v1/vehicle/charging/sessions": {
+      "get": {
+        "description": "从历史充电采样点生成会话摘要；保留现有 15 分钟分段规则，以最新会话在前返回。",
+        "operationId": "chargingSessions",
+        "parameters": [
+          {
+            "description": "会话数，越界数值夹到 1…100。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleChargingSessionPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "充电会话列表",
+        "tags": [
+          "充电"
+        ]
+      }
+    },
+    "/api/v1/vehicle/charging/sessions/{id}": {
+      "get": {
+        "description": "使用会话列表返回的 ID 查询，采样按时间正序返回。ID 由会话起点生成。",
+        "operationId": "chargingSession",
+        "parameters": [
+          {
+            "description": "会话列表返回的 ID，例如 1791534600000:vehicle-example；作为路径片段需 URL 编码。",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleChargingSamplePage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "charging_session_not_found：历史数据中找不到会话。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "指定充电会话采样",
+        "tags": [
+          "充电"
+        ]
+      }
+    },
+    "/api/v1/vehicle/history": {
+      "get": {
+        "description": "按采样时间倒序返回历史 GPS 点；采样轨迹不等同于 NIO 官方行程，不能用它替代行程里程或推导能耗。",
+        "operationId": "vehicleHistory",
+        "parameters": [
+          {
+            "description": "单次返回点数，越界数值夹到 1…2000；历史采样不再滚动删除。",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 2000,
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleSnapshotPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "本地位置采样历史",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/vehicle/status": {
+      "get": {
+        "description": "透传 NIO 车辆状态 JSON；有有效 GPS 时尝试保存本地快照。保存失败只记录日志，不丢弃成功的上游状态响应。",
+        "operationId": "vehicleStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpstreamVehicleStatus"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "车辆状态",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/vehicle/trips": {
+      "get": {
+        "description": "立即返回数据库中已保存的行程，不等待上游；每次读取异步触发一次去重的上游同步，更新后的数据需再次查询才能看到。首次回填过程中可能返回空页或不完整历史。最高速度、累计里程及急加速/急减速/急转弯次数为可选字段，上游缺失时为 null。能耗只接受上游详情实际返回的 trip_eng，不从 SOC、价格或电池容量猜测。",
+        "operationId": "vehicleTrips",
+        "parameters": [
+          {
+            "description": "目标条数，越界数值夹到 1…100；同一秒内的行程不会跨页拆分，实际数量可能略多。",
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "数据库查询时间上界（不含），Unix 秒。省略时从最新开始；下一页使用响应的 next_query_time。",
+            "in": "query",
+            "name": "query_time",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleTripPage"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "查询参数类型无法解析；Actix Query 提取器返回文本错误。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：行程表读取失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "已保存行程",
+        "tags": [
+          "行程"
+        ]
+      }
+    },
+    "/api/v1/vehicle/widget-info": {
+      "get": {
+        "description": "透传 NIO Widget 信息 JSON。调用方需检查 result_code，并与车辆状态接口核对 vehicle_id。",
+        "operationId": "vehicleWidgetInfo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpstreamWidgetInfo"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "车辆 Widget 状态",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "只确认 HTTP 服务可响应，不代表上游凭证、车控或数据同步已就绪。",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "请求成功。"
+          }
+        },
+        "security": [],
+        "summary": "健康检查",
+        "tags": [
+          "服务"
+        ]
+      }
+    },
+    "/mcp": {
+      "post": {
+        "description": "受 API_KEY 或已启用的 OAuth Bearer token 保护的 MCP JSON-RPC 端点，支持 2026-07-28 无会话协议及 2025-11-25 初始化。暴露除车控外的后端能力，包括可用卡券、签到和真实换电下单。换电下单仍要求 X-Vehicle-Control-Key；签到和下单均不自动重试。",
+        "operationId": "mcpJsonRpc",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "MCP JSON-RPC response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "MCP Streamable HTTP endpoint",
+        "tags": [
+          "服务"
+        ]
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "operationId": "mcpAuthorizePage",
+        "responses": {
+          "200": {
+            "description": "登录表单"
+          },
+          "400": {
+            "description": "授权请求无效"
+          }
+        },
+        "summary": "显示 MCP 授权页面"
+      },
+      "post": {
+        "operationId": "mcpAuthorizeSubmit",
+        "responses": {
+          "302": {
+            "description": "回调并携带授权码"
+          },
+          "401": {
+            "description": "登录失败"
+          }
+        },
+        "summary": "提交 MCP 授权"
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "operationId": "registerMcpClient",
+        "responses": {
+          "201": {
+            "description": "客户端已注册"
+          },
+          "400": {
+            "description": "回调地址无效"
+          }
+        },
+        "summary": "注册 OAuth 公共客户端"
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "operationId": "exchangeMcpToken",
+        "responses": {
+          "200": {
+            "description": "令牌"
+          },
+          "400": {
+            "description": "授权无效"
+          }
+        },
+        "summary": "兑换或续期 MCP OAuth 令牌"
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "默认租户；实际部署请替换为自己的 HTTPS 服务地址。",
+      "url": "http://127.0.0.1:8080"
+    },
+    {
+      "description": "额外租户的独立业务 schema 和 API key。",
+      "url": "http://127.0.0.1:8080/t/{tenant}",
+      "variables": {
+        "tenant": {
+          "default": "second_account",
+          "description": "租户 slug。"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "description": "健康、配置标志与轮询状态。",
+      "name": "服务"
+    },
+    {
+      "description": "手机号短信验证码登录 NIO。",
+      "name": "账户"
+    },
+    {
+      "description": "上游车辆状态与本地 GPS 采样。",
+      "name": "车辆"
+    },
+    {
+      "description": "本地站点目录和实时可换电池。",
+      "name": "站点"
+    },
+    {
+      "description": "已确认历史与进行中订单分开返回。",
+      "name": "换电与订单"
+    },
+    {
+      "description": "国内版可用卡券与每日签到。",
+      "name": "卡券与签到"
+    },
+    {
+      "description": "充电采样与会话摘要。",
+      "name": "充电"
+    },
+    {
+      "description": "NIO 官方行程与实际详情能耗。",
+      "name": "行程"
+    },
+    {
+      "description": "需明确确认的真实车辆动作。",
+      "name": "车控"
+    },
+    {
+      "description": "会写入数据库的轮询和导入操作。",
+      "name": "维护"
+    }
+  ]
+}

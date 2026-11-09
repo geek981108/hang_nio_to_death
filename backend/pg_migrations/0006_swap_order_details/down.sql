@@ -1,0 +1,1 @@
+ALTER TABLE swap_events DROP COLUMN payment_items_json, DROP COLUMN price_description, DROP COLUMN price_currency, DROP COLUMN price_amount, DROP COLUMN order_status_name, DROP COLUMN station_address;

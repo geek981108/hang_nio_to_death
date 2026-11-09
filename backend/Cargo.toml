@@ -1,0 +1,39 @@
+[package]
+name = "nio-swap-history-backend"
+version = "0.1.0"
+edition = "2024"
+description = "Always-on backend for recording NIO battery swap history"
+
+[dependencies]
+aes = "0.8.4"
+actix-web = "4.15.0"
+base64 = "0.22.1"
+cbc = { version = "0.1.2", features = ["alloc", "block-padding"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+dotenvy = "0.15.7"
+md-5 = "0.10.6"
+p256 = { version = "0.13.2", features = ["pem", "pkcs8"] }
+rand = "0.8.8"
+ring = "0.17.14"
+reqwest = { version = "0.13.5", default-features = false, features = ["form", "json", "rustls"] }
+rsa = "0.9.10"
+rustls = "0.23.45"
+rustls-pki-types = "1.15.1"
+rustls-webpki = "0.103.15"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+subtle = "2.6.1"
+tiny-keccak = { version = "2.0.2", features = ["sha3"] }
+thiserror = "2.0.17"
+tokio = { version = "1.53.0", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-rustls = "0.26.6"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+url = "2.5.7"
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
+zeroize = "1.9.1"
+diesel = { version = "2.2", default-features = false, features = ["postgres", "chrono"] }
+diesel-async = { version = "0.6", default-features = false, features = ["postgres", "deadpool"] }
+diesel_migrations = "2.2"
+futures-util = "0.3"

@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nio_swap_history
+      POSTGRES_USER: nio_swap_history
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nio_swap_history -d nio_swap_history"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://nio_swap_history:${POSTGRES_PASSWORD}@postgres:5432/nio_swap_history
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  postgres-data:

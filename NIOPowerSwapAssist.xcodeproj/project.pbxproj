@@ -1,0 +1,1397 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A17C0DE72F7A000200000001 /* NIOPowerSwapAssistWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000200000004 /* NIOPowerSwapAssistWidget.swift */; };
+		A17C0DE72F7A000200000002 /* NIOPowerSwapAssistWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000200000007 /* NIOPowerSwapAssistWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2CF9A15DAA773CC8C4AA5174 /* Pods_NIOPowerSwapAssistTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D7A6355FB780E7584FE8808 /* Pods_NIOPowerSwapAssistTests.framework */; };
+		6E782DC342E7F31D109B6D25 /* Pods_NIOPowerSwapAssist.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B448E2E758D7D89C81243D5 /* Pods_NIOPowerSwapAssist.framework */; };
+		8929C6E72D2699A600CC54C1 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8929C6E62D2699A600CC54C1 /* CardView.swift */; };
+		8929C6E92D2699F700CC54C1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8929C6E82D2699F700CC54C1 /* Theme.swift */; };
+		8929C6EB2D269A1D00CC54C1 /* BatteryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8929C6EA2D269A1D00CC54C1 /* BatteryModel.swift */; };
+		8929C6ED2D2784F400CC54C1 /* TrailingIconLabelStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8929C6EC2D2784F400CC54C1 /* TrailingIconLabelStyle.swift */; };
+		898BEA672DD1CF7E00265927 /* CurlInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 898BEA662DD1CF7E00265927 /* CurlInputView.swift */; };
+		89A8699A2D267EBC001A7227 /* NIOPowerSwapAssistApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869992D267EBC001A7227 /* NIOPowerSwapAssistApp.swift */; };
+		89A8699C2D267EBC001A7227 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A8699B2D267EBC001A7227 /* ContentView.swift */; };
+		89A8699E2D267EBD001A7227 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89A8699D2D267EBD001A7227 /* Assets.xcassets */; };
+		89A869A12D267EBD001A7227 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89A869A02D267EBD001A7227 /* Preview Assets.xcassets */; };
+		89A869A32D267EBD001A7227 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869A22D267EBD001A7227 /* Persistence.swift */; };
+		89A869A62D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 89A869A42D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodeld */; };
+		89A869B02D267EBD001A7227 /* NIOPowerSwapAssistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869AF2D267EBD001A7227 /* NIOPowerSwapAssistTests.swift */; };
+		89A869BA2D267EBD001A7227 /* NIOPowerSwapAssistUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869B92D267EBD001A7227 /* NIOPowerSwapAssistUITests.swift */; };
+		89A869BC2D267EBD001A7227 /* NIOPowerSwapAssistUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869BB2D267EBD001A7227 /* NIOPowerSwapAssistUITestsLaunchTests.swift */; };
+		89A869C92D268407001A7227 /* InfoRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A869C82D268407001A7227 /* InfoRequest.swift */; };
+		A17C0DE72F7A000100000001 /* VehicleBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000100000002 /* VehicleBackend.swift */; };
+		A17C0DE72F7A000100000003 /* VehicleHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000100000004 /* VehicleHistory.swift */; };
+		A17C0DE72F7A000100000005 /* VehicleDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000100000006 /* VehicleDetailView.swift */; };
+		D3392DAAC830EDAFE4A22248 /* Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF364CA3CF63E34811296F85 /* Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework */; };
+		A17C0DE72F7A000300000001 /* VehicleTripViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000002 /* VehicleTripViews.swift */; };
+		A17C0DE72F7A000300000003 /* VehicleSwapViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000004 /* VehicleSwapViews.swift */; };
+		A17C0DE72F7A000300000005 /* VehicleChargingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000006 /* VehicleChargingViews.swift */; };
+		A17C0DE72F7A000300000007 /* VehiclePathMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000008 /* VehiclePathMap.swift */; };
+		A17C0DE72F7A000300000009 /* StationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A00030000000A /* StationViewModel.swift */; };
+		A17C0DE72F7A00030000000B /* BackendSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A00030000000C /* BackendSettingsView.swift */; };
+		A17C0DE72F7A00030000000D /* StationManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A00030000000E /* StationManagementViews.swift */; };
+		A17C0DE72F7A00030000000F /* StationFeeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000010 /* StationFeeViews.swift */; };
+		A17C0DE72F7A000300000011 /* BackendSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000012 /* BackendSettingsStore.swift */; };
+		A17C0DE72F7A000300000013 /* VehicleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000014 /* VehicleViewModel.swift */; };
+		A17C0DE72F7A000300000015 /* VehicleDateParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000300000016 /* VehicleDateParser.swift */; };
+		A17C0DE72F7A000400000002 /* VehicleWidgetPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000400000001 /* VehicleWidgetPresentation.swift */; };
+		A17C0DE72F7A000400000003 /* VehicleWidgetPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000400000001 /* VehicleWidgetPresentation.swift */; };
+		A17C0DE72F7A000400000005 /* DesignPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17C0DE72F7A000400000004 /* DesignPreview.swift */; };
+		B27A0C100000000000000001 /* WatchConfigurationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000020 /* WatchConfigurationBridge.swift */; };
+		B27A0C100000000000000002 /* StationBatteryShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000021 /* StationBatteryShortcuts.swift */; };
+		B27A0C100000000000000003 /* NIOPowerSwapAssistWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000022 /* NIOPowerSwapAssistWatchApp.swift */; };
+		B27A0C100000000000000004 /* WatchDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000023 /* WatchDashboardView.swift */; };
+		B27A0C100000000000000005 /* WatchDashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000024 /* WatchDashboardViewModel.swift */; };
+		B27A0C100000000000000006 /* WatchBackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000025 /* WatchBackendClient.swift */; };
+		B27A0C100000000000000007 /* WatchCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000026 /* WatchCredentialStore.swift */; };
+		B27A0C100000000000000008 /* WatchConnectivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000027 /* WatchConnectivityCoordinator.swift */; };
+		B27A0C100000000000000009 /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000029 /* WatchSnapshot.swift */; };
+		B27A0C10000000000000000A /* NIOPowerSwapAssistWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C10000000000000002A /* NIOPowerSwapAssistWatchWidget.swift */; };
+		B27A0C10000000000000000B /* WatchSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27A0C100000000000000029 /* WatchSnapshot.swift */; };
+		B27A0C10000000000000000C /* NIOPowerSwapAssistWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B27A0C10000000000000002D /* NIOPowerSwapAssistWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B27A0C10000000000000000D /* NIOPowerSwapAssistWatchWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B27A0C10000000000000002E /* NIOPowerSwapAssistWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B27A0C10000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89A8699D2D267EBD001A7227 /* Assets.xcassets */; };
+		C38B0E100000000000000001 /* BackendEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000002 /* BackendEventStream.swift */; };
+		C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000004 /* DebugDiagnosticsView.swift */; };
+		C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A17C0DE72F7A00020000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 89A8698E2D267EBC001A7227 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A17C0DE72F7A00020000000B;
+			remoteInfo = NIOPowerSwapAssistWidgetExtension;
+		};
+		B27A0C100000000000000010 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 89A8698E2D267EBC001A7227 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B27A0C100000000000000040;
+			remoteInfo = NIOPowerSwapAssistWatch;
+		};
+		B27A0C100000000000000011 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 89A8698E2D267EBC001A7227 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B27A0C100000000000000041;
+			remoteInfo = NIOPowerSwapAssistWatchWidgetExtension;
+		};
+		89A869AC2D267EBD001A7227 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 89A8698E2D267EBC001A7227 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 89A869952D267EBC001A7227;
+			remoteInfo = NIOPowerSwapAssist;
+		};
+		89A869B62D267EBD001A7227 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 89A8698E2D267EBC001A7227 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 89A869952D267EBC001A7227;
+			remoteInfo = NIOPowerSwapAssist;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A17C0DE72F7A00020000000C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A17C0DE72F7A000200000002 /* NIOPowerSwapAssistWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000012 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				B27A0C10000000000000000C /* NIOPowerSwapAssistWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000013 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B27A0C10000000000000000D /* NIOPowerSwapAssistWatchWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A17C0DE72F7A000200000004 /* NIOPowerSwapAssistWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistWidget.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000200000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A17C0DE72F7A000200000006 /* NIOPowerSwapAssistWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NIOPowerSwapAssistWidget.entitlements; sourceTree = "<group>"; };
+		A17C0DE72F7A000200000007 /* NIOPowerSwapAssistWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NIOPowerSwapAssistWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A17C0DE72F7A000200000012 /* NIOPowerSwapAssist.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NIOPowerSwapAssist.entitlements; sourceTree = "<group>"; };
+		1DD248ADDD460749633692DD /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.release.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.release.xcconfig"; sourceTree = "<group>"; };
+		32100FEC1B75EA7F42BF613B /* Pods-NIOPowerSwapAssistTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssistTests.release.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssistTests/Pods-NIOPowerSwapAssistTests.release.xcconfig"; sourceTree = "<group>"; };
+		4B448E2E758D7D89C81243D5 /* Pods_NIOPowerSwapAssist.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NIOPowerSwapAssist.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		647185DB833905F2C6E65C68 /* Pods-NIOPowerSwapAssist.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssist.debug.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssist/Pods-NIOPowerSwapAssist.debug.xcconfig"; sourceTree = "<group>"; };
+		6AFEB3E50FD803FC2C5C2B51 /* Pods-NIOPowerSwapAssist.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssist.release.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssist/Pods-NIOPowerSwapAssist.release.xcconfig"; sourceTree = "<group>"; };
+		6B560FCBCDF320E6F125310B /* Pods-NIOPowerSwapAssistTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssistTests.debug.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssistTests/Pods-NIOPowerSwapAssistTests.debug.xcconfig"; sourceTree = "<group>"; };
+		7898E3C0D0BE4802C68002EE /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.debug.xcconfig"; path = "Target Support Files/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		8929C6E62D2699A600CC54C1 /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
+		8929C6E82D2699F700CC54C1 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		8929C6EA2D269A1D00CC54C1 /* BatteryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryModel.swift; sourceTree = "<group>"; };
+		8929C6EC2D2784F400CC54C1 /* TrailingIconLabelStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrailingIconLabelStyle.swift; sourceTree = "<group>"; };
+		898BEA662DD1CF7E00265927 /* CurlInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurlInputView.swift; sourceTree = "<group>"; };
+		89A869962D267EBC001A7227 /* NIOPowerSwapAssist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NIOPowerSwapAssist.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		89A869992D267EBC001A7227 /* NIOPowerSwapAssistApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistApp.swift; sourceTree = "<group>"; };
+		89A8699B2D267EBC001A7227 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		89A8699D2D267EBD001A7227 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		89A869A02D267EBD001A7227 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		89A869A22D267EBD001A7227 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		89A869A52D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = NIOPowerSwapAssist.xcdatamodel; sourceTree = "<group>"; };
+		89A869AB2D267EBD001A7227 /* NIOPowerSwapAssistTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NIOPowerSwapAssistTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		89A869AF2D267EBD001A7227 /* NIOPowerSwapAssistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistTests.swift; sourceTree = "<group>"; };
+		89A869B52D267EBD001A7227 /* NIOPowerSwapAssistUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NIOPowerSwapAssistUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		89A869B92D267EBD001A7227 /* NIOPowerSwapAssistUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistUITests.swift; sourceTree = "<group>"; };
+		89A869BB2D267EBD001A7227 /* NIOPowerSwapAssistUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		89A869C82D268407001A7227 /* InfoRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoRequest.swift; sourceTree = "<group>"; };
+		8D7A6355FB780E7584FE8808 /* Pods_NIOPowerSwapAssistTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NIOPowerSwapAssistTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A17C0DE72F7A000100000002 /* VehicleBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleBackend.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000100000004 /* VehicleHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleHistory.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000100000006 /* VehicleDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleDetailView.swift; sourceTree = "<group>"; };
+		FF364CA3CF63E34811296F85 /* Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A17C0DE72F7A000300000002 /* VehicleTripViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleTripViews.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000004 /* VehicleSwapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleSwapViews.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000006 /* VehicleChargingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleChargingViews.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000008 /* VehiclePathMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclePathMap.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A00030000000A /* StationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationViewModel.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A00030000000C /* BackendSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendSettingsView.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A00030000000E /* StationManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationManagementViews.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000010 /* StationFeeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationFeeViews.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000012 /* BackendSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendSettingsStore.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000014 /* VehicleViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleViewModel.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000300000016 /* VehicleDateParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleDateParser.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000400000001 /* VehicleWidgetPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleWidgetPresentation.swift; sourceTree = "<group>"; };
+		A17C0DE72F7A000400000004 /* DesignPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignPreview.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000020 /* WatchConfigurationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConfigurationBridge.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000021 /* StationBatteryShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationBatteryShortcuts.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000022 /* NIOPowerSwapAssistWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistWatchApp.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000023 /* WatchDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDashboardView.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000024 /* WatchDashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDashboardViewModel.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000025 /* WatchBackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchBackendClient.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000026 /* WatchCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCredentialStore.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000027 /* WatchConnectivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityCoordinator.swift; sourceTree = "<group>"; };
+		B27A0C100000000000000028 /* NIOPowerSwapAssistWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NIOPowerSwapAssistWatch.entitlements; sourceTree = "<group>"; };
+		B27A0C100000000000000029 /* WatchSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshot.swift; sourceTree = "<group>"; };
+		B27A0C10000000000000002A /* NIOPowerSwapAssistWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOPowerSwapAssistWatchWidget.swift; sourceTree = "<group>"; };
+		B27A0C10000000000000002B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B27A0C10000000000000002C /* NIOPowerSwapAssistWatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NIOPowerSwapAssistWatchWidget.entitlements; sourceTree = "<group>"; };
+		B27A0C10000000000000002D /* NIOPowerSwapAssistWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NIOPowerSwapAssistWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B27A0C10000000000000002E /* NIOPowerSwapAssistWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NIOPowerSwapAssistWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B27A0C10000000000000002F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C38B0E100000000000000002 /* BackendEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendEventStream.swift; sourceTree = "<group>"; };
+		C38B0E100000000000000004 /* DebugDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugDiagnosticsView.swift; sourceTree = "<group>"; };
+		C38B0E100000000000000006 /* TemporaryBackendTLS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryBackendTLS.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A17C0DE72F7A000200000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000030 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869932D267EBC001A7227 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E782DC342E7F31D109B6D25 /* Pods_NIOPowerSwapAssist.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869A82D267EBD001A7227 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2CF9A15DAA773CC8C4AA5174 /* Pods_NIOPowerSwapAssistTests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869B22D267EBD001A7227 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D3392DAAC830EDAFE4A22248 /* Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		366A8F8BD90425DACCF0CC6A /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				647185DB833905F2C6E65C68 /* Pods-NIOPowerSwapAssist.debug.xcconfig */,
+				6AFEB3E50FD803FC2C5C2B51 /* Pods-NIOPowerSwapAssist.release.xcconfig */,
+				7898E3C0D0BE4802C68002EE /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.debug.xcconfig */,
+				1DD248ADDD460749633692DD /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.release.xcconfig */,
+				6B560FCBCDF320E6F125310B /* Pods-NIOPowerSwapAssistTests.debug.xcconfig */,
+				32100FEC1B75EA7F42BF613B /* Pods-NIOPowerSwapAssistTests.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		89A8698D2D267EBC001A7227 = {
+			isa = PBXGroup;
+			children = (
+				89A869982D267EBC001A7227 /* NIOPowerSwapAssist */,
+				A17C0DE72F7A000200000003 /* NIOPowerSwapAssistWidget */,
+				B27A0C100000000000000032 /* NIOPowerSwapAssistWatch */,
+				B27A0C100000000000000033 /* NIOPowerSwapAssistWatchShared */,
+				B27A0C100000000000000034 /* NIOPowerSwapAssistWatchWidget */,
+				89A869AE2D267EBD001A7227 /* NIOPowerSwapAssistTests */,
+				89A869B82D267EBD001A7227 /* NIOPowerSwapAssistUITests */,
+				89A869972D267EBC001A7227 /* Products */,
+				366A8F8BD90425DACCF0CC6A /* Pods */,
+				DC415D940B4B2393F2941062 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		89A869972D267EBC001A7227 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				89A869962D267EBC001A7227 /* NIOPowerSwapAssist.app */,
+				A17C0DE72F7A000200000007 /* NIOPowerSwapAssistWidgetExtension.appex */,
+				B27A0C10000000000000002D /* NIOPowerSwapAssistWatch.app */,
+				B27A0C10000000000000002E /* NIOPowerSwapAssistWatchWidgetExtension.appex */,
+				89A869AB2D267EBD001A7227 /* NIOPowerSwapAssistTests.xctest */,
+				89A869B52D267EBD001A7227 /* NIOPowerSwapAssistUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		89A869982D267EBC001A7227 /* NIOPowerSwapAssist */ = {
+			isa = PBXGroup;
+			children = (
+				A17C0DE72F7A000200000012 /* NIOPowerSwapAssist.entitlements */,
+				89A869992D267EBC001A7227 /* NIOPowerSwapAssistApp.swift */,
+				89A8699B2D267EBC001A7227 /* ContentView.swift */,
+				89A8699D2D267EBD001A7227 /* Assets.xcassets */,
+				89A869A22D267EBD001A7227 /* Persistence.swift */,
+				89A869A42D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodeld */,
+				89A8699F2D267EBD001A7227 /* Preview Content */,
+				89A869C82D268407001A7227 /* InfoRequest.swift */,
+				8929C6E62D2699A600CC54C1 /* CardView.swift */,
+				898BEA662DD1CF7E00265927 /* CurlInputView.swift */,
+				8929C6EC2D2784F400CC54C1 /* TrailingIconLabelStyle.swift */,
+				8929C6E82D2699F700CC54C1 /* Theme.swift */,
+				8929C6EA2D269A1D00CC54C1 /* BatteryModel.swift */,
+				A17C0DE72F7A000100000002 /* VehicleBackend.swift */,
+				A17C0DE72F7A000100000004 /* VehicleHistory.swift */,
+				A17C0DE72F7A000100000006 /* VehicleDetailView.swift */,
+				A17C0DE72F7A000400000004 /* DesignPreview.swift */,
+				A17C0DE72F7A000300000002 /* VehicleTripViews.swift */,
+				A17C0DE72F7A000300000004 /* VehicleSwapViews.swift */,
+				A17C0DE72F7A000300000006 /* VehicleChargingViews.swift */,
+				A17C0DE72F7A000300000008 /* VehiclePathMap.swift */,
+				A17C0DE72F7A00030000000A /* StationViewModel.swift */,
+				A17C0DE72F7A00030000000C /* BackendSettingsView.swift */,
+				A17C0DE72F7A00030000000E /* StationManagementViews.swift */,
+				A17C0DE72F7A000300000010 /* StationFeeViews.swift */,
+				A17C0DE72F7A000300000012 /* BackendSettingsStore.swift */,
+				A17C0DE72F7A000300000014 /* VehicleViewModel.swift */,
+				A17C0DE72F7A000300000016 /* VehicleDateParser.swift */,
+				B27A0C100000000000000020 /* WatchConfigurationBridge.swift */,
+				B27A0C100000000000000021 /* StationBatteryShortcuts.swift */,
+				C38B0E100000000000000002 /* BackendEventStream.swift */,
+				C38B0E100000000000000004 /* DebugDiagnosticsView.swift */,
+				C38B0E100000000000000006 /* TemporaryBackendTLS.swift */,
+			);
+			path = NIOPowerSwapAssist;
+			sourceTree = "<group>";
+		};
+		A17C0DE72F7A000200000003 /* NIOPowerSwapAssistWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A17C0DE72F7A000200000004 /* NIOPowerSwapAssistWidget.swift */,
+				A17C0DE72F7A000400000001 /* VehicleWidgetPresentation.swift */,
+				A17C0DE72F7A000200000005 /* Info.plist */,
+				A17C0DE72F7A000200000006 /* NIOPowerSwapAssistWidget.entitlements */,
+			);
+			path = NIOPowerSwapAssistWidget;
+			sourceTree = "<group>";
+		};
+		B27A0C100000000000000032 /* NIOPowerSwapAssistWatch */ = {
+			isa = PBXGroup;
+			children = (
+				B27A0C100000000000000022 /* NIOPowerSwapAssistWatchApp.swift */,
+				B27A0C100000000000000023 /* WatchDashboardView.swift */,
+				B27A0C100000000000000024 /* WatchDashboardViewModel.swift */,
+				B27A0C100000000000000025 /* WatchBackendClient.swift */,
+				B27A0C100000000000000026 /* WatchCredentialStore.swift */,
+				B27A0C100000000000000027 /* WatchConnectivityCoordinator.swift */,
+				B27A0C100000000000000028 /* NIOPowerSwapAssistWatch.entitlements */,
+				B27A0C10000000000000002F /* Info.plist */,
+			);
+			path = NIOPowerSwapAssistWatch;
+			sourceTree = "<group>";
+		};
+		B27A0C100000000000000033 /* NIOPowerSwapAssistWatchShared */ = {
+			isa = PBXGroup;
+			children = (
+				B27A0C100000000000000029 /* WatchSnapshot.swift */,
+			);
+			path = NIOPowerSwapAssistWatchShared;
+			sourceTree = "<group>";
+		};
+		B27A0C100000000000000034 /* NIOPowerSwapAssistWatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				B27A0C10000000000000002A /* NIOPowerSwapAssistWatchWidget.swift */,
+				B27A0C10000000000000002B /* Info.plist */,
+				B27A0C10000000000000002C /* NIOPowerSwapAssistWatchWidget.entitlements */,
+			);
+			path = NIOPowerSwapAssistWatchWidget;
+			sourceTree = "<group>";
+		};
+		89A8699F2D267EBD001A7227 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				89A869A02D267EBD001A7227 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		89A869AE2D267EBD001A7227 /* NIOPowerSwapAssistTests */ = {
+			isa = PBXGroup;
+			children = (
+				89A869AF2D267EBD001A7227 /* NIOPowerSwapAssistTests.swift */,
+			);
+			path = NIOPowerSwapAssistTests;
+			sourceTree = "<group>";
+		};
+		89A869B82D267EBD001A7227 /* NIOPowerSwapAssistUITests */ = {
+			isa = PBXGroup;
+			children = (
+				89A869B92D267EBD001A7227 /* NIOPowerSwapAssistUITests.swift */,
+				89A869BB2D267EBD001A7227 /* NIOPowerSwapAssistUITestsLaunchTests.swift */,
+			);
+			path = NIOPowerSwapAssistUITests;
+			sourceTree = "<group>";
+		};
+		DC415D940B4B2393F2941062 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4B448E2E758D7D89C81243D5 /* Pods_NIOPowerSwapAssist.framework */,
+				FF364CA3CF63E34811296F85 /* Pods_NIOPowerSwapAssist_NIOPowerSwapAssistUITests.framework */,
+				8D7A6355FB780E7584FE8808 /* Pods_NIOPowerSwapAssistTests.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A17C0DE72F7A00020000000B /* NIOPowerSwapAssistWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A17C0DE72F7A000200000011 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWidgetExtension" */;
+			buildPhases = (
+				A17C0DE72F7A000200000009 /* Sources */,
+				A17C0DE72F7A000200000008 /* Frameworks */,
+				A17C0DE72F7A00020000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NIOPowerSwapAssistWidgetExtension;
+			productName = NIOPowerSwapAssistWidgetExtension;
+			productReference = A17C0DE72F7A000200000007 /* NIOPowerSwapAssistWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B27A0C100000000000000040 /* NIOPowerSwapAssistWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B27A0C100000000000000080 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWatch" */;
+			buildPhases = (
+				B27A0C100000000000000052 /* Sources */,
+				B27A0C100000000000000030 /* Frameworks */,
+				B27A0C100000000000000050 /* Resources */,
+				B27A0C100000000000000013 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B27A0C100000000000000061 /* PBXTargetDependency */,
+			);
+			name = NIOPowerSwapAssistWatch;
+			productName = NIOPowerSwapAssistWatch;
+			productReference = B27A0C10000000000000002D /* NIOPowerSwapAssistWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B27A0C100000000000000041 /* NIOPowerSwapAssistWatchWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B27A0C100000000000000081 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWatchWidgetExtension" */;
+			buildPhases = (
+				B27A0C100000000000000053 /* Sources */,
+				B27A0C100000000000000031 /* Frameworks */,
+				B27A0C100000000000000051 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NIOPowerSwapAssistWatchWidgetExtension;
+			productName = NIOPowerSwapAssistWatchWidgetExtension;
+			productReference = B27A0C10000000000000002E /* NIOPowerSwapAssistWatchWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		89A869952D267EBC001A7227 /* NIOPowerSwapAssist */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89A869BF2D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssist" */;
+			buildPhases = (
+				6B969E2ADC35585C62CF6C15 /* [CP] Check Pods Manifest.lock */,
+				89A869922D267EBC001A7227 /* Sources */,
+				89A869932D267EBC001A7227 /* Frameworks */,
+				89A869942D267EBC001A7227 /* Resources */,
+				A17C0DE72F7A00020000000C /* Embed Foundation Extensions */,
+				B27A0C100000000000000012 /* Embed Watch Content */,
+				01E596D91B9A90F748AD9991 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A17C0DE72F7A00020000000E /* PBXTargetDependency */,
+				B27A0C100000000000000060 /* PBXTargetDependency */,
+			);
+			name = NIOPowerSwapAssist;
+			productName = NIOPowerSwapAssist;
+			productReference = 89A869962D267EBC001A7227 /* NIOPowerSwapAssist.app */;
+			productType = "com.apple.product-type.application";
+		};
+		89A869AA2D267EBD001A7227 /* NIOPowerSwapAssistTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89A869C22D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistTests" */;
+			buildPhases = (
+				AC47DD74509BFB77588F94AB /* [CP] Check Pods Manifest.lock */,
+				89A869A72D267EBD001A7227 /* Sources */,
+				89A869A82D267EBD001A7227 /* Frameworks */,
+				89A869A92D267EBD001A7227 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				89A869AD2D267EBD001A7227 /* PBXTargetDependency */,
+			);
+			name = NIOPowerSwapAssistTests;
+			productName = NIOPowerSwapAssistTests;
+			productReference = 89A869AB2D267EBD001A7227 /* NIOPowerSwapAssistTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		89A869B42D267EBD001A7227 /* NIOPowerSwapAssistUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89A869C52D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistUITests" */;
+			buildPhases = (
+				698CE70DE704DD6942A3FA3F /* [CP] Check Pods Manifest.lock */,
+				89A869B12D267EBD001A7227 /* Sources */,
+				89A869B22D267EBD001A7227 /* Frameworks */,
+				89A869B32D267EBD001A7227 /* Resources */,
+				B61BC35A58E27895027F4923 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				89A869B72D267EBD001A7227 /* PBXTargetDependency */,
+			);
+			name = NIOPowerSwapAssistUITests;
+			productName = NIOPowerSwapAssistUITests;
+			productReference = 89A869B52D267EBD001A7227 /* NIOPowerSwapAssistUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		89A8698E2D267EBC001A7227 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					A17C0DE72F7A00020000000B = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B27A0C100000000000000040 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B27A0C100000000000000041 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					89A869952D267EBC001A7227 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					89A869AA2D267EBD001A7227 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 89A869952D267EBC001A7227;
+					};
+					89A869B42D267EBD001A7227 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 89A869952D267EBC001A7227;
+					};
+				};
+			};
+			buildConfigurationList = 89A869912D267EBC001A7227 /* Build configuration list for PBXProject "NIOPowerSwapAssist" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = zh-Hans;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				"zh-Hans",
+				Base,
+			);
+			mainGroup = 89A8698D2D267EBC001A7227;
+			productRefGroup = 89A869972D267EBC001A7227 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				89A869952D267EBC001A7227 /* NIOPowerSwapAssist */,
+				A17C0DE72F7A00020000000B /* NIOPowerSwapAssistWidgetExtension */,
+				B27A0C100000000000000040 /* NIOPowerSwapAssistWatch */,
+				B27A0C100000000000000041 /* NIOPowerSwapAssistWatchWidgetExtension */,
+				89A869AA2D267EBD001A7227 /* NIOPowerSwapAssistTests */,
+				89A869B42D267EBD001A7227 /* NIOPowerSwapAssistUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B27A0C100000000000000050 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B27A0C10000000000000000E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000051 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A17C0DE72F7A00020000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869942D267EBC001A7227 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				89A869A12D267EBD001A7227 /* Preview Assets.xcassets in Resources */,
+				89A8699E2D267EBD001A7227 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869A92D267EBD001A7227 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869B32D267EBD001A7227 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		01E596D91B9A90F748AD9991 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist/Pods-NIOPowerSwapAssist-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist/Pods-NIOPowerSwapAssist-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist/Pods-NIOPowerSwapAssist-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		698CE70DE704DD6942A3FA3F /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		6B969E2ADC35585C62CF6C15 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-NIOPowerSwapAssist-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		AC47DD74509BFB77588F94AB /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-NIOPowerSwapAssistTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B61BC35A58E27895027F4923 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests/Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A17C0DE72F7A000200000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A17C0DE72F7A000200000001 /* NIOPowerSwapAssistWidget.swift in Sources */,
+				A17C0DE72F7A000400000003 /* VehicleWidgetPresentation.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869922D267EBC001A7227 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				89A869A62D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodeld in Sources */,
+				8929C6EB2D269A1D00CC54C1 /* BatteryModel.swift in Sources */,
+				8929C6ED2D2784F400CC54C1 /* TrailingIconLabelStyle.swift in Sources */,
+				898BEA672DD1CF7E00265927 /* CurlInputView.swift in Sources */,
+				89A869C92D268407001A7227 /* InfoRequest.swift in Sources */,
+				89A869A32D267EBD001A7227 /* Persistence.swift in Sources */,
+				89A8699C2D267EBC001A7227 /* ContentView.swift in Sources */,
+				8929C6E72D2699A600CC54C1 /* CardView.swift in Sources */,
+				89A8699A2D267EBC001A7227 /* NIOPowerSwapAssistApp.swift in Sources */,
+				8929C6E92D2699F700CC54C1 /* Theme.swift in Sources */,
+				A17C0DE72F7A000100000001 /* VehicleBackend.swift in Sources */,
+				A17C0DE72F7A000100000003 /* VehicleHistory.swift in Sources */,
+				A17C0DE72F7A000100000005 /* VehicleDetailView.swift in Sources */,
+				A17C0DE72F7A000400000005 /* DesignPreview.swift in Sources */,
+				A17C0DE72F7A000400000002 /* VehicleWidgetPresentation.swift in Sources */,
+				A17C0DE72F7A000300000001 /* VehicleTripViews.swift in Sources */,
+				A17C0DE72F7A000300000003 /* VehicleSwapViews.swift in Sources */,
+				A17C0DE72F7A000300000005 /* VehicleChargingViews.swift in Sources */,
+				A17C0DE72F7A000300000007 /* VehiclePathMap.swift in Sources */,
+				A17C0DE72F7A000300000009 /* StationViewModel.swift in Sources */,
+				A17C0DE72F7A00030000000B /* BackendSettingsView.swift in Sources */,
+				A17C0DE72F7A00030000000D /* StationManagementViews.swift in Sources */,
+				A17C0DE72F7A00030000000F /* StationFeeViews.swift in Sources */,
+				A17C0DE72F7A000300000011 /* BackendSettingsStore.swift in Sources */,
+				A17C0DE72F7A000300000013 /* VehicleViewModel.swift in Sources */,
+				A17C0DE72F7A000300000015 /* VehicleDateParser.swift in Sources */,
+				B27A0C100000000000000001 /* WatchConfigurationBridge.swift in Sources */,
+				B27A0C100000000000000002 /* StationBatteryShortcuts.swift in Sources */,
+				C38B0E100000000000000001 /* BackendEventStream.swift in Sources */,
+				C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */,
+				C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869A72D267EBD001A7227 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				89A869B02D267EBD001A7227 /* NIOPowerSwapAssistTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		89A869B12D267EBD001A7227 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				89A869BA2D267EBD001A7227 /* NIOPowerSwapAssistUITests.swift in Sources */,
+				89A869BC2D267EBD001A7227 /* NIOPowerSwapAssistUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000052 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B27A0C100000000000000003 /* NIOPowerSwapAssistWatchApp.swift in Sources */,
+				B27A0C100000000000000004 /* WatchDashboardView.swift in Sources */,
+				B27A0C100000000000000005 /* WatchDashboardViewModel.swift in Sources */,
+				B27A0C100000000000000006 /* WatchBackendClient.swift in Sources */,
+				B27A0C100000000000000007 /* WatchCredentialStore.swift in Sources */,
+				B27A0C100000000000000008 /* WatchConnectivityCoordinator.swift in Sources */,
+				B27A0C100000000000000009 /* WatchSnapshot.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B27A0C100000000000000053 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B27A0C10000000000000000A /* NIOPowerSwapAssistWatchWidget.swift in Sources */,
+				B27A0C10000000000000000B /* WatchSnapshot.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B27A0C100000000000000060 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B27A0C100000000000000040 /* NIOPowerSwapAssistWatch */;
+			targetProxy = B27A0C100000000000000010 /* PBXContainerItemProxy */;
+		};
+		B27A0C100000000000000061 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B27A0C100000000000000041 /* NIOPowerSwapAssistWatchWidgetExtension */;
+			targetProxy = B27A0C100000000000000011 /* PBXContainerItemProxy */;
+		};
+		A17C0DE72F7A00020000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A17C0DE72F7A00020000000B /* NIOPowerSwapAssistWidgetExtension */;
+			targetProxy = A17C0DE72F7A00020000000D /* PBXContainerItemProxy */;
+		};
+		89A869AD2D267EBD001A7227 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 89A869952D267EBC001A7227 /* NIOPowerSwapAssist */;
+			targetProxy = 89A869AC2D267EBD001A7227 /* PBXContainerItemProxy */;
+		};
+		89A869B72D267EBD001A7227 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 89A869952D267EBC001A7227 /* NIOPowerSwapAssist */;
+			targetProxy = 89A869B62D267EBD001A7227 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B27A0C100000000000000070 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWatch/NIOPowerSwapAssistWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NIO PS";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.shuto.happyvalley;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.watchapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		B27A0C100000000000000071 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWatch/NIOPowerSwapAssistWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NIO PS";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_WKApplication = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.shuto.happyvalley;
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.watchapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		B27A0C100000000000000072 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWatchWidget/NIOPowerSwapAssistWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.watchapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		B27A0C100000000000000073 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWatchWidget/NIOPowerSwapAssistWatchWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.watchapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		A17C0DE72F7A00020000000F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWidget/NIOPowerSwapAssistWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A17C0DE72F7A000200000010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssistWidget/NIOPowerSwapAssistWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NIOPowerSwapAssistWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		89A869BD2D267EBD001A7227 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = A8686RABF4;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		89A869BE2D267EBD001A7227 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = A8686RABF4;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		89A869C02D267EBD001A7227 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 647185DB833905F2C6E65C68 /* Pods-NIOPowerSwapAssist.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssist/NIOPowerSwapAssist.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"NIOPowerSwapAssist/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NIOPowerSwapAssist/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NIO PS";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		89A869C12D267EBD001A7227 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6AFEB3E50FD803FC2C5C2B51 /* Pods-NIOPowerSwapAssist.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_ENTITLEMENTS = NIOPowerSwapAssist/NIOPowerSwapAssist.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"NIOPowerSwapAssist/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NIOPowerSwapAssist/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "NIO PS";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.shuto.happyvalley;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		89A869C32D267EBD001A7227 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6B560FCBCDF320E6F125310B /* Pods-NIOPowerSwapAssistTests.debug.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oct.NIOPowerSwapAssistTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NIOPowerSwapAssist.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/NIOPowerSwapAssist";
+			};
+			name = Debug;
+		};
+		89A869C42D267EBD001A7227 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 32100FEC1B75EA7F42BF613B /* Pods-NIOPowerSwapAssistTests.release.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oct.NIOPowerSwapAssistTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/NIOPowerSwapAssist.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/NIOPowerSwapAssist";
+			};
+			name = Release;
+		};
+		89A869C62D267EBD001A7227 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7898E3C0D0BE4802C68002EE /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oct.NIOPowerSwapAssistUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NIOPowerSwapAssist;
+			};
+			name = Debug;
+		};
+		89A869C72D267EBD001A7227 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1DD248ADDD460749633692DD /* Pods-NIOPowerSwapAssist-NIOPowerSwapAssistUITests.release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.oct.NIOPowerSwapAssistUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NIOPowerSwapAssist;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B27A0C100000000000000080 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B27A0C100000000000000070 /* Debug */,
+				B27A0C100000000000000071 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B27A0C100000000000000081 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWatchWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B27A0C100000000000000072 /* Debug */,
+				B27A0C100000000000000073 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A17C0DE72F7A000200000011 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A17C0DE72F7A00020000000F /* Debug */,
+				A17C0DE72F7A000200000010 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		89A869912D267EBC001A7227 /* Build configuration list for PBXProject "NIOPowerSwapAssist" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89A869BD2D267EBD001A7227 /* Debug */,
+				89A869BE2D267EBD001A7227 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		89A869BF2D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssist" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89A869C02D267EBD001A7227 /* Debug */,
+				89A869C12D267EBD001A7227 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		89A869C22D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89A869C32D267EBD001A7227 /* Debug */,
+				89A869C42D267EBD001A7227 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		89A869C52D267EBD001A7227 /* Build configuration list for PBXNativeTarget "NIOPowerSwapAssistUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89A869C62D267EBD001A7227 /* Debug */,
+				89A869C72D267EBD001A7227 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCVersionGroup section */
+		89A869A42D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				89A869A52D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodel */,
+			);
+			currentVersion = 89A869A52D267EBD001A7227 /* NIOPowerSwapAssist.xcdatamodel */;
+			path = NIOPowerSwapAssist.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
+	};
+	rootObject = 89A8698E2D267EBC001A7227 /* Project object */;
+}

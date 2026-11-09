@@ -1,0 +1,11 @@
+target/
+.env
+.env.*
+data/
+backups/
+*.dump
+*.pg_dump
+*.pem
+*.key
+*.p12
+*.pfx

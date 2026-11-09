@@ -1,0 +1,6 @@
+CREATE TABLE sse_events (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

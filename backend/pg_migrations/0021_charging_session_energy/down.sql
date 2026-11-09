@@ -1,0 +1,1 @@
+DROP TABLE vehicle_charging_session_energy;

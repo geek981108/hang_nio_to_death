@@ -1,0 +1,1 @@
+ALTER TABLE service_orders DROP COLUMN queue_updated_at, DROP COLUMN queue_status_text, DROP COLUMN estimated_wait_source, DROP COLUMN estimated_wait_minutes, DROP COLUMN vehicles_ahead, DROP COLUMN target_battery_cap_level, DROP COLUMN queue_number;

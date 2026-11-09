@@ -1,0 +1,59 @@
+# —— 密钥与本地配置（绝不提交）——
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# —— 本地逆向/分析工具目录：含 APK、mTLS 私钥与 PIN，不纳入版本控制 ——
+/tools/
+
+# —— Xcode / macOS ——
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# —— CocoaPods（Podfile.lock 会提交）——
+Pods/
+
+# —— Rust 后端构建产物与本地数据 ——
+backend/target/
+target/
+backend/data/
+*.log
+
+# —— IDE / 编辑器 ——
+.idea/
+*.iml
+.vscode/
+
+# —— Python ——
+__pycache__/
+*.py[cod]
+.venv/
+
+# —— 工作区根目录下的临时重复文件（未加入 Xcode target）——
+/CurlInputView.swift

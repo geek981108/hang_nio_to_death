@@ -1,0 +1,3 @@
+ALTER TABLE swap_stations ADD COLUMN latitude DOUBLE PRECISION;
+ALTER TABLE swap_stations ADD COLUMN longitude DOUBLE PRECISION;
+

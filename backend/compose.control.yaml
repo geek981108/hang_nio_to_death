@@ -1,0 +1,34 @@
+# Optional vehicle-control mounts. Use with compose.yaml only after provisioning
+# the host files for the container's unprivileged UID 10001.
+services:
+  backend:
+    environment:
+      NIO_CONTROL_TLS_CERT_PATH: /run/nio-control/tls-certificate.pem
+      NIO_CONTROL_TLS_KEY_PATH: /run/nio-control/tls-private-key.pem
+      NIO_CONTROL_CA_PATH: /run/nio-control/server-ca.pem
+      NIO_CONTROL_PIN_FILE: /run/nio-control/pin.env
+    volumes:
+      - type: bind
+        source: ${NIO_CONTROL_TLS_CERT_HOST_PATH:?set NIO_CONTROL_TLS_CERT_HOST_PATH}
+        target: /run/nio-control/tls-certificate.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${NIO_CONTROL_TLS_KEY_HOST_PATH:?set NIO_CONTROL_TLS_KEY_HOST_PATH}
+        target: /run/nio-control/tls-private-key.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${NIO_CONTROL_CA_HOST_PATH:?set NIO_CONTROL_CA_HOST_PATH}
+        target: /run/nio-control/server-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${NIO_CONTROL_PIN_HOST_PATH:?set NIO_CONTROL_PIN_HOST_PATH}
+        target: /run/nio-control/pin.env
+        read_only: true
+        bind:
+          create_host_path: false
