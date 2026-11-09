@@ -59,6 +59,8 @@ pub struct StationBatteryReadiness {
     pub charging_remaining_minutes: Option<u32>,
     /// Derived from the upstream minute estimate; not a guaranteed swap-ready time.
     pub estimated_charge_complete_at: Option<DateTime<Utc>>,
+    /// Internal only; the live-status API deliberately does not expose battery IDs.
+    #[serde(skip_serializing)]
     pub battery_id: Option<String>,
     pub production_date: Option<NaiveDate>,
 }

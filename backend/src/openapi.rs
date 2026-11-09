@@ -215,7 +215,7 @@ pub fn document() -> Value {
     let mut check_in = operation(
         "checkIn",
         "立即签到",
-        "手动调用一次国内版每日签到，与服务器每日随机签到共用北京时间日期去重记录；没有自动重试。返回本次签到状态、积分和连续天数。",
+        "手动调用一次国内版每日签到，与服务器每日随机签到共用北京时间日期去重记录。请求明确未发出（连接失败）时最多自动重试 3 次；可能已被上游处理的失败不重试。返回本次签到状态、积分和连续天数。",
         "卡券与签到",
         "CheckInOutcome",
         true,
@@ -226,8 +226,15 @@ pub fn document() -> Value {
         "409",
         "check_in_already_attempted：该北京时间日期已有签到尝试。",
     );
+    error(
+        &mut check_in,
+        "500",
+        "check_in_result_not_recorded：签到结果未能写入数据库；请先核对 App 内签到状态。",
+    );
     check_in["x-side-effects"] = json!("performs-daily-check-in");
-    check_in["x-no-automatic-retry"] = json!(true);
+    check_in["x-retry-policy"] = json!(
+        "Retry only connection failures before the request is sent, up to 3 attempts per Beijing day; ambiguous failures are not retried."
+    );
     add("/api/v1/check-in", "post", check_in);
 
     let mut stations = operation(
@@ -560,7 +567,7 @@ pub fn document() -> Value {
         json!({
             "operationId":"mcpJsonRpc",
             "summary":"MCP Streamable HTTP endpoint",
-            "description":"受 API_KEY 或已启用的 OAuth Bearer token 保护的 MCP JSON-RPC 端点，支持 2026-07-28 无会话协议及 2025-11-25 初始化。暴露除车控外的后端能力，包括可用卡券、签到和真实换电下单。换电下单仍要求 X-Vehicle-Control-Key；签到和下单均不自动重试。",
+            "description":"受 API_KEY 或已启用的 OAuth Bearer token 保护的 MCP JSON-RPC 端点，支持 2026-07-28 无会话协议及 2025-11-25 初始化。暴露除车控外的后端能力，包括可用卡券、签到和真实换电下单。换电下单仍要求 X-Vehicle-Control-Key；签到仅对未发出的连接失败重试，下单不自动重试。",
             "tags":["服务"],
             "security":[{"ApiKeyAuth":[]},{"BearerAuth":[]}],
             "requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},

@@ -47,9 +47,12 @@ SHA-256 摘要、有效期保存在 PostgreSQL 的 `mcp_oauth_tokens`（不保�
 只有首页已包含全部条目且数量均可确认时，`total_coupon_count` 才返回实际总张数；
 `face_value_cny` 仅从明确写有“X元优惠券”的标题识别，不推断礼券价值。
 后端会为每个北京时间自然日生成一次随机签到时刻，
-将计划和尝试记录持久化在 PostgreSQL；进程重启沿用原计划，发出上游请求前先原子占用当天名额，
-失败或响应不明时不自动重试。服务离线跨过整天时不会补签。已有的 `POST /api/v1/check-in`
+将计划和尝试记录持久化在 PostgreSQL；进程重启沿用原计划，发出上游请求前先原子占用当天名额。
+连接失败等**明确未发出**请求的错误会释放当天名额，按 5 分钟、10 分钟退避最多尝试 3 次；
+HTTP 状态、超时和响应解析等**可能已被上游处理**的失败不重试。`NIO_DAILY_CHECKIN_ENABLED=false`
+可关闭自动任务（手动接口仍可用）。服务离线跨过整天时不会补签。已有的 `POST /api/v1/check-in`
 保留给手动调用，与自动任务共用当天去重记录，重复调用返回 409；成功时返回签到状态、积分及连续天数。
+签到成功后若结果无法写入数据库，接口返回 500 `check_in_result_not_recorded`，不会报告为成功。
 两个接口均要求普通 `API_KEY`，也作为 MCP 工具暴露；App 不调用签到接口。
 
 ## 启动
@@ -117,6 +120,7 @@ HTTPS 反向代理，保留 `API_KEY`，不要直接暴露 Rust 端口。
 | `POST_SWAP_POLL_COUNT` | `60` | 退出换电状态后继续复查站点的次数；实际时长随锁车状态变化 |
 | `SERVICE_ORDER_POLL_INTERVAL_SECONDS` | `15` | 进行中服务订单轮询间隔 |
 | `MATCH_WINDOW_SECONDS` | `1800` | 订单与候选快照的最大匹配时间差 |
+| `NIO_DAILY_CHECKIN_ENABLED` | `true` | 是否自动执行每日随机签到；`false` 只关闭后台任务，手动 `POST /api/v1/check-in` 仍可用 |
 | `API_KEY` | 空 | 写接口密钥；可用 `openssl rand -hex 32` 生成 |
 | `NIO_CONFIG_MASTER_KEY` | 空 | 可选的 32 字节 AES-GCM 主密钥，表示为 64 位十六进制；启用 PostgreSQL 多租户配置后必须保留在服务端环境变量，不能存入数据库 |
 | `MCP_OAUTH_ISSUER` | 空 | 可选的 MCP OAuth 公网 HTTPS 源地址，如 `https://example.com`；需与登录口令一起配置 |

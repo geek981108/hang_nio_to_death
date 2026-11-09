@@ -83,7 +83,7 @@ const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         name: "nio_check_in",
-        description: "Manually attempt CN daily check-in. The server also schedules one random Beijing-time attempt each day; a prior attempt returns 409. This can award credits and is never retried automatically.",
+        description: "Manually attempt CN daily check-in. The server schedules one random Beijing-time attempt each day unless NIO_DAILY_CHECKIN_ENABLED=false; a prior attempt returns 409. Connection failures before the request is sent are retried up to 3 times per day; failures that may have reached upstream are never retried.",
         method: "POST",
         path: "/api/v1/check-in",
         query_keys: &[],
@@ -372,7 +372,7 @@ pub async fn handle(
             id,
             json!({
                 "resultType":"complete","supportedVersions":[MODERN,LEGACY],
-                "capabilities":{"tools":{}},"instructions":"NIO history, vehicle data, coupons, daily check-in and swap orders. Vehicle control is unavailable. Check-in and swap-order creation have real-world effects; never retry automatically. Creating a swap order also requires X-Vehicle-Control-Key.",
+                "capabilities":{"tools":{}},"instructions":"NIO history, vehicle data, coupons, daily check-in and swap orders. Vehicle control is unavailable. Check-in retries only connection failures before the request is sent; swap-order creation must never be retried automatically. Creating a swap order also requires X-Vehicle-Control-Key.",
                 "ttlMs":3600000,"cacheScope":"private","_meta":server_meta()
             }),
         ),
@@ -381,7 +381,7 @@ pub async fn handle(
             json!({
                 "protocolVersion":LEGACY,"capabilities":{"tools":{}},
                 "serverInfo":{"name":"nio-swap-history-backend","version":env!("CARGO_PKG_VERSION")},
-                "instructions":"NIO history, stations, vehicle data, coupons, daily check-in and swap orders. Vehicle control is unavailable. Check-in and swap-order creation must never be retried automatically; swap orders also require X-Vehicle-Control-Key."
+                "instructions":"NIO history, stations, vehicle data, coupons, daily check-in and swap orders. Vehicle control is unavailable. Check-in retries only connection failures before the request is sent; swap orders must never be retried automatically and also require X-Vehicle-Control-Key."
             }),
         ),
         "notifications/initialized" if !modern => HttpResponse::Accepted().finish(),

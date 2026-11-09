@@ -27,6 +27,8 @@ pub struct Store {
 pub struct DailyCheckInRun {
     pub scheduled_at: DateTime<Utc>,
     pub attempted_at: Option<DateTime<Utc>>,
+    pub attempts: i32,
+    pub result: String,
 }
 
 #[derive(Debug)]
@@ -470,7 +472,8 @@ impl Store {
         .execute(&self.pool)
         .await?;
         let row = db::query(
-            "SELECT scheduled_at, attempted_at FROM daily_checkin_runs WHERE china_day = ?",
+            "SELECT scheduled_at, attempted_at, attempts, result \
+             FROM daily_checkin_runs WHERE china_day = ?",
         )
         .bind(china_day)
         .fetch_one(&self.pool)
@@ -478,31 +481,72 @@ impl Store {
         Ok(DailyCheckInRun {
             scheduled_at: row.try_get("scheduled_at")?,
             attempted_at: row.try_get("attempted_at")?,
+            attempts: row.try_get("attempts")?,
+            result: row.try_get("result")?,
         })
     }
 
-    pub async fn claim_daily_checkin(&self, china_day: NaiveDate) -> Result<bool, StoreError> {
-        Ok(db::query(
-            "UPDATE daily_checkin_runs SET attempted_at = NOW(), result = 'started' \
+    /// Atomically takes today's send slot. Returns the attempt number (starting at 1),
+    /// or `None` when another caller already holds or finished the slot.
+    pub async fn claim_daily_checkin(
+        &self,
+        china_day: NaiveDate,
+    ) -> Result<Option<i32>, StoreError> {
+        let claimed = db::query(
+            "UPDATE daily_checkin_runs \
+             SET attempted_at = NOW(), result = 'started', attempts = attempts + 1 \
              WHERE china_day = ? AND attempted_at IS NULL",
         )
         .bind(china_day)
         .execute(&self.pool)
         .await?
         .rows_affected()
-            == 1)
+            == 1;
+        if !claimed {
+            return Ok(None);
+        }
+        // The row is now claimed, so no other caller can change `attempts`.
+        let row = db::query("SELECT attempts FROM daily_checkin_runs WHERE china_day = ?")
+            .bind(china_day)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(Some(row.try_get("attempts")?))
+    }
+
+    /// Releases a claim whose request was provably never sent, so the day can be
+    /// retried at `scheduled_at`. Ambiguous failures must not call this.
+    pub async fn release_daily_checkin(
+        &self,
+        china_day: NaiveDate,
+        scheduled_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<(), StoreError> {
+        db::query(
+            "UPDATE daily_checkin_runs \
+             SET attempted_at = NULL, scheduled_at = ?, result = 'not_sent', last_error = ? \
+             WHERE china_day = ? AND result = 'started'",
+        )
+        .bind(scheduled_at)
+        .bind(error)
+        .bind(china_day)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn finish_daily_checkin(
         &self,
         china_day: NaiveDate,
         succeeded: bool,
+        error: Option<&str>,
     ) -> Result<(), StoreError> {
         db::query(
-            "UPDATE daily_checkin_runs SET finished_at = NOW(), result = ? \
+            "UPDATE daily_checkin_runs \
+             SET finished_at = NOW(), result = ?, last_error = ? \
              WHERE china_day = ? AND result = 'started'",
         )
         .bind(if succeeded { "succeeded" } else { "failed" })
+        .bind(error.map(str::to_owned))
         .bind(china_day)
         .execute(&self.pool)
         .await?;
@@ -2713,8 +2757,8 @@ mod tests {
                 &station.station_id,
                 &station.station_name,
                 station.station_address.as_deref(),
-                39.904200,
-                116.407400,
+                39.904213,
+                116.407423,
             )
             .await
             .unwrap();
@@ -2723,8 +2767,8 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(stored.latitude, Some(39.904200));
-        assert_eq!(stored.longitude, Some(116.407400));
+        assert_eq!(stored.latitude, Some(39.904213));
+        assert_eq!(stored.longitude, Some(116.407423));
         assert!(
             store
                 .swap_stations_missing_coordinates()

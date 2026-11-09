@@ -4075,7 +4075,7 @@
     },
     "/api/v1/check-in": {
       "post": {
-        "description": "手动调用一次国内版每日签到，与服务器每日随机签到共用北京时间日期去重记录；没有自动重试。返回本次签到状态、积分和连续天数。",
+        "description": "手动调用一次国内版每日签到，与服务器每日随机签到共用北京时间日期去重记录。请求明确未发出（连接失败）时最多自动重试 3 次；可能已被上游处理的失败不重试。返回本次签到状态、积分和连续天数。",
         "operationId": "checkIn",
         "responses": {
           "200": {
@@ -4116,7 +4116,7 @@
                 }
               }
             },
-            "description": "database_error：本地数据库操作失败。"
+            "description": "check_in_result_not_recorded：签到结果未能写入数据库；请先核对 App 内签到状态。"
           },
           "502": {
             "content": {
@@ -4151,7 +4151,7 @@
         "tags": [
           "卡券与签到"
         ],
-        "x-no-automatic-retry": true,
+        "x-retry-policy": "Retry only connection failures before the request is sent, up to 3 attempts per Beijing day; ambiguous failures are not retried.",
         "x-side-effects": "performs-daily-check-in"
       }
     },
@@ -6030,7 +6030,7 @@
     },
     "/mcp": {
       "post": {
-        "description": "受 API_KEY 或已启用的 OAuth Bearer token 保护的 MCP JSON-RPC 端点，支持 2026-07-28 无会话协议及 2025-11-25 初始化。暴露除车控外的后端能力，包括可用卡券、签到和真实换电下单。换电下单仍要求 X-Vehicle-Control-Key；签到和下单均不自动重试。",
+        "description": "受 API_KEY 或已启用的 OAuth Bearer token 保护的 MCP JSON-RPC 端点，支持 2026-07-28 无会话协议及 2025-11-25 初始化。暴露除车控外的后端能力，包括可用卡券、签到和真实换电下单。换电下单仍要求 X-Vehicle-Control-Key；签到仅对未发出的连接失败重试，下单不自动重试。",
         "operationId": "mcpJsonRpc",
         "requestBody": {
           "content": {

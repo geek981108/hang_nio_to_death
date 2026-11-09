@@ -725,6 +725,17 @@ async fn check_in(
         }
         Err(DailyCheckInError::Store(error)) => Err(error.into()),
         Err(DailyCheckInError::Rewards(error)) => Err(error.into()),
+        Err(DailyCheckInError::RetryScheduled(error)) => Err(error.into()),
+        Err(DailyCheckInError::PersistResult(error)) => {
+            tracing::error!(%error, "failed to persist daily check-in result");
+            Err(ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                code: "check_in_result_not_recorded",
+                message:
+                    "check-in result could not be recorded; verify the NIO app before retrying"
+                        .to_owned(),
+            })
+        }
     }
 }
 

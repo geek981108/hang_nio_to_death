@@ -648,11 +648,11 @@ mod tests {
     #[test]
     fn parses_station_location_as_longitude_then_latitude() {
         let coordinates = parse_coordinates(&serde_json::json!({
-            "location": "116.407400,39.904200"
+            "location": "116.407423,39.904213"
         }))
         .unwrap();
-        assert_eq!(coordinates.longitude, 116.407400);
-        assert_eq!(coordinates.latitude, 39.904200);
+        assert_eq!(coordinates.longitude, 116.407423);
+        assert_eq!(coordinates.latitude, 39.904213);
     }
 
     #[test]

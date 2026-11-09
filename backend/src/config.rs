@@ -13,6 +13,7 @@ pub struct Config {
     pub service_order_poll_interval: Duration,
     pub match_window: Duration,
     pub api_key: Option<String>,
+    pub daily_checkin_enabled: bool,
     pub mcp_oauth_issuer: Option<String>,
     pub mcp_oauth_login_secret: Option<String>,
     pub station: Option<StationConfig>,
@@ -135,6 +136,11 @@ impl Config {
             duration_from_env("SERVICE_ORDER_POLL_INTERVAL_SECONDS", 15)?;
         let match_window = duration_from_env("MATCH_WINDOW_SECONDS", 1_800)?;
         let api_key = non_empty("API_KEY");
+        let daily_checkin_enabled = flag_from_env(
+            "NIO_DAILY_CHECKIN_ENABLED",
+            get("NIO_DAILY_CHECKIN_ENABLED"),
+            true,
+        )?;
         let (mcp_oauth_issuer, mcp_oauth_login_secret) = match (
             non_empty("MCP_OAUTH_ISSUER"),
             non_empty("MCP_OAUTH_LOGIN_SECRET"),
@@ -332,6 +338,7 @@ impl Config {
             service_order_poll_interval,
             match_window,
             api_key,
+            daily_checkin_enabled,
             mcp_oauth_issuer,
             mcp_oauth_login_secret,
             station,
@@ -413,11 +420,13 @@ fn station_template_from_env(
 }
 
 fn is_tenant_specific(name: &str) -> bool {
-    name == "API_KEY"
-        || name.starts_with("NIO_")
-        || name.starts_with("STATION_")
-        || name.starts_with("SERVICE_ORDER_")
-        || name.starts_with("MCP_OAUTH_")
+    // The daily check-in switch is operational, not a per-tenant credential.
+    name != "NIO_DAILY_CHECKIN_ENABLED"
+        && (name == "API_KEY"
+            || name.starts_with("NIO_")
+            || name.starts_with("STATION_")
+            || name.starts_with("SERVICE_ORDER_")
+            || name.starts_with("MCP_OAUTH_"))
 }
 
 fn validate_identifier(name: &'static str, value: &str) -> Result<(), ConfigError> {
@@ -451,6 +460,25 @@ fn duration_from_env(name: &'static str, default: u64) -> Result<Duration, Confi
     Ok(Duration::from_secs(seconds))
 }
 
+fn flag_from_env(
+    name: &'static str,
+    value: Option<String>,
+    default: bool,
+) -> Result<bool, ConfigError> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" => Ok(default),
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::Invalid {
+            name,
+            message: "use true or false".to_owned(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,5 +487,21 @@ mod tests {
     fn loopback_addresses_are_detected_by_stdlib() {
         let address: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         assert!(address.ip().is_loopback());
+    }
+
+    #[test]
+    fn daily_checkin_switch_accepts_common_boolean_spellings() {
+        let parse =
+            |value: &str| flag_from_env("NIO_DAILY_CHECKIN_ENABLED", Some(value.to_owned()), true);
+        for value in ["1", "true", "TRUE", "yes", "on"] {
+            assert!(parse(value).unwrap(), "{value}");
+        }
+        for value in ["0", "false", "FALSE", "no", "off"] {
+            assert!(!parse(value).unwrap(), "{value}");
+        }
+        assert!(parse("").unwrap());
+        assert!(parse("sometimes").is_err());
+        assert!(flag_from_env("NIO_DAILY_CHECKIN_ENABLED", None, true).unwrap());
+        assert!(!flag_from_env("NIO_DAILY_CHECKIN_ENABLED", None, false).unwrap());
     }
 }

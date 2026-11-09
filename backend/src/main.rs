@@ -295,11 +295,15 @@ async fn build_state(
         .clone()
         .map(NioRewardsClient::new)
         .transpose()?;
-    if let Some(rewards_client) = rewards.clone() {
+    if config.daily_checkin_enabled
+        && let Some(rewards_client) = rewards.clone()
+    {
         let checkin_store = store.clone();
         tokio::spawn(
             async move { daily_checkin::run_forever(checkin_store, rewards_client).await },
         );
+    } else if !config.daily_checkin_enabled {
+        info!("automatic daily check-in disabled by NIO_DAILY_CHECKIN_ENABLED");
     }
     let service_order_provider = config
         .service_orders

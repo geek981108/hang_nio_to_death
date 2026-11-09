@@ -440,8 +440,8 @@ mod tests {
         let profile = profile();
         let query = common_query(&profile, 1_792_057_271);
         let form = vec![
-            ("latitude".to_owned(), "39.904200".to_owned()),
-            ("longitude".to_owned(), "116.407400".to_owned()),
+            ("latitude".to_owned(), "39.904213".to_owned()),
+            ("longitude".to_owned(), "116.407423".to_owned()),
             ("model_type".to_owned(), "ET5T".to_owned()),
             ("model_type_year".to_owned(), "G1.2".to_owned()),
             ("swapId".to_owned(), "PS-NIO-3606da31-f8539ae9".to_owned()),
@@ -508,8 +508,8 @@ mod tests {
             "PS-1",
             "vehicle-1",
             StationCoordinates {
-                latitude: 39.904200,
-                longitude: 116.407400,
+                latitude: 39.904213,
+                longitude: 116.407423,
             },
             "ET5T",
             1,
@@ -540,8 +540,8 @@ mod tests {
         assert_eq!(value("scene"), Some(CREATE_SCENE));
         assert_eq!(value("model_type_year"), Some("G1.2"));
         assert_eq!(value("swapId"), Some("PS-1"));
-        assert_eq!(value("latitude"), Some("39.904200"));
-        assert_eq!(value("longitude"), Some("116.407400"));
+        assert_eq!(value("latitude"), Some("39.904213"));
+        assert_eq!(value("longitude"), Some("116.407423"));
     }
 
     #[test]
@@ -564,15 +564,15 @@ mod tests {
     fn rejects_invalid_resolved_coordinates() {
         assert!(
             validate_coordinates(StationCoordinates {
-                latitude: 39.904200,
-                longitude: 116.407400,
+                latitude: 39.904213,
+                longitude: 116.407423,
             })
             .is_ok()
         );
         assert!(
             validate_coordinates(StationCoordinates {
                 latitude: 91.0,
-                longitude: 116.407400,
+                longitude: 116.407423,
             })
             .is_err()
         );

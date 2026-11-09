@@ -1,6 +1,7 @@
 //! One randomly scheduled NIO CN check-in per Beijing calendar day.
-//! The database records an attempt before the upstream POST. Ambiguous failures
-//! are deliberately left for manual inspection rather than retried.
+//! The database records an attempt before the upstream POST. A failure that
+//! provably happened before the request was sent releases the day's slot and is
+//! retried a bounded number of times; ambiguous failures are never retried.
 
 use std::time::Duration;
 
@@ -14,12 +15,21 @@ use crate::{
     store::{Store, StoreError},
 };
 
+/// Maximum number of upstream send attempts per Beijing day.
+const MAX_SEND_ATTEMPTS: i32 = 3;
+/// Base delay before retrying a request that was never sent; doubles per attempt.
+const RETRY_BASE_DELAY_SECONDS: i64 = 5 * 60;
+
 #[derive(Debug, Error)]
 pub enum DailyCheckInError {
     #[error("daily check-in already attempted for this Beijing date")]
     AlreadyAttempted,
     #[error("daily check-in date elapsed")]
     DateElapsed,
+    #[error("daily check-in request was not sent; a retry is scheduled")]
+    RetryScheduled(#[source] RewardsError),
+    #[error("daily check-in result could not be persisted")]
+    PersistResult(#[source] StoreError),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]
@@ -52,6 +62,25 @@ fn random_time_today(now: DateTime<Utc>) -> DateTime<Utc> {
     now + chrono::Duration::seconds(rand::thread_rng().gen_range(1..seconds_left))
 }
 
+/// A connection could not be established, so no HTTP request reached upstream.
+fn request_was_not_sent(error: &RewardsError) -> bool {
+    match error {
+        RewardsError::Request(error) => error.is_connect(),
+        _ => false,
+    }
+}
+
+/// Exponential backoff bounded by the send-attempt budget and the Beijing day.
+fn retry_time(attempts: i32, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    if attempts <= 0 || attempts >= MAX_SEND_ATTEMPTS {
+        return None;
+    }
+    let factor = 1_i64 << (attempts - 1) as u32;
+    let delay = chrono::Duration::seconds(RETRY_BASE_DELAY_SECONDS * factor);
+    let candidate = now + delay;
+    (candidate < next_china_midnight(now)).then_some(candidate)
+}
+
 async fn sleep_until(target: DateTime<Utc>) {
     let wait = (target - Utc::now()).to_std().unwrap_or(Duration::ZERO);
     tokio::time::sleep(wait).await;
@@ -69,17 +98,36 @@ pub async fn perform_once(
     }
     // Manual calls create today's row too, so they suppress the scheduled job.
     store.daily_checkin_schedule(day, now).await?;
-    if !store.claim_daily_checkin(day).await? {
+    let Some(attempts) = store.claim_daily_checkin(day).await? else {
         return Err(DailyCheckInError::AlreadyAttempted);
+    };
+    match rewards.check_in().await {
+        Ok(outcome) => {
+            store
+                .finish_daily_checkin(day, outcome.checked_in, None)
+                .await
+                .map_err(DailyCheckInError::PersistResult)?;
+            Ok(outcome)
+        }
+        Err(error) => {
+            if request_was_not_sent(&error)
+                && let Some(retry_at) = retry_time(attempts, Utc::now())
+            {
+                store
+                    .release_daily_checkin(day, retry_at, &error.to_string())
+                    .await?;
+                return Err(DailyCheckInError::RetryScheduled(error));
+            }
+            // The request may have been processed upstream. Keep the day claimed.
+            if let Err(store_error) = store
+                .finish_daily_checkin(day, false, Some(&error.to_string()))
+                .await
+            {
+                warn!(%day, %store_error, %error, "failed to record daily check-in failure");
+            }
+            Err(DailyCheckInError::Rewards(error))
+        }
     }
-    let result = rewards.check_in().await;
-    if let Err(error) = store
-        .finish_daily_checkin(day, result.as_ref().is_ok_and(|outcome| outcome.checked_in))
-        .await
-    {
-        warn!(%day, %error, "failed to record daily check-in result; attempt remains claimed");
-    }
-    Ok(result?)
 }
 
 pub async fn run_forever(store: Store, rewards: NioRewardsClient) {
@@ -99,7 +147,13 @@ pub async fn run_forever(store: Store, rewards: NioRewardsClient) {
             sleep_until(next_china_midnight(now) + chrono::Duration::seconds(1)).await;
             continue;
         }
-        info!(%day, scheduled_at = %schedule.scheduled_at, "daily check-in scheduled");
+        info!(
+            %day,
+            scheduled_at = %schedule.scheduled_at,
+            attempts = schedule.attempts,
+            result = %schedule.result,
+            "daily check-in scheduled"
+        );
         sleep_until(schedule.scheduled_at).await;
         if china_day(Utc::now()) != day {
             continue;
@@ -109,6 +163,9 @@ pub async fn run_forever(store: Store, rewards: NioRewardsClient) {
                 continuous_days = outcome.continuous_days, "daily check-in finished"),
             Err(DailyCheckInError::AlreadyAttempted) => {
                 info!(%day, "daily check-in already attempted by another caller")
+            }
+            Err(DailyCheckInError::RetryScheduled(error)) => {
+                info!(%day, %error, "daily check-in not sent; retry scheduled")
             }
             Err(error) => warn!(%day, %error, "daily check-in failed without automatic retry"),
         }
@@ -137,6 +194,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn retry_delay_is_bounded_by_attempts_and_midnight() {
+        let morning = DateTime::parse_from_rfc3339("2026-10-30T02:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(
+            retry_time(1, morning),
+            Some(morning + chrono::Duration::minutes(5))
+        );
+        assert_eq!(
+            retry_time(2, morning),
+            Some(morning + chrono::Duration::minutes(10))
+        );
+        assert_eq!(retry_time(3, morning), None);
+        assert_eq!(retry_time(0, morning), None);
+
+        // 23:58 Beijing: a five-minute retry would cross into the next day.
+        let late = DateTime::parse_from_rfc3339("2026-10-30T15:58:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(retry_time(1, late), None);
+    }
+
     #[tokio::test]
     async fn schedule_survives_reselection_and_only_one_claim_wins() {
         let Ok(store) = Store::in_memory().await else {
@@ -155,10 +235,29 @@ mod tests {
             store.claim_daily_checkin(day),
             store.claim_daily_checkin(day)
         );
-        assert_ne!(a.unwrap(), b.unwrap());
-        store.finish_daily_checkin(day, false).await.unwrap();
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert!(a.is_some() ^ b.is_some());
+        assert_eq!(a.or(b), Some(1));
+
+        // A request that was never sent releases the slot and keeps the attempt count.
+        store
+            .release_daily_checkin(day, second, "connection refused")
+            .await
+            .unwrap();
+        let released = store.daily_checkin_schedule(day, second).await.unwrap();
+        assert!(released.attempted_at.is_none());
+        assert_eq!(released.result, "not_sent");
+        assert_eq!(released.attempts, 1);
+        assert_eq!(store.claim_daily_checkin(day).await.unwrap(), Some(2));
+
+        store
+            .finish_daily_checkin(day, false, Some("upstream failed"))
+            .await
+            .unwrap();
         let persisted = store.daily_checkin_schedule(day, second).await.unwrap();
         assert!(persisted.attempted_at.is_some());
-        assert!(!store.claim_daily_checkin(day).await.unwrap());
+        assert_eq!(persisted.result, "failed");
+        assert_eq!(persisted.attempts, 2);
+        assert!(store.claim_daily_checkin(day).await.unwrap().is_none());
     }
 }
