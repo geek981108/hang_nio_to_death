@@ -1,27 +1,29 @@
 name: Rust
-
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
-
+    branches: ["main"]
+  workflow_dispatch:
 env:
   CARGO_TERM_COLOR: always
-
 jobs:
   build:
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./backend
-    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Upload binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: rust-linux-release
-        path: backend/target/release/nio-swap-history-backend
-        if-no-files-found: error
+      - uses: actions/checkout@v4
+      - name: Build Release
+        run: cargo build --release --locked --verbose
+      - name: Verify binary
+        run: |
+          ls -lh target/release/
+          file target/release/nio-swap-history-backend
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nio-swap-history-backend-linux-x86_64
+          path: backend/target/release/nio-swap-history-backend
+          if-no-files-found: error
