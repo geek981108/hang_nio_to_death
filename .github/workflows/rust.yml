@@ -19,3 +19,9 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --verbose
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: rust-linux-release
+        path: backend/target/release/my-app
+        if-no-files-found: error
