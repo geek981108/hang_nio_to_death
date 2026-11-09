@@ -2,6 +2,34 @@
 
 这是一个 *社区版* 的蔚来App + 后端项目
 
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <img src="docs/1.jpg" width="100%">
+    </td>
+    <td width="33%" align="center">
+      <img src="docs/2.jpg" width="100%">
+    </td>
+    <td width="33%" align="center">
+      <img src="docs/3.jpg" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/4.jpg" width="100%">
+    </td>
+    <td align="center">
+      <img src="docs/5.jpg" width="100%">
+    </td>
+    <td align="center">
+      <img src="docs/6.jpg" width="100%">
+    </td>
+  </tr>
+</table>
+
+
+
 # 为什么要做这个项目
 首先, `蔚来 App` 的审美和交互逻辑烂透了! It Sucks! 有以下罪状:
 1. 打开App 那个logo 非得转一圈, 开个 App 要5s以上
@@ -39,6 +67,20 @@
   - TODO: 在训练一个很简单的 `14 - 64 - 32 - 1` 的神经网络, 尝试通过引入行程信息+ 天气 + 轮胎滚阻 + 个人驾车习惯 + 行程海拔变化 预测整体行程的能耗, 比烂蔚来App使用平均能耗来预估准多了, *Much Better!!!*
 2. 增加了一个自动签到的功能, 每日随机时间签到
 3. 后端是一个多租户的架构, 一个后端可以服务多辆车
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <img src="docs/7.jpg" width="100%">
+    </td>
+    <td width="33%" align="center">
+      <img src="docs/8.jpg" width="100%">
+    </td>
+    <td width="33%" align="center">
+      <img src="docs/9.jpg" width="100%">
+    </td>
+  </tr>
+</table>
 
 # 还有什么不足
 1. App 车控蓝牙协议还没有实现
