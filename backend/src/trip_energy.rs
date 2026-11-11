@@ -310,7 +310,7 @@ async fn fetch_recent_trips(
             break;
         }
         let count = PAGE_SIZE.min(remaining as u32);
-        let page = vehicle.journeys(count, pages.next_cursor).await?;
+        let page = vehicle.journeys(count, pages.next_cursor).await?.page;
         pages.add(page);
         if !pages.needs_more(cutoff) {
             break;

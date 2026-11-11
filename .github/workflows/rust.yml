@@ -23,8 +23,14 @@ jobs:
             backend -> target
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --all-targets
+      - name: Test
+        run: cargo test --locked
       - name: Build Release
-        run: cargo build --release --verbose
+        run: cargo build --locked --release --verbose
       - name: Verify binary
         run: |
           ls -lh target/release/nio-swap-history-backend

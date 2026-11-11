@@ -70,11 +70,15 @@ async fn sync_forward(
     }
     for index in 0..PAGES_PER_CYCLE {
         let cursor = state.forward_cursor;
-        let page = vehicle.journeys(forward_page_size(cursor), cursor).await?;
+        let journeys = vehicle.journeys(forward_page_size(cursor), cursor).await?;
+        let page = &journeys.page;
         let known = store.known_vehicle_trip_ids(id, &page.items).await?;
-        let overlaps = reached_covered_history(&page, state, &known);
-        let next = next_cursor(&page, cursor)?;
+        let overlaps = reached_covered_history(page, state, &known);
+        let next = next_cursor(page, cursor)?;
         store.upsert_vehicle_trips(id, &page.items).await?;
+        store
+            .store_vehicle_trip_tracks(id, &journeys.tracks)
+            .await?;
         state.forward_cursor = if overlaps { None } else { next };
         if overlaps || next.is_none() {
             state.covered_before = state.forward_started_at;
@@ -106,9 +110,13 @@ async fn sync_cycle(store: &Store, vehicle: &NioVehicleClient) -> Result<bool, S
     for index in 0..PAGES_PER_CYCLE {
         let cursor = state.backfill_cursor;
         let started_at = Utc::now();
-        let page = vehicle.journeys(BACKFILL_PAGE_SIZE, cursor).await?;
-        let next = next_cursor(&page, cursor)?;
+        let journeys = vehicle.journeys(BACKFILL_PAGE_SIZE, cursor).await?;
+        let page = &journeys.page;
+        let next = next_cursor(page, cursor)?;
         store.upsert_vehicle_trips(id, &page.items).await?;
+        store
+            .store_vehicle_trip_tracks(id, &journeys.tracks)
+            .await?;
         if state.covered_before.is_none() {
             state.covered_before = Some(started_at);
         }

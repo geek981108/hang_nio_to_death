@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{diesel_query as db, pg_store::PgPool};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use diesel_async::AsyncConnection;
+use diesel_async::{AsyncConnection, AsyncPgConnection};
 use serde::Deserialize;
 use thiserror::Error;
 use uuid::Uuid;
@@ -11,10 +11,11 @@ use crate::{
     analytics::{ChargingAccumulator, ChargingEstimate, SwapBatteryCapacity},
     detector::{DetectedOrderSwap, DetectedSwap},
     models::{
-        ActiveServiceOrder, BatteryObservation, ImportedOrder, ObservedServiceOrder,
-        ObservedServiceOrderQueue, ObservedSwapStation, PollRunSummary, StationSnapshot, SwapEvent,
-        SwapPaymentItem, SwapStation, VehicleChargingSample, VehicleChargingSession,
-        VehicleSnapshot, VehicleTrip, VehicleTripPage,
+        ActiveServiceOrder, BatteryObservation, CachedVehicleImage, ImportedOrder,
+        ObservedServiceOrder, ObservedServiceOrderQueue, ObservedSwapStation, PollRunSummary,
+        StationSnapshot, StoredVehicleProfile, SwapEvent, SwapPaymentItem, SwapStation,
+        VehicleChargingSample, VehicleChargingSession, VehicleProfile, VehicleSnapshot,
+        VehicleTrip, VehicleTripPage, VehicleTripTrack, VehicleTripTrackPoint,
     },
 };
 
@@ -22,6 +23,13 @@ use crate::{
 pub struct Store {
     pub(crate) pool: PgPool,
 }
+
+/// Multi-row insert width for track points. Nine bound parameters per point
+/// keeps one statement well under PostgreSQL's parameter limit.
+const TRACK_INSERT_CHUNK: usize = 200;
+/// Row count per statement for the bulk backfill insert: 9 parameters each, so
+/// 6_000 rows stay under PostgreSQL's 65_535 parameter limit with headroom.
+const TRACK_ROWS_PER_INSERT: usize = 6_000;
 
 #[derive(Debug)]
 pub struct DailyCheckInRun {
@@ -375,6 +383,317 @@ impl Store {
             Ok(())
         })).await?;
         Ok(())
+    }
+
+    /// Persist upstream journey tracks. Compare the complete point sequence so
+    /// upstream corrections are retained even when the point count is unchanged.
+    pub async fn store_vehicle_trip_tracks(
+        &self,
+        vehicle_id: &str,
+        tracks: &[VehicleTripTrack],
+    ) -> Result<(), StoreError> {
+        let tracks = tracks
+            .iter()
+            .filter(|track| !track.points.is_empty())
+            .collect::<Vec<_>>();
+        if tracks.is_empty() {
+            return Ok(());
+        }
+        let mut changed = Vec::new();
+        for track in tracks {
+            let stored = self
+                .vehicle_trip_track(vehicle_id, &track.journey_id)
+                .await?;
+            if stored != track.points {
+                changed.push(track);
+            }
+        }
+        if changed.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.pool.get().await.map_err(db::Error::from)?;
+        conn.transaction::<_, db::Error, _>(|conn| {
+            Box::pin(async move {
+                for track in changed {
+                    db::query(
+                        "DELETE FROM vehicle_trip_tracks WHERE vehicle_id = ? AND journey_id = ?",
+                    )
+                    .bind(vehicle_id)
+                    .bind(&track.journey_id)
+                    .execute_conn(conn)
+                    .await?;
+                    for (chunk_index, chunk) in track.points.chunks(TRACK_INSERT_CHUNK).enumerate()
+                    {
+                        let placeholders =
+                            std::iter::repeat_n("(?, ?, ?, ?, ?, ?, ?, ?, ?)", chunk.len())
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                        let sql = format!(
+                            "INSERT INTO vehicle_trip_tracks \
+                             (vehicle_id, journey_id, seq, sampled_at, latitude, longitude, \
+                              speed_kph, power_consumption, np_status) VALUES {placeholders}"
+                        );
+                        let mut query = db::query(&sql);
+                        for (offset, point) in chunk.iter().enumerate() {
+                            let seq = chunk_index * TRACK_INSERT_CHUNK + offset;
+                            query = query
+                                .bind(vehicle_id)
+                                .bind(&track.journey_id)
+                                .bind(seq as i64)
+                                .bind(point.sampled_at)
+                                .bind(point.latitude)
+                                .bind(point.longitude)
+                                .bind(point.speed_kph)
+                                .bind(point.power_consumption)
+                                .bind(point.np_status);
+                        }
+                        query.execute_conn(conn).await?;
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Bulk insert for the one-shot backfill. The caller already excluded
+    /// journeys that own points, so this needs no existence check and no
+    /// delete: one statement per parameter-budget chunk instead of two
+    /// statements per journey. `DO NOTHING` keeps a concurrent sync from
+    /// turning the batch into a primary-key error.
+    pub async fn insert_vehicle_trip_tracks(
+        &self,
+        vehicle_id: &str,
+        tracks: &[VehicleTripTrack],
+    ) -> Result<(), StoreError> {
+        if tracks.iter().all(|track| track.points.is_empty()) {
+            return Ok(());
+        }
+        let mut conn = self.pool.get().await.map_err(db::Error::from)?;
+        conn.transaction::<_, db::Error, _>(|conn| {
+            Box::pin(async move {
+                let mut rows: Vec<(&VehicleTripTrack, usize)> =
+                    Vec::with_capacity(TRACK_ROWS_PER_INSERT);
+                for track in tracks {
+                    for seq in 0..track.points.len() {
+                        rows.push((track, seq));
+                        if rows.len() == TRACK_ROWS_PER_INSERT {
+                            insert_track_rows(conn, vehicle_id, &rows).await?;
+                            rows.clear();
+                        }
+                    }
+                }
+                if !rows.is_empty() {
+                    insert_track_rows(conn, vehicle_id, &rows).await?;
+                }
+                Ok(())
+            })
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Store the vehicle identity and, when upstream produced one, the image
+    /// bytes. A refresh that failed to download keeps the previously cached
+    /// image instead of erasing it.
+    pub async fn upsert_vehicle_profile(&self, profile: &VehicleProfile) -> Result<(), StoreError> {
+        use diesel::sql_types::{Bytea, Nullable, Text, Timestamptz};
+        use diesel_async::RunQueryDsl;
+
+        let mut conn = self.pool.get().await.map_err(db::Error::from)?;
+        diesel::sql_query(
+            "INSERT INTO vehicle_profile \
+             (vehicle_id, display_name, model_type, color, image_url, image_content_type, \
+              image_sha256, image_bytes, image_fetched_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             ON CONFLICT (vehicle_id) DO UPDATE SET \
+              display_name = EXCLUDED.display_name, \
+              model_type = EXCLUDED.model_type, \
+              color = EXCLUDED.color, \
+              image_url = EXCLUDED.image_url, \
+              image_content_type = CASE \
+                WHEN EXCLUDED.image_url IS NULL THEN NULL \
+                WHEN EXCLUDED.image_bytes IS NOT NULL THEN EXCLUDED.image_content_type \
+                WHEN vehicle_profile.image_url IS NOT DISTINCT FROM EXCLUDED.image_url \
+                  THEN vehicle_profile.image_content_type ELSE NULL END, \
+              image_sha256 = CASE \
+                WHEN EXCLUDED.image_url IS NULL THEN NULL \
+                WHEN EXCLUDED.image_bytes IS NOT NULL THEN EXCLUDED.image_sha256 \
+                WHEN vehicle_profile.image_url IS NOT DISTINCT FROM EXCLUDED.image_url \
+                  THEN vehicle_profile.image_sha256 ELSE NULL END, \
+              image_bytes = CASE \
+                WHEN EXCLUDED.image_url IS NULL THEN NULL \
+                WHEN EXCLUDED.image_bytes IS NOT NULL THEN EXCLUDED.image_bytes \
+                WHEN vehicle_profile.image_url IS NOT DISTINCT FROM EXCLUDED.image_url \
+                  THEN vehicle_profile.image_bytes ELSE NULL END, \
+              image_fetched_at = CASE \
+                WHEN EXCLUDED.image_url IS NULL THEN NULL \
+                WHEN EXCLUDED.image_bytes IS NOT NULL THEN EXCLUDED.image_fetched_at \
+                WHEN vehicle_profile.image_url IS NOT DISTINCT FROM EXCLUDED.image_url \
+                  THEN vehicle_profile.image_fetched_at ELSE NULL END, \
+              updated_at = NOW()",
+        )
+        .bind::<Text, _>(profile.vehicle_id.as_str())
+        .bind::<Nullable<Text>, _>(profile.display_name.as_deref())
+        .bind::<Nullable<Text>, _>(profile.model_type.as_deref())
+        .bind::<Nullable<Text>, _>(profile.color.as_deref())
+        .bind::<Nullable<Text>, _>(profile.image_url.as_deref())
+        .bind::<Nullable<Text>, _>(profile.image_content_type.as_deref())
+        .bind::<Nullable<Text>, _>(profile.image_sha256.as_deref())
+        .bind::<Nullable<Bytea>, _>(profile.image_bytes.as_deref())
+        .bind::<Nullable<Timestamptz>, _>(profile.image_fetched_at)
+        .execute(&mut conn)
+        .await
+        .map_err(db::Error::from)?;
+        Ok(())
+    }
+
+    /// Metadata only; `image_available` says whether the bytes are cached.
+    pub async fn vehicle_profile(
+        &self,
+        vehicle_id: &str,
+    ) -> Result<Option<StoredVehicleProfile>, StoreError> {
+        Ok(db::query_as::<StoredVehicleProfile>(
+            "SELECT vehicle_id, display_name, model_type, color, image_url, \
+                    (image_bytes IS NOT NULL) AS image_available, image_sha256, image_fetched_at \
+             FROM vehicle_profile WHERE vehicle_id = ?",
+        )
+        .bind(vehicle_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// Cached image bytes with their content type and digest, read in native
+    /// form so the binary never passes through the JSON row wrapper.
+    pub async fn vehicle_profile_image(
+        &self,
+        vehicle_id: &str,
+    ) -> Result<Option<CachedVehicleImage>, StoreError> {
+        use diesel::{
+            QueryableByName,
+            sql_types::{Bytea, Nullable, Text},
+        };
+        use diesel_async::RunQueryDsl;
+
+        #[derive(QueryableByName)]
+        struct ImageRow {
+            #[diesel(sql_type = Nullable<Text>)]
+            content_type: Option<String>,
+            #[diesel(sql_type = Nullable<Text>)]
+            sha256: Option<String>,
+            #[diesel(sql_type = Bytea)]
+            payload: Vec<u8>,
+        }
+
+        let mut conn = self.pool.get().await.map_err(db::Error::from)?;
+        let rows: Vec<ImageRow> = diesel::sql_query(
+            "SELECT image_content_type AS content_type, image_sha256 AS sha256, \
+                    image_bytes AS payload \
+             FROM vehicle_profile WHERE vehicle_id = $1 AND image_bytes IS NOT NULL",
+        )
+        .bind::<Text, _>(vehicle_id)
+        .load(&mut conn)
+        .await
+        .map_err(db::Error::from)?;
+        Ok(rows.into_iter().next().map(|row| CachedVehicleImage {
+            content_type: row
+                .content_type
+                .unwrap_or_else(|| "application/octet-stream".to_owned()),
+            sha256: row.sha256,
+            bytes: row.payload,
+        }))
+    }
+
+    /// Stored journeys whose track was never requested from upstream, newest
+    /// first. Trips that already have points are excluded even when the scan
+    /// marker is absent, so the normal sync does not create needless work.
+    pub async fn vehicle_trip_ids_missing_tracks(
+        &self,
+        vehicle_id: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, StoreError> {
+        let rows = db::query(
+            "SELECT t.journey_id FROM vehicle_trips t \
+             WHERE t.vehicle_id = ? AND t.track_scanned_at IS NULL \
+               AND NOT EXISTS (SELECT 1 FROM vehicle_trip_tracks k \
+                               WHERE k.vehicle_id = t.vehicle_id AND k.journey_id = t.journey_id) \
+             ORDER BY t.started_at DESC, t.journey_id DESC LIMIT ?",
+        )
+        .bind(vehicle_id)
+        .bind(limit.clamp(1, 10_000) as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|row| row.try_get("journey_id"))
+            .collect::<Result<Vec<String>, db::Error>>()
+            .map_err(StoreError::from)
+    }
+
+    /// Remember that upstream was asked for these journeys' tracks, whether or
+    /// not it returned one. Only called after a successful upstream response so
+    /// a failed request stays retryable.
+    pub async fn mark_trips_track_scanned(
+        &self,
+        vehicle_id: &str,
+        journey_ids: &[String],
+    ) -> Result<(), StoreError> {
+        for chunk in journey_ids.chunks(TRACK_INSERT_CHUNK) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                "UPDATE vehicle_trips SET track_scanned_at = NOW() \
+                 WHERE vehicle_id = ? AND journey_id IN ({placeholders})"
+            );
+            let mut query = db::query(&sql).bind(vehicle_id);
+            for journey_id in chunk {
+                query = query.bind(journey_id.as_str());
+            }
+            query.execute(&self.pool).await?;
+        }
+        Ok(())
+    }
+
+    /// The App's own polled positions inside one journey's time window, in
+    /// sample order. These are not the official track: the status payload has
+    /// no per-point speed or power, so those stay null.
+    pub async fn vehicle_trip_sampled_points(
+        &self,
+        vehicle_id: &str,
+        journey_id: &str,
+    ) -> Result<Vec<VehicleTripTrackPoint>, StoreError> {
+        Ok(db::query_as::<VehicleTripTrackPoint>(
+            "SELECT s.sampled_at, s.latitude, s.longitude, \
+                    CAST(NULL AS DOUBLE PRECISION) AS speed_kph, \
+                    CAST(NULL AS DOUBLE PRECISION) AS power_consumption, \
+                    CAST(NULL AS BIGINT) AS np_status \
+             FROM vehicle_snapshots s \
+             JOIN vehicle_trips t ON t.vehicle_id = s.vehicle_id AND t.journey_id = ? \
+             WHERE s.vehicle_id = ? AND s.sampled_at BETWEEN t.started_at AND t.ended_at \
+             ORDER BY s.sampled_at",
+        )
+        .bind(journey_id)
+        .bind(vehicle_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Track points in stored order. An empty result means the journey is not
+    /// stored or upstream did not return a track for it.
+    pub async fn vehicle_trip_track(
+        &self,
+        vehicle_id: &str,
+        journey_id: &str,
+    ) -> Result<Vec<VehicleTripTrackPoint>, StoreError> {
+        Ok(db::query_as::<VehicleTripTrackPoint>(
+            "SELECT sampled_at, latitude, longitude, speed_kph, power_consumption, np_status \
+             FROM vehicle_trip_tracks WHERE vehicle_id = ? AND journey_id = ? ORDER BY seq",
+        )
+        .bind(vehicle_id)
+        .bind(journey_id)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     pub async fn schedule_trip_energy_day(
@@ -2384,6 +2703,38 @@ fn swap_station_from_row(row: SwapStationRow) -> Result<SwapStation, StoreError>
     })
 }
 
+async fn insert_track_rows(
+    conn: &mut AsyncPgConnection,
+    vehicle_id: &str,
+    rows: &[(&VehicleTripTrack, usize)],
+) -> Result<(), db::Error> {
+    let placeholders = std::iter::repeat_n("(?, ?, ?, ?, ?, ?, ?, ?, ?)", rows.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "INSERT INTO vehicle_trip_tracks \
+         (vehicle_id, journey_id, seq, sampled_at, latitude, longitude, \
+          speed_kph, power_consumption, np_status) VALUES {placeholders} \
+         ON CONFLICT (vehicle_id, journey_id, seq) DO NOTHING"
+    );
+    let mut query = db::query(&sql);
+    for (track, seq) in rows {
+        let point = &track.points[*seq];
+        query = query
+            .bind(vehicle_id)
+            .bind(track.journey_id.as_str())
+            .bind(*seq as i64)
+            .bind(point.sampled_at)
+            .bind(point.latitude)
+            .bind(point.longitude)
+            .bind(point.speed_kph)
+            .bind(point.power_consumption)
+            .bind(point.np_status);
+    }
+    query.execute_conn(conn).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2391,6 +2742,316 @@ mod tests {
     use crate::models::ImportedBattery;
     use crate::models::StationSnapshot;
     use chrono::TimeZone;
+
+    #[tokio::test]
+    async fn vehicle_profile_keeps_cached_image_when_a_refresh_lacks_it() {
+        let Ok(store) = Store::in_memory().await else {
+            return;
+        };
+        let fetched_at = Utc.with_ymd_and_hms(2026, 11, 11, 0, 0, 0).unwrap();
+        let profile = VehicleProfile {
+            vehicle_id: "v1".to_owned(),
+            display_name: Some("我的ET5T".to_owned()),
+            model_type: Some("ET5T".to_owned()),
+            color: Some("tech_grey".to_owned()),
+            image_url: Some("https://cdn-app.nio.com/a.png".to_owned()),
+            image_content_type: Some("image/png".to_owned()),
+            image_bytes: Some(vec![0x89, b'P', b'N', b'G']),
+            image_sha256: Some("deadbeef".to_owned()),
+            image_fetched_at: Some(fetched_at),
+        };
+        store.upsert_vehicle_profile(&profile).await.unwrap();
+        let stored = store.vehicle_profile("v1").await.unwrap().unwrap();
+        assert_eq!(stored.display_name.as_deref(), Some("我的ET5T"));
+        assert!(stored.image_available);
+        assert_eq!(stored.image_sha256.as_deref(), Some("deadbeef"));
+        let image = store.vehicle_profile_image("v1").await.unwrap().unwrap();
+        assert_eq!(image.content_type, "image/png");
+        assert_eq!(image.sha256.as_deref(), Some("deadbeef"));
+        assert_eq!(image.bytes, vec![0x89, b'P', b'N', b'G']);
+
+        // A refresh whose download failed must not erase the cached bytes.
+        let mut retry = profile.clone();
+        retry.image_bytes = None;
+        retry.image_content_type = None;
+        retry.image_sha256 = None;
+        retry.image_fetched_at = None;
+        retry.color = Some("black".to_owned());
+        store.upsert_vehicle_profile(&retry).await.unwrap();
+        let stored = store.vehicle_profile("v1").await.unwrap().unwrap();
+        assert_eq!(stored.color.as_deref(), Some("black"));
+        assert!(stored.image_available);
+        assert_eq!(
+            store
+                .vehicle_profile_image("v1")
+                .await
+                .unwrap()
+                .unwrap()
+                .bytes,
+            vec![0x89, b'P', b'N', b'G']
+        );
+
+        // A different URL can never retain bytes belonging to the old URL.
+        let mut changed_url = retry.clone();
+        changed_url.image_url = Some("https://cdn-app.nio.com/b.png".to_owned());
+        store.upsert_vehicle_profile(&changed_url).await.unwrap();
+        let stored = store.vehicle_profile("v1").await.unwrap().unwrap();
+        assert_eq!(
+            stored.image_url.as_deref(),
+            Some("https://cdn-app.nio.com/b.png")
+        );
+        assert!(!stored.image_available);
+        assert!(store.vehicle_profile_image("v1").await.unwrap().is_none());
+
+        // Removing the upstream image clears all cached image metadata.
+        changed_url.image_url = None;
+        store.upsert_vehicle_profile(&changed_url).await.unwrap();
+        let stored = store.vehicle_profile("v1").await.unwrap().unwrap();
+        assert!(stored.image_url.is_none());
+        assert!(!stored.image_available);
+
+        assert!(store.vehicle_profile("v2").await.unwrap().is_none());
+        assert!(store.vehicle_profile_image("v2").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn bulk_track_insert_is_idempotent_per_journey() {
+        let Ok(store) = Store::in_memory().await else {
+            return;
+        };
+        let point = |seq: usize| VehicleTripTrackPoint {
+            sampled_at: Utc.with_ymd_and_hms(2026, 10, 1, 8, 0, seq as u32).unwrap(),
+            latitude: 39.1,
+            longitude: 117.7,
+            speed_kph: Some(10.0),
+            power_consumption: None,
+            np_status: None,
+        };
+        let track = |id: &str, count: usize| VehicleTripTrack {
+            journey_id: id.to_owned(),
+            points: (0..count).map(point).collect(),
+        };
+        let tracks = vec![track("a", 3), track("b", 2)];
+        store
+            .insert_vehicle_trip_tracks("vehicle-1", &tracks)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .vehicle_trip_track("vehicle-1", "a")
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+        // A concurrent sync may have stored the same journey; re-inserting must
+        // not fail on the primary key or duplicate points.
+        store
+            .insert_vehicle_trip_tracks("vehicle-1", &tracks)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .vehicle_trip_track("vehicle-1", "b")
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            store
+                .vehicle_trip_track("vehicle-2", "a")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn track_backfill_selects_only_unscanned_trips_without_points() {
+        let Ok(store) = Store::in_memory().await else {
+            return;
+        };
+        let location = crate::models::VehicleTripLocation {
+            address: None,
+            poi: None,
+            road_name: None,
+            town: None,
+            district: None,
+            city: None,
+            province: None,
+            latitude: None,
+            longitude: None,
+        };
+        let trip = |id: &str, hour: u32| VehicleTrip {
+            id: id.to_owned(),
+            trip_id: Some(id.to_owned()),
+            started_at: Utc.with_ymd_and_hms(2026, 10, 1, hour, 0, 0).unwrap(),
+            ended_at: Utc.with_ymd_and_hms(2026, 10, 1, hour, 10, 0).unwrap(),
+            distance_kilometers: 5.0,
+            duration_minutes: 10,
+            start_location: location.clone(),
+            end_location: location.clone(),
+            average_speed_kph: Some(30.0),
+            average_energy_consumption_kwh_per_100km: None,
+            energy_consumed_kwh: None,
+            maximum_speed_kph: None,
+            odometer_kilometers: None,
+            rapid_acceleration_count: None,
+            rapid_deceleration_count: None,
+            rapid_swerve_count: None,
+            is_combined: false,
+        };
+        store
+            .upsert_vehicle_trips("vehicle-1", &[trip("older", 8), trip("newer", 9)])
+            .await
+            .unwrap();
+
+        // Newest first, and scoped to the vehicle.
+        assert_eq!(
+            store
+                .vehicle_trip_ids_missing_tracks("vehicle-1", 10)
+                .await
+                .unwrap(),
+            vec!["newer".to_owned(), "older".to_owned()]
+        );
+        assert!(
+            store
+                .vehicle_trip_ids_missing_tracks("vehicle-2", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        // A journey with points is no longer pending even without a scan mark.
+        let point = VehicleTripTrackPoint {
+            sampled_at: Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap(),
+            latitude: 39.1,
+            longitude: 117.7,
+            speed_kph: Some(10.0),
+            power_consumption: None,
+            np_status: None,
+        };
+        store
+            .store_vehicle_trip_tracks(
+                "vehicle-1",
+                &[VehicleTripTrack {
+                    journey_id: "newer".to_owned(),
+                    points: vec![point],
+                }],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .vehicle_trip_ids_missing_tracks("vehicle-1", 10)
+                .await
+                .unwrap(),
+            vec!["older".to_owned()]
+        );
+
+        // Marking a scanned-but-empty journey removes it from the pending list.
+        store
+            .mark_trips_track_scanned("vehicle-1", &["older".to_owned()])
+            .await
+            .unwrap();
+        assert!(
+            store
+                .vehicle_trip_ids_missing_tracks("vehicle-1", 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn vehicle_trip_tracks_rewrite_when_content_changes() {
+        let Ok(store) = Store::in_memory().await else {
+            return;
+        };
+        let point = |offset: u32| VehicleTripTrackPoint {
+            sampled_at: Utc.with_ymd_and_hms(2026, 10, 1, 8, 0, offset).unwrap(),
+            latitude: 39.1 + f64::from(offset) * 0.001,
+            longitude: 117.7,
+            speed_kph: Some(f64::from(offset) * 10.0),
+            power_consumption: Some(-1.5),
+            np_status: Some(0),
+        };
+        let track = VehicleTripTrack {
+            journey_id: "journey-1".to_owned(),
+            points: vec![point(0), point(1)],
+        };
+        store
+            .store_vehicle_trip_tracks("vehicle-1", std::slice::from_ref(&track))
+            .await
+            .unwrap();
+        // `row_to_json` renders float8 with the shortest round-tripping text, so
+        // coordinates come back within floating-point epsilon, not bit-identical.
+        let stored = store
+            .vehicle_trip_track("vehicle-1", "journey-1")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored[1].sampled_at, track.points[1].sampled_at);
+        assert_eq!(stored[1].speed_kph, track.points[1].speed_kph);
+        assert_eq!(stored[1].np_status, track.points[1].np_status);
+        assert!((stored[1].latitude - track.points[1].latitude).abs() < 1e-9);
+
+        // A steady-state sync must not duplicate the unchanged track.
+        store
+            .store_vehicle_trip_tracks("vehicle-1", std::slice::from_ref(&track))
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .vehicle_trip_track("vehicle-1", "journey-1")
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+
+        // Upstream may correct a point without changing the point count.
+        let mut corrected = track.clone();
+        corrected.points[1].latitude = 40.25;
+        corrected.points[1].speed_kph = Some(42.0);
+        store
+            .store_vehicle_trip_tracks("vehicle-1", std::slice::from_ref(&corrected))
+            .await
+            .unwrap();
+        let stored = store
+            .vehicle_trip_track("vehicle-1", "journey-1")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 2);
+        assert!((stored[1].latitude - 40.25).abs() < 1e-9);
+        assert_eq!(stored[1].speed_kph, Some(42.0));
+
+        // A growing journey is replaced, not appended to.
+        let grown = VehicleTripTrack {
+            journey_id: "journey-1".to_owned(),
+            points: vec![point(0), point(1), point(2)],
+        };
+        store
+            .store_vehicle_trip_tracks("vehicle-1", std::slice::from_ref(&grown))
+            .await
+            .unwrap();
+        let stored = store
+            .vehicle_trip_track("vehicle-1", "journey-1")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 3);
+        assert_eq!(stored[2].sampled_at, grown.points[2].sampled_at);
+        assert!((stored[2].latitude - grown.points[2].latitude).abs() < 1e-9);
+        // Tracks stay vehicle-scoped.
+        assert!(
+            store
+                .vehicle_trip_track("vehicle-2", "journey-1")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
 
     #[tokio::test]
     async fn vehicle_trips_upsert_preserves_missing_metrics_and_isolates_vehicles() {

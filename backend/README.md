@@ -26,6 +26,9 @@ SQLite 存储结构、迁移脚本与导入工具均已移除，不再提供从 
 `energy_coverage_complete=false` 表示实际总量仍有缺口，此时占比仅代表已知部分。
 普通 PostgreSQL 的时间索引已足够支撑当前采样率，暂不引入额外时序库。
 
+完整的 MCP 说明（协议版本、鉴权、24 个工具的参数与副作用、`nio_trips` 的轨迹开关）见
+[docs/mcp.md](docs/mcp.md)。
+
 `POST /mcp` 提供 MCP Streamable HTTP JSON-RPC（支持 `2026-07-28` 无会话请求和
 `2025-11-25` 初始化请求），默认使用与受保护 REST 接口相同的 `API_KEY`。配置
 `MCP_OAUTH_ISSUER` 和 `MCP_OAUTH_LOGIN_SECRET` 后，也接受 OAuth Bearer 令牌，供 ChatGPT MCP
@@ -404,12 +407,31 @@ App 在前台只维持一条 SSE 连接，切到后台或主动退出时取消�
 - `GET /api/v1/orders/active`：返回上游当前仍列为进行中的换电订单，以及换电号、前方车辆数、预计等待时间和数据更新时间；订单从进行中列表消失后自动移除；
 - `GET /api/v1/vehicle/status`：实时车辆状态，并把有效位置写入采样历史；电池和充电信息由 `field=soc` 返回在 `soc_status`；
 - `GET /api/v1/vehicle/widget-info`：Widget 综合信息。当前版本的电池电量、续航、充电功率/电压/电流和充电上限位于 `data.status.soc_status`，不是独立的 `battery_status`；
+- `GET /api/v1/vehicle/profile`：车辆身份与图片地址。启动后后台会调用一次上游 `GET /app/api/icar/v2/switch/cars`（带 `device_id`、`app_id`、`app_ver`、`region`、`lang` 和签名），按 `NIO_VEHICLE_ID` 选中对应车辆（单车账号无匹配 ID 时直接取唯一一辆，多车账号必须精确匹配），把显示名、车型、颜色、`image` 地址写入当前租户 schema 的 `vehicle_profile` 表，并**下载图片字节一起入库**。图片按上游 URL 缓存：**URL 不变就一直复用已存字节，不再重复下载**；只有 URL 变化或本地缺字节时才重新下载。不按天轮询，变更在下一次启动（或按需补拉）时生效。启动失败按 5 分钟重试。接口返回 `image_available` 表示字节是否已缓存，读取时若还没有记录会同步补拉一次，仍失败返回 `404 vehicle_profile_not_found`。
+- `GET /api/v1/vehicle/image`：返回数据库中缓存的车辆图片字节，`Content-Type` 取自上游响应（PNG/JPEG，单张上限 4 MiB），响应带 `Cache-Control: public, max-age=86400` 与 `ETag`（图片 sha256），`If-None-Match` 命中返回 `304`——客户端可以一直用到 URL 变化为止。图片未缓存时返回 `404 vehicle_image_not_found`。这样客户端只依赖后端，不必访问 NIO CDN。
+  多租户下每个租户独立拉取、独立存表（`public` / `tenant_<slug>`），图片和画像互不影响；图片刷新失败时保留上一次缓存，不会把已有图片清空。
 - `GET /api/v1/vehicle/history?limit=2000`：后端轮询形成的位置采样，仅用于当前位置回退和采样轨迹；
 - `GET /api/v1/vehicle/charging/current`：最近一次连续充电会话的后端采样，包含 SOC、电压、电流和功率；充电中即使车辆已锁也按快速间隔采集。响应中的 `energy_kwh` 按相邻功率采样做梯形积分，充电中每次请求实时计算；
 - `GET /api/v1/vehicle/charging/sessions?limit=50`：按时间倒序返回充电会话摘要；连续采样间隔超过 15 分钟时拆分为下一次充电；
 - `GET /api/v1/vehicle/charging/sessions/{id}`：返回指定充电会话的完整曲线点位和积分电量。检测到充电结束时将电量写入 `vehicle_charging_session_energy`；历史会话缺少电量时，详情请求会重新积分并回写；
 - `GET /api/v1/vehicle/trips?count=20`：立即按时间倒序返回数据库中已保存的行程，不等待蔚来；每次读取会排队触发一次异步同步，并发请求合并，需再次查询才能看到更新。首次回填尚未完成时可能返回空页或部分历史。包含起止时间、地点、里程、时长、驾驶统计及上游详情中的 `trip_eng` 耗电量。列表 `distance` 为整公里；若详情的 `start_odo`/`end_odo` 差值有效且落在同一整公里区间，则用该差值保留小数，否则仍用列表值。百公里能耗按实际 `trip_eng / distance × 100` 计算，不凭 SOC 或电池容量估算。可用 `query_time`（Unix 秒、不含）向前分页，响应中的 `next_query_time` 是下一页游标。同一秒内的行程不拆页，因此结果可能略超 `count`。数据库响应的 `server_time` 为 null。
   每条行程返回 `maximum_speed_kph`、`odometer_kilometers`、`rapid_acceleration_count`、`rapid_deceleration_count` 和 `rapid_swerve_count`；优先使用列表值，缺失时尝试使用详情中的对应字段，累计里程还可使用详情的 `end_odo`。上游未提供有效数据时返回 `null`，不会默认填零。
+  同一轮详情请求里的 `track` 会写入 `vehicle_trip_tracks`，见下面的轨迹接口。
+
+- `GET /api/v1/vehicle/trips/{journey_id}/track`：按采样时间升序返回该行程已保存的官方 GPS 轨迹点，每点包含 `sampled_at`、`latitude`、`longitude`、`speed_kph`、`power_consumption` 和 `np_status`，数值按上游原样保存。数据来自上游行程详情的 `track`（约每 10 秒一个采样点），不插值、不平滑，也不与其他行程拼接。坐标非法或缺少时间戳的点直接丢弃，不猜测补齐；上游返回空 `track` 的行程（例如极短行程）没有轨迹，接口返回 `404 trip_track_not_found`。`journey_id` 只接受 ASCII 字母、数字、连字符和下划线，最长 128 字节。轨迹只在行程点数变化时重写：未结束的行程会随点数增加而更新，稳定状态下不会重复写已有采样点。
+
+  升级到带轨迹的版本后，已经入库的历史行程**不会**自动补轨迹：`vehicle_trip_sync.backfill_completed` 为真时同步只拉最新 10 条，老行程的详情不会再被请求。一次性补全用：
+
+```bash
+cargo run --locked -- backfill-tracks --dry-run      # 先看待补数量，不请求上游
+cargo run --locked -- backfill-tracks                # 全部补齐
+cargo run --locked -- backfill-tracks --limit 500    # 只补最新 500 条，可反复执行
+cargo run --locked -- backfill-tracks --tenant alice # 多租户时只处理指定租户
+cargo run --locked -- backfill-tracks --concurrency 20  # 上游限流时降低并发
+```
+
+  命令按 `started_at` 从新到旧分批请求详情：默认每批 100 个并发请求，整批返回后在一个事务里写库，批次之间暂停 200 ms；`--concurrency` 取值 1…256。每批打印耗时、`stored/empty/failed`，结尾给出总耗时。写入 `vehicle_trip_tracks` 并把 `vehicle_trips.track_scanned_at` 置为当前时间。按上游实测每趟约 165 点，3000 趟约 50 万点。上游返回空 `track` 的行程会被标记为已扫描，重复执行不会再次请求；请求失败的不做标记，重跑即可重试，结尾会报出失败条数并以非零退出。多租户模式下自动遍历已配置租户，只处理有车辆凭据的。
+
   独立后台同步将获取到的行程按车辆 ID 和行程 ID 写入 `vehicle_trips` 表；每日能耗计算只计算能耗缓存，不再重复写行程。重复获取时更新记录，缺失的可选字段不会覆盖已有值，详情获取失败时整数公里不会覆盖已保存的小数公里。启动后以每页 20 条分页回填上游可用历史，游标写入 `vehicle_trip_sync`，失败/重启后从检查点继续；每轮最多五页、页间暂停两秒。回填期间每分钟继续下一轮并从最新页追赶新增行程，回填结束后每五分钟先拉最新 10 条；若尚未覆盖上次完整同步时间之前的已存行程，则继续按每页 20 条补齐（即使 App 已写入最新一页也不会提前停止）。若上游分页游标不前进，同步会保留检查点并重试、记录警告，而不会跳过数据；上游不再提供的旧行程无法回填。
 
 以下站点目录接口也必须提供同一个后端 `API_KEY`：

@@ -24,10 +24,12 @@ mod swap_monitor;
 mod swap_order;
 mod systemd;
 mod tenant_config;
+mod trip_backfill;
 mod trip_energy;
 mod trip_sync;
 mod vehicle;
 mod vehicle_control;
+mod vehicle_profile;
 
 use std::{path::Path, sync::Arc};
 
@@ -136,6 +138,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
+    if cli_args.first().is_some_and(|arg| arg == "backfill-tracks") {
+        trip_backfill::run(&database_url, &cli_args[1..]).await?;
+        return Ok(());
+    }
     if cli_args.first().is_some_and(|arg| arg == "issue-identity") {
         let config = Config::from_env()?;
         certificate_issuance::run_cli(&cli_args[1..], config.vehicle.clone()).await?;
@@ -196,6 +202,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "default".into(),
             web::Data::new(build_state(config, store, true, false, None, "").await?),
         )];
+    }
+    for (slug, state) in &states {
+        let Some(vehicle) = state.vehicle.clone() else {
+            continue;
+        };
+        let store = state.store.clone();
+        let slug = slug.clone();
+        tokio::spawn(async move {
+            tracing::debug!(tenant = %slug, "starting vehicle profile refresh");
+            vehicle_profile::run_startup(store, vehicle).await
+        });
     }
     let default_state = states
         .iter()

@@ -1,11 +1,17 @@
 //! Stateless Streamable HTTP MCP endpoint for the backend API, excluding vehicle control.
 use actix_web::{HttpRequest, HttpResponse, ResponseError, web};
+use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 
 use super::{AppState, authorize};
+use crate::models::VehicleTripTrackPoint;
 
 const MODERN: &str = "2026-07-28";
 const LEGACY: &str = "2025-11-25";
+/// How long a modern client may cache `tools/list` and `server/discover`.
+/// Long enough to avoid re-listing on every call, short enough that a deployed
+/// tool-schema change reaches connected clients without re-authorization.
+const LIST_TTL_MS: u64 = 60_000;
 
 struct ToolSpec {
     name: &'static str,
@@ -179,10 +185,10 @@ const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         name: "nio_trips",
-        description: "Read persisted vehicle trips immediately and queue an asynchronous upstream sync; query supports count and query_time. Re-query later to see updates.",
+        description: "Read persisted vehicle trips immediately and queue an asynchronous upstream sync; query supports count and query_time. Re-query later to see updates. Each trip carries a track with its source: sampled means the App's own position samples inside that journey's window (no per-point speed or power), official means the upstream journey track. Tracks are only attached when track=true is passed, and are large; request a small count when only the route is needed.",
         method: "GET",
         path: "/api/v1/vehicle/trips",
-        query_keys: &["count", "query_time"],
+        query_keys: &["count", "query_time", "track"],
         body: false,
     },
     ToolSpec {
@@ -242,7 +248,7 @@ fn tool_list(modern: bool) -> Value {
             let mut query_properties = serde_json::Map::new();
             for key in spec.query_keys {
                 let kind = if matches!(*key, "limit" | "offset" | "count" | "query_time") { "integer" }
-                    else if *key == "include_candidates" { "boolean" } else { "string" };
+                    else if matches!(*key, "include_candidates" | "track") { "boolean" } else { "string" };
                 query_properties.insert((*key).into(), json!({"type":kind}));
             }
             let query_required: &[&str] = match spec.name {
@@ -292,13 +298,29 @@ fn tool_list(modern: bool) -> Value {
                 "openWorldHint":open_world}})
     }).collect();
     if modern {
-        json!({"resultType":"complete","tools":tools,"ttlMs":3600000,"cacheScope":"private","_meta":server_meta()})
+        json!({"resultType":"complete","tools":tools,"ttlMs":LIST_TTL_MS,"cacheScope":"private","_meta":server_meta()})
     } else {
         json!({"tools":tools})
     }
 }
 
+/// The tool list is a deployment artifact: an intermediary must never cache it
+/// on top of the explicit `ttlMs` hint, or a schema update stays invisible long
+/// after the server starts serving it.
 pub async fn handle(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    input: web::Json<Value>,
+) -> HttpResponse {
+    let mut response = handle_inner(state, request, input).await;
+    response.headers_mut().insert(
+        actix_web::http::header::CACHE_CONTROL,
+        actix_web::http::header::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+async fn handle_inner(
     state: web::Data<AppState>,
     request: HttpRequest,
     input: web::Json<Value>,
@@ -373,7 +395,7 @@ pub async fn handle(
             json!({
                 "resultType":"complete","supportedVersions":[MODERN,LEGACY],
                 "capabilities":{"tools":{}},"instructions":"NIO history, vehicle data, coupons, daily check-in and swap orders. Vehicle control is unavailable. Check-in retries only connection failures before the request is sent; swap-order creation must never be retried automatically. Creating a swap order also requires X-Vehicle-Control-Key.",
-                "ttlMs":3600000,"cacheScope":"private","_meta":server_meta()
+                "ttlMs":LIST_TTL_MS,"cacheScope":"private","_meta":server_meta()
             }),
         ),
         "initialize" if !modern => rpc_result(
@@ -411,6 +433,16 @@ async fn call_tool(
     let Some(args) = args.as_object() else {
         return rpc_error(id, -32602, "arguments must be an object");
     };
+    // `track` is a MCP-only switch: it decides whether this layer enriches the
+    // proxied trips page, and is never forwarded to the backend.
+    let wants_track = if spec.name == "nio_trips" {
+        match track_requested(args) {
+            Ok(requested) => requested,
+            Err(message) => return rpc_error(id, -32602, message),
+        }
+    } else {
+        false
+    };
     let mut path = spec.path.to_owned();
     if spec.path.contains("{id}") {
         let Some(record_id) = args.get("id").and_then(Value::as_str) else {
@@ -442,6 +474,9 @@ async fn call_tool(
         }
         let mut pairs = url.query_pairs_mut();
         for (key, value) in query {
+            if spec.name == "nio_trips" && key == "track" {
+                continue;
+            }
             let text = match value {
                 Value::String(s) => s.clone(),
                 Value::Number(n) => n.to_string(),
@@ -488,6 +523,11 @@ async fn call_tool(
         Ok(value) => value,
         Err(_) => return tool_error(id, "backend returned non-JSON", modern),
     };
+    let value = if success && wants_track {
+        attach_trip_tracks(state, value).await
+    } else {
+        value
+    };
     let content = if success {
         value.to_string()
     } else {
@@ -501,6 +541,139 @@ async fn call_tool(
     rpc_result(id, result)
 }
 
+/// `track` defaults to false so a plain trips read stays small. Booleans and
+/// the "true"/"false" strings are both accepted, matching how query values are
+/// otherwise relaxed.
+fn track_requested(args: &serde_json::Map<String, Value>) -> Result<bool, &'static str> {
+    let Some(value) = args.get("query").and_then(|query| query.get("track")) else {
+        return Ok(false);
+    };
+    match value {
+        Value::Bool(requested) => Ok(*requested),
+        Value::String(text) if text == "true" => Ok(true),
+        Value::String(text) if text == "false" => Ok(false),
+        _ => Err("track must be a boolean"),
+    }
+}
+
+/// The App's own samples win only when they cover the journey from end to end
+/// without a long gap. Otherwise the complete official upstream track wins.
+fn sampled_track_has_full_coverage(
+    sampled: &[VehicleTripTrackPoint],
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> bool {
+    let duration = (ended_at - started_at).num_seconds();
+    if sampled.len() < 2 || duration <= 0 {
+        return false;
+    }
+    let edge_tolerance = (duration / 10).clamp(30, 120);
+    let covers_edges = sampled.first().is_some_and(|point| {
+        point.sampled_at <= started_at + chrono::Duration::seconds(edge_tolerance)
+    }) && sampled.last().is_some_and(|point| {
+        point.sampled_at >= ended_at - chrono::Duration::seconds(edge_tolerance)
+    });
+    let has_no_long_gap = sampled
+        .windows(2)
+        .all(|pair| (pair[1].sampled_at - pair[0].sampled_at).num_seconds() <= 60);
+    covers_edges && has_no_long_gap
+}
+
+fn pick_track(
+    sampled: Vec<VehicleTripTrackPoint>,
+    official: Vec<VehicleTripTrackPoint>,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> Option<(&'static str, Vec<VehicleTripTrackPoint>)> {
+    if sampled_track_has_full_coverage(&sampled, started_at, ended_at) {
+        Some(("sampled", sampled))
+    } else if !official.is_empty() {
+        Some(("official", official))
+    } else if !sampled.is_empty() {
+        // A partial observed route is still better than no route when upstream
+        // has no official track, but it must not displace a complete source.
+        Some(("sampled", sampled))
+    } else {
+        None
+    }
+}
+
+/// Attach `track` to each trip in a `nio_trips` result. A trip with neither
+/// source keeps no track field at all rather than an empty one.
+async fn attach_trip_tracks(state: &AppState, mut page: Value) -> Value {
+    let Some(vehicle) = state.vehicle.as_ref() else {
+        return page;
+    };
+    let vehicle_id = vehicle.vehicle_id().to_owned();
+    let journeys = page
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    let id = item.get("id")?.as_str()?.to_owned();
+                    let started_at = item
+                        .get("started_at")?
+                        .as_str()?
+                        .parse::<DateTime<Utc>>()
+                        .ok()?;
+                    let ended_at = item
+                        .get("ended_at")?
+                        .as_str()?
+                        .parse::<DateTime<Utc>>()
+                        .ok()?;
+                    Some((index, id, started_at, ended_at))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut tracks = Vec::new();
+    for (index, journey_id, started_at, ended_at) in journeys {
+        let sampled = match state
+            .store
+            .vehicle_trip_sampled_points(&vehicle_id, &journey_id)
+            .await
+        {
+            Ok(points) => points,
+            Err(error) => {
+                tracing::warn!(%error, journey_id, "failed to read sampled trip positions");
+                Vec::new()
+            }
+        };
+        let official = if !sampled_track_has_full_coverage(&sampled, started_at, ended_at) {
+            match state
+                .store
+                .vehicle_trip_track(&vehicle_id, &journey_id)
+                .await
+            {
+                Ok(points) => points,
+                Err(error) => {
+                    tracing::warn!(%error, journey_id, "failed to read official trip track");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        if let Some(picked) = pick_track(sampled, official, started_at, ended_at) {
+            tracks.push((index, picked));
+        }
+    }
+    for (index, (source, points)) in tracks {
+        if let Some(item) = page.get_mut("items").and_then(|items| items.get_mut(index))
+            && let Some(object) = item.as_object_mut()
+        {
+            object.insert(
+                "track".to_owned(),
+                json!({"source": source, "points": points}),
+            );
+        }
+    }
+    page
+}
+
 fn tool_error(id: Value, message: &str, modern: bool) -> HttpResponse {
     let mut result = json!({"content":[{"type":"text","text":message}],"isError":true});
     if modern {
@@ -508,4 +681,94 @@ fn tool_error(id: Value, message: &str, modern: bool) -> HttpResponse {
         result["_meta"] = server_meta();
     }
     rpc_result(id, result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    fn point(minute: u32) -> VehicleTripTrackPoint {
+        VehicleTripTrackPoint {
+            sampled_at: Utc.with_ymd_and_hms(2026, 11, 10, 5, minute, 0).unwrap(),
+            latitude: 39.0,
+            longitude: 117.0,
+            speed_kph: None,
+            power_consumption: None,
+            np_status: None,
+        }
+    }
+
+    /// The connector only learns about `track` through `tools/list`, so the
+    /// schema path is pinned here.
+    #[test]
+    fn tools_list_exposes_track_as_a_boolean_on_trips() {
+        let list = tool_list(true);
+        assert_eq!(list["ttlMs"], json!(LIST_TTL_MS));
+        let trips = list["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "nio_trips")
+            .expect("nio_trips must be exposed");
+        assert_eq!(
+            trips["inputSchema"]["properties"]["query"]["properties"]["track"],
+            json!({"type": "boolean"})
+        );
+        assert!(
+            trips["description"]
+                .as_str()
+                .unwrap()
+                .contains("track=true")
+        );
+    }
+
+    #[test]
+    fn track_flag_defaults_to_off_and_accepts_boolean_or_text() {
+        let parse = |value: Value| track_requested(value.as_object().unwrap()).map_err(|_| ());
+        assert_eq!(parse(json!({})), Ok(false));
+        assert_eq!(parse(json!({"query": {}})), Ok(false));
+        assert_eq!(parse(json!({"query": {"track": true}})), Ok(true));
+        assert_eq!(parse(json!({"query": {"track": false}})), Ok(false));
+        assert_eq!(parse(json!({"query": {"track": "true"}})), Ok(true));
+        assert_eq!(parse(json!({"query": {"track": "false"}})), Ok(false));
+        assert!(parse(json!({"query": {"track": 1}})).is_err());
+        assert!(parse(json!({"query": {"track": "yes"}})).is_err());
+    }
+
+    #[test]
+    fn sampled_positions_win_and_official_track_is_the_fallback() {
+        let started_at = Utc.with_ymd_and_hms(2026, 11, 10, 5, 0, 0).unwrap();
+        let ended_at = Utc.with_ymd_and_hms(2026, 11, 10, 5, 2, 0).unwrap();
+        assert_eq!(
+            pick_track(
+                vec![point(0), point(1), point(2)],
+                vec![point(1)],
+                started_at,
+                ended_at
+            ),
+            Some(("sampled", vec![point(0), point(1), point(2)]))
+        );
+        assert_eq!(
+            pick_track(
+                vec![point(1)],
+                vec![point(0), point(2)],
+                started_at,
+                ended_at
+            ),
+            Some(("official", vec![point(0), point(2)]))
+        );
+        assert_eq!(
+            pick_track(Vec::new(), vec![point(1)], started_at, ended_at),
+            Some(("official", vec![point(1)]))
+        );
+        assert_eq!(
+            pick_track(vec![point(1)], Vec::new(), started_at, ended_at),
+            Some(("sampled", vec![point(1)]))
+        );
+        assert_eq!(
+            pick_track(Vec::new(), Vec::new(), started_at, ended_at),
+            None
+        );
+    }
 }

@@ -3,6 +3,7 @@ use md5::{Digest, Md5};
 use reqwest::{Client, StatusCode, header};
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::Sha256;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{sync::Semaphore, task::JoinSet};
@@ -10,12 +11,21 @@ use url::Url;
 
 use crate::config::VehicleConfig;
 use crate::models::{
-    VehicleChargingSample, VehicleSnapshot, VehicleTrip, VehicleTripLocation, VehicleTripPage,
+    StoredVehicleProfile, VehicleChargingSample, VehicleProfile, VehicleSnapshot, VehicleTrip,
+    VehicleTripLocation, VehicleTripPage, VehicleTripTrack, VehicleTripTrackPoint,
 };
 
 const SIGNING_SALT: &str = "2bc9b00fdcf8f7ded6d77afdd7077e79";
+/// The journey detail track arrives at roughly one sample per 10 s; a long
+/// trip can legitimately exceed a thousand points. Anything above this bound is
+/// treated as a malformed response rather than stored.
+const MAX_TRACK_POINTS: usize = 5_000;
 const STATUS_ORIGIN: &str = "https://icar.nio.com";
 const WIDGET_INFO_URL: &str = "https://app.nio.com/app/api/icar/v2/widget/info";
+const SWITCH_CARS_URL: &str = "https://app.nio.com/app/api/icar/v2/switch/cars";
+/// A vehicle image is a small PNG/JPEG. Anything larger is refused rather than
+/// written to the database.
+const MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024;
 const WIDGET_FUNCTIONS: &str =
     "rvs_set_doorlock,rvs_set_air_conditioner,rvs_set_tailgate,rvs_exe_findme";
 const USER_AGENT: &str =
@@ -42,6 +52,14 @@ pub enum VehicleError {
     JourneyApi(String),
     #[error("NIO journey endpoint returned an invalid payload")]
     InvalidJourneyPayload,
+    #[error("NIO account does not list the configured vehicle")]
+    VehicleNotFound,
+    #[error("vehicle image returned a non-image content type")]
+    UnexpectedImageType,
+    #[error("vehicle image exceeds the size limit")]
+    ImageTooLarge,
+    #[error("NIO journey track contains too many points: {0}")]
+    TrackTooLarge(usize),
 }
 
 impl NioVehicleClient {
@@ -101,7 +119,7 @@ impl NioVehicleClient {
         &self,
         count: u32,
         query_time: Option<i64>,
-    ) -> Result<VehicleTripPage, VehicleError> {
+    ) -> Result<JourneyPage, VehicleError> {
         let raw_url = format!(
             "{STATUS_ORIGIN}/api/1/vehicle/{}/journey_merge/timing_journeys",
             self.config.vehicle_id
@@ -120,12 +138,14 @@ impl NioVehicleClient {
             .append_pair("query_time", &query_time.to_string());
         let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
         let payload = self.get(url, false).await?;
-        let mut page = trip_page_from_payload(payload)?;
-        self.enrich_journey_details(&mut page).await;
-        Ok(page)
+        let page = trip_page_from_payload(payload)?;
+        Ok(self.enrich_journey_details(page).await)
     }
 
-    async fn enrich_journey_details(&self, page: &mut VehicleTripPage) {
+    /// Fill energy and driving details from the per-journey endpoint. The same
+    /// response carries the stored GPS track, so it is returned alongside the
+    /// page instead of being discarded.
+    async fn enrich_journey_details(&self, mut page: VehicleTripPage) -> JourneyPage {
         let semaphore = Arc::new(Semaphore::new(JOURNEY_DETAIL_CONCURRENCY));
         let mut tasks = JoinSet::new();
         for (index, trip) in page.items.iter().enumerate() {
@@ -140,6 +160,7 @@ impl NioVehicleClient {
             });
         }
 
+        let mut tracks = Vec::new();
         let mut unavailable = 0usize;
         while let Some(result) = tasks.join_next().await {
             let Ok((index, Some(detail_result))) = result else {
@@ -148,10 +169,17 @@ impl NioVehicleClient {
             };
             match detail_result {
                 Ok(details) => {
-                    if let Some(trip) = page.items.get_mut(index)
-                        && !apply_journey_details(trip, details)
-                    {
+                    let Some(trip) = page.items.get_mut(index) else {
                         unavailable += 1;
+                        continue;
+                    };
+                    let journey_id = trip.id.clone();
+                    let (energy, points) = apply_journey_details(trip, details);
+                    if !energy {
+                        unavailable += 1;
+                    }
+                    if !points.is_empty() {
+                        tracks.push(VehicleTripTrack { journey_id, points });
                     }
                 }
                 Err(_) => unavailable += 1,
@@ -164,6 +192,16 @@ impl NioVehicleClient {
                 "some NIO journey details did not provide energy data"
             );
         }
+        JourneyPage { page, tracks }
+    }
+
+    /// Track only, for the offline backfill command. Upstream returns an empty
+    /// vector for journeys without a stored trajectory.
+    pub async fn journey_track(
+        &self,
+        journey_id: &str,
+    ) -> Result<Vec<VehicleTripTrackPoint>, VehicleError> {
+        Ok(self.journey_details(journey_id).await?.track)
     }
 
     async fn journey_details(&self, journey_id: &str) -> Result<JourneyDetails, VehicleError> {
@@ -193,7 +231,101 @@ impl NioVehicleClient {
             ));
         }
         let data = payload.get("data");
+        validate_track_size(data)?;
         Ok(JourneyDetails::from_data(data))
+    }
+
+    /// Every car on the account. The App shows one; this backend keeps the one
+    /// whose id matches `NIO_VEHICLE_ID`.
+    pub async fn switch_cars(&self) -> Result<Vec<NioCar>, VehicleError> {
+        let mut url = Url::parse(SWITCH_CARS_URL).map_err(|_| VehicleError::InvalidUrl)?;
+        url.query_pairs_mut()
+            .append_pair("app_id", &self.config.app_id)
+            .append_pair("app_ver", &self.config.app_version)
+            .append_pair("region", &self.config.region)
+            .append_pair("lang", &self.config.language)
+            .append_pair("device_id", &self.config.device_id);
+        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
+        let payload = self.get(url, false).await?;
+        switch_cars_from_payload(payload)
+    }
+
+    /// Identity plus the cached image bytes for the configured vehicle. The
+    /// image is only fetched again when upstream's URL changed (or the bytes are
+    /// missing); an unchanged URL reuses the stored copy indefinitely. A failed
+    /// download fails the refresh so the caller retries without mixing a new
+    /// URL with old or missing bytes.
+    pub async fn vehicle_profile(
+        &self,
+        cached: Option<&StoredVehicleProfile>,
+    ) -> Result<VehicleProfile, VehicleError> {
+        let cars = self.switch_cars().await?;
+        let car = select_car(&cars, &self.config.vehicle_id)?;
+        let image = if reuse_cached_image(cached, car.image.as_deref()) {
+            None
+        } else if let Some(url) = car.image.as_deref() {
+            // Keep the profile update atomic with its image. If the URL changed
+            // but downloading failed, returning an error leaves the old URL and
+            // bytes together and lets the startup task retry later.
+            Some(self.download_image(url).await?)
+        } else {
+            None
+        };
+        Ok(VehicleProfile {
+            vehicle_id: self.config.vehicle_id.clone(),
+            display_name: car.display_name.clone().or_else(|| {
+                car.profile
+                    .as_ref()
+                    .and_then(|profile| profile.nick_name.clone())
+            }),
+            model_type: car.model_type.clone(),
+            color: car
+                .profile
+                .as_ref()
+                .and_then(|profile| profile.color.clone()),
+            image_url: car.image.clone(),
+            image_content_type: image.as_ref().map(|image| image.content_type.clone()),
+            image_bytes: image.as_ref().map(|image| image.bytes.clone()),
+            image_sha256: image.as_ref().map(|image| image.sha256.clone()),
+            image_fetched_at: image.as_ref().map(|_| Utc::now()),
+        })
+    }
+
+    async fn download_image(&self, url: &str) -> Result<DownloadedImage, VehicleError> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(VehicleError::Request)?;
+        if !response.status().is_success() {
+            return Err(VehicleError::HttpStatus(response.status()));
+        }
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        if !content_type.starts_with("image/") {
+            return Err(VehicleError::UnexpectedImageType);
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_IMAGE_BYTES as u64)
+        {
+            return Err(VehicleError::ImageTooLarge);
+        }
+        let bytes = response.bytes().await.map_err(VehicleError::Request)?;
+        if bytes.len() > MAX_IMAGE_BYTES {
+            return Err(VehicleError::ImageTooLarge);
+        }
+        let sha256 = format!("{:x}", Sha256::digest(&bytes));
+        Ok(DownloadedImage {
+            bytes: bytes.to_vec(),
+            content_type,
+            sha256,
+        })
     }
 
     async fn get(&self, url: Url, widget_status_headers: bool) -> Result<Value, VehicleError> {
@@ -213,6 +345,95 @@ impl NioVehicleClient {
             return Err(VehicleError::HttpStatus(response.status()));
         }
         response.json().await.map_err(VehicleError::InvalidJson)
+    }
+}
+
+/// One upstream page of journeys plus the tracks returned by the per-journey
+/// detail calls that enrich it. The page itself stays exactly as documented by
+/// the trips endpoint.
+pub struct JourneyPage {
+    pub page: VehicleTripPage,
+    pub tracks: Vec<VehicleTripTrack>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NioSwitchCarsResponse {
+    result_code: String,
+    data: Option<NioSwitchCarsData>,
+    debug_msg: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NioSwitchCarsData {
+    #[serde(default)]
+    cars: Vec<NioCar>,
+}
+
+/// One car in the account's switch/cars list.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NioCar {
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub model_type: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default, rename = "vehicle_profile")]
+    pub profile: Option<NioCarProfile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct NioCarProfile {
+    #[serde(default)]
+    pub vehicle_id: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub nick_name: Option<String>,
+}
+
+struct DownloadedImage {
+    bytes: Vec<u8>,
+    content_type: String,
+    sha256: String,
+}
+
+fn switch_cars_from_payload(payload: Value) -> Result<Vec<NioCar>, VehicleError> {
+    let response: NioSwitchCarsResponse = serde_json::from_value(payload).map_err(|error| {
+        tracing::warn!(%error, "invalid NIO switch/cars response shape");
+        VehicleError::InvalidJourneyPayload
+    })?;
+    if response.result_code != "success" {
+        return Err(VehicleError::JourneyApi(
+            response.debug_msg.unwrap_or(response.result_code),
+        ));
+    }
+    Ok(response.data.map(|data| data.cars).unwrap_or_default())
+}
+
+/// The image is keyed by its upstream URL: as long as it does not change and the
+/// bytes are still stored, there is nothing to download.
+fn reuse_cached_image(cached: Option<&StoredVehicleProfile>, image_url: Option<&str>) -> bool {
+    let (Some(cached), Some(url)) = (cached, image_url) else {
+        return false;
+    };
+    cached.image_available && cached.image_url.as_deref() == Some(url)
+}
+
+/// Pick the configured vehicle. A single-car account is unambiguous even when
+/// the response omits `vehicle_profile.vehicle_id`; anything else must match.
+fn select_car<'a>(cars: &'a [NioCar], vehicle_id: &str) -> Result<&'a NioCar, VehicleError> {
+    if let Some(car) = cars.iter().find(|car| {
+        car.profile
+            .as_ref()
+            .and_then(|profile| profile.vehicle_id.as_deref())
+            == Some(vehicle_id)
+    }) {
+        return Ok(car);
+    }
+    match cars {
+        [only] => Ok(only),
+        _ => Err(VehicleError::VehicleNotFound),
     }
 }
 
@@ -275,6 +496,7 @@ struct JourneyDetails {
     rapid_acceleration: Option<u32>,
     rapid_deceleration: Option<u32>,
     rapid_swerve: Option<u32>,
+    track: Vec<VehicleTripTrackPoint>,
 }
 
 impl JourneyDetails {
@@ -294,8 +516,60 @@ impl JourneyDetails {
             rapid_acceleration: count("rapid_acceleration"),
             rapid_deceleration: count("rapid_deceleration"),
             rapid_swerve: count("rapid_swerve"),
+            track: track_points(data),
         }
     }
+}
+
+/// The journey detail `track` is a plain array of GPS samples. Points with
+/// unusable coordinates or timestamps are dropped instead of being guessed, and
+/// the remainder is ordered by sample time so the stored `seq` is chronological.
+fn track_points(data: Option<&Value>) -> Vec<VehicleTripTrackPoint> {
+    let items = data
+        .and_then(|data| data.get("track"))
+        .and_then(Value::as_array);
+    let Some(items) = items else {
+        return Vec::new();
+    };
+    let mut points = items
+        .iter()
+        .filter_map(|item| {
+            let latitude = item.get("latitude").and_then(value_as_f64)?;
+            let longitude = item.get("longitude").and_then(value_as_f64)?;
+            if !valid_gps(latitude, longitude) {
+                return None;
+            }
+            let sampled_at = timestamp_to_datetime(item.get("timestamp").and_then(value_as_i64)?)?;
+            Some(VehicleTripTrackPoint {
+                sampled_at,
+                latitude,
+                longitude,
+                speed_kph: item
+                    .get("speed")
+                    .and_then(value_as_f64)
+                    .filter(|value| value.is_finite() && *value >= 0.0),
+                power_consumption: item
+                    .get("power_consumption")
+                    .and_then(value_as_f64)
+                    .filter(|value| value.is_finite()),
+                np_status: item.get("np_status").and_then(value_as_i64),
+            })
+        })
+        .collect::<Vec<_>>();
+    points.sort_by_key(|point| point.sampled_at);
+    points
+}
+
+fn validate_track_size(data: Option<&Value>) -> Result<(), VehicleError> {
+    if let Some(point_count) = data
+        .and_then(|data| data.get("track"))
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        && point_count > MAX_TRACK_POINTS
+    {
+        return Err(VehicleError::TrackTooLarge(point_count));
+    }
+    Ok(())
 }
 
 fn trip_page_from_payload(payload: Value) -> Result<VehicleTripPage, VehicleError> {
@@ -420,7 +694,10 @@ fn apply_journey_energy(trip: &mut VehicleTrip, energy_kwh: f64) {
         (trip.distance_kilometers > 0.0).then(|| energy_kwh / trip.distance_kilometers * 100.0);
 }
 
-fn apply_journey_details(trip: &mut VehicleTrip, details: JourneyDetails) -> bool {
+fn apply_journey_details(
+    trip: &mut VehicleTrip,
+    details: JourneyDetails,
+) -> (bool, Vec<VehicleTripTrackPoint>) {
     // Preserve list values; only fill gaps from the detail response.
     trip.maximum_speed_kph = trip.maximum_speed_kph.or(details.max_speed);
     trip.odometer_kilometers = trip
@@ -443,9 +720,9 @@ fn apply_journey_details(trip: &mut VehicleTrip, details: JourneyDetails) -> boo
         .filter(|energy| energy.is_finite() && *energy >= 0.0)
     {
         apply_journey_energy(trip, energy_kwh);
-        true
+        (true, details.track)
     } else {
-        false
+        (false, details.track)
     }
 }
 
@@ -925,6 +1202,133 @@ mod tests {
     }
 
     #[test]
+    fn switch_cars_parses_the_image_and_picks_the_configured_vehicle() {
+        let cars = switch_cars_from_payload(serde_json::json!({
+            "result_code": "success",
+            "data": {"cars": [
+                {"display_name": "我的ET5T", "model_type": "ET5T",
+                 "image": "https://cdn-app.nio.com/a.png",
+                 "vehicle_profile": {"vehicle_id": "v1", "color": "tech_grey", "nick_name": "昵称"}},
+                {"display_name": "另一辆", "model_type": "ES6",
+                 "image": "https://cdn-app.nio.com/b.png",
+                 "vehicle_profile": {"vehicle_id": "v2", "color": "black"}}
+            ]}
+        }))
+        .unwrap();
+        assert_eq!(cars.len(), 2);
+        let car = select_car(&cars, "v2").unwrap();
+        assert_eq!(car.model_type.as_deref(), Some("ES6"));
+        assert_eq!(car.image.as_deref(), Some("https://cdn-app.nio.com/b.png"));
+        // An account with several cars must never be guessed.
+        assert!(select_car(&cars, "v3").is_err());
+        assert_eq!(
+            cars[0].profile.as_ref().unwrap().color.as_deref(),
+            Some("tech_grey")
+        );
+    }
+
+    #[test]
+    fn the_cached_image_is_reused_only_while_the_url_is_unchanged() {
+        let cached = StoredVehicleProfile {
+            vehicle_id: "v1".to_owned(),
+            display_name: None,
+            model_type: None,
+            color: None,
+            image_url: Some("https://cdn/a.png".to_owned()),
+            image_available: true,
+            image_sha256: Some("sha".to_owned()),
+            image_fetched_at: None,
+        };
+        assert!(reuse_cached_image(Some(&cached), Some("https://cdn/a.png")));
+        // A new URL means new bytes.
+        assert!(!reuse_cached_image(
+            Some(&cached),
+            Some("https://cdn/b.png")
+        ));
+        // No bytes stored yet, so a failed earlier download is retried.
+        let empty = StoredVehicleProfile {
+            image_available: false,
+            ..cached.clone()
+        };
+        assert!(!reuse_cached_image(Some(&empty), Some("https://cdn/a.png")));
+        assert!(!reuse_cached_image(None, Some("https://cdn/a.png")));
+        // Upstream no longer reports an image; there is nothing to keep.
+        assert!(!reuse_cached_image(Some(&cached), None));
+    }
+
+    #[test]
+    fn single_car_account_is_selected_without_a_matching_id() {
+        let cars = switch_cars_from_payload(serde_json::json!({
+            "result_code": "success",
+            "data": {"cars": [{"image": "https://cdn-app.nio.com/only.png"}]}
+        }))
+        .unwrap();
+        assert_eq!(
+            select_car(&cars, "whatever").unwrap().image.as_deref(),
+            Some("https://cdn-app.nio.com/only.png")
+        );
+    }
+
+    #[test]
+    fn switch_cars_reports_an_upstream_failure_instead_of_an_empty_list() {
+        let error = switch_cars_from_payload(serde_json::json!({
+            "result_code": "failed",
+            "debug_msg": "token expired"
+        }));
+        assert!(
+            matches!(error, Err(VehicleError::JourneyApi(message)) if message == "token expired")
+        );
+    }
+
+    #[test]
+    fn journey_detail_track_keeps_valid_points_in_time_order() {
+        let details = JourneyDetails::from_data(Some(&serde_json::json!({
+            "trip_eng": 4.2,
+            "track": [
+                {"longitude": 117.766, "latitude": 39.123, "timestamp": 1794288480,
+                 "speed": 12.5, "power_consumption": 3, "np_status": 0},
+                {"longitude": 117.760, "latitude": 39.120, "timestamp": 1794288460,
+                 "speed": 0.0, "power_consumption": -2, "np_status": 1},
+                {"longitude": 0.0, "latitude": 0.0, "timestamp": 1794288470, "speed": 1.0},
+                {"longitude": 117.75, "latitude": 39.11}
+            ]
+        })));
+        assert_eq!(details.energy_kwh, Some(4.2));
+        // Null-island and timestamp-less samples are dropped, not guessed.
+        assert_eq!(details.track.len(), 2);
+        assert_eq!(details.track[0].sampled_at.timestamp(), 1794288460);
+        assert_eq!(details.track[1].sampled_at.timestamp(), 1794288480);
+        assert_eq!(details.track[0].power_consumption, Some(-2.0));
+        assert_eq!(details.track[1].speed_kph, Some(12.5));
+        assert_eq!(details.track[1].np_status, Some(0));
+    }
+
+    #[test]
+    fn journey_detail_without_track_produces_no_points() {
+        let details = JourneyDetails::from_data(Some(&serde_json::json!({"trip_eng": 1.0})));
+        assert!(details.track.is_empty());
+        assert!(JourneyDetails::from_data(None).track.is_empty());
+    }
+
+    #[test]
+    fn oversized_journey_track_is_rejected_instead_of_truncated() {
+        let points = (0..=MAX_TRACK_POINTS)
+            .map(|index| {
+                serde_json::json!({
+                    "longitude": 117.0,
+                    "latitude": 39.0,
+                    "timestamp": 1_700_000_000_i64 + index as i64
+                })
+            })
+            .collect::<Vec<_>>();
+        let data = serde_json::json!({"track": points});
+        assert!(matches!(
+            validate_track_size(Some(&data)),
+            Err(VehicleError::TrackTooLarge(count)) if count == MAX_TRACK_POINTS + 1
+        ));
+    }
+
+    #[test]
     fn detail_odometers_restore_short_trip_decimals_without_guessing() {
         let short = precise_distance_from_odometers(0.0, Some(12_345.1), Some(12_346.0))
             .expect("consistent odometers should restore a short trip");
@@ -971,15 +1375,18 @@ mod tests {
         .items
         .remove(0);
 
-        assert!(apply_journey_details(
-            &mut trip,
-            JourneyDetails {
-                energy_kwh: Some(0.18),
-                start_odo: Some(12_345.1),
-                end_odo: Some(12_346.0),
-                ..Default::default()
-            }
-        ));
+        assert!(
+            apply_journey_details(
+                &mut trip,
+                JourneyDetails {
+                    energy_kwh: Some(0.18),
+                    start_odo: Some(12_345.1),
+                    end_odo: Some(12_346.0),
+                    ..Default::default()
+                }
+            )
+            .0
+        );
         assert!((trip.distance_kilometers - 0.9).abs() < 1e-9);
         assert_eq!(trip.energy_consumed_kwh, Some(0.18));
         assert!((trip.average_energy_consumption_kwh_per_100km.unwrap() - 20.0).abs() < 1e-9);
@@ -1010,10 +1417,7 @@ mod tests {
             "rapid_swerve": 0
         });
 
-        assert!(!apply_journey_details(
-            &mut trip,
-            JourneyDetails::from_data(Some(&data))
-        ));
+        assert!(!apply_journey_details(&mut trip, JourneyDetails::from_data(Some(&data))).0);
         let item = serde_json::to_value(&trip).unwrap();
         assert_eq!(item["maximum_speed_kph"], 52.0);
         assert_eq!(item["odometer_kilometers"], 1234.5);

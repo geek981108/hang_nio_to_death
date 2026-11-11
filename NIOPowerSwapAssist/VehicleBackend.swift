@@ -53,6 +53,62 @@ struct VehicleDashboard: Codable, Equatable, Sendable {
     let updatedAt: Date
 }
 
+struct VehicleProfile: Decodable, Equatable, Sendable {
+    let vehicleID: String
+    let displayName: String?
+    let modelType: String?
+    let color: String?
+    let imageURL: String?
+    let imageAvailable: Bool
+    let imageSHA256: String?
+    let imageFetchedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case vehicleID = "vehicle_id"
+        case displayName = "display_name"
+        case modelType = "model_type"
+        case color
+        case imageURL = "image_url"
+        case imageAvailable = "image_available"
+        case imageSHA256 = "image_sha256"
+        case imageFetchedAt = "image_fetched_at"
+    }
+
+    var localizedColorName: String? {
+        guard let color = color?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !color.isEmpty else { return nil }
+        switch color.lowercased().replacingOccurrences(of: "-", with: "_") {
+        case "tech_grey", "tech_gray", "star_grey", "star_gray":
+            return "星灰"
+        case "white", "cloud_white":
+            return "云白"
+        case "black", "deep_black":
+            return "深空黑"
+        case "blue":
+            return "蓝色"
+        case "red":
+            return "红色"
+        case "silver":
+            return "银色"
+        case "grey", "gray":
+            return "灰色"
+        default:
+            return color
+        }
+    }
+}
+
+enum VehicleImageFetchResult: Sendable {
+    case unavailable
+    case notModified
+    case downloaded(data: Data, etag: String?)
+}
+
+struct VehiclePresentation: Sendable {
+    let profile: VehicleProfile
+    let image: VehicleImageFetchResult
+}
+
 struct VehicleCoordinate: Codable, Equatable, Sendable {
     let latitude: Double
     let longitude: Double
@@ -653,6 +709,50 @@ struct BackendClient: Sendable {
         async let status = fetchVehicleStatus()
         async let widget = fetchWidgetInfo()
         return try await makeDashboard(status: status, widget: widget)
+    }
+
+    func fetchVehicleProfile() async throws -> VehicleProfile {
+        try await fetch(path: "api/v1/vehicle/profile")
+    }
+
+    func fetchVehiclePresentation(cachedETag: String?) async throws -> VehiclePresentation {
+        let profile = try await fetchVehicleProfile()
+        guard profile.imageAvailable else {
+            return VehiclePresentation(profile: profile, image: .unavailable)
+        }
+        let request = makeVehicleImageRequest(cachedETag: cachedETag)
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else {
+            throw BackendClientError.invalidResponse
+        }
+        if response.statusCode == 304 {
+            return VehiclePresentation(profile: profile, image: .notModified)
+        }
+        if response.statusCode == 401 {
+            throw BackendClientError.unauthorized
+        }
+        guard response.statusCode == 200 else {
+            throw BackendClientError.httpStatus(response.statusCode)
+        }
+        guard response.mimeType?.hasPrefix("image/") == true, !data.isEmpty else {
+            throw BackendClientError.invalidResponse
+        }
+        return VehiclePresentation(
+            profile: profile,
+            image: .downloaded(
+                data: data,
+                etag: response.value(forHTTPHeaderField: "ETag")
+            )
+        )
+    }
+
+    func makeVehicleImageRequest(cachedETag: String?) -> URLRequest {
+        var request = makeRequest(path: "api/v1/vehicle/image")
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        if let cachedETag, !cachedETag.isEmpty {
+            request.setValue(cachedETag, forHTTPHeaderField: "If-None-Match")
+        }
+        return request
     }
 
     func fetchVehicleStatus() async throws -> NIOVehicleStatusResponse {

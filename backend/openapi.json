@@ -3369,6 +3369,103 @@
         ],
         "type": "object"
       },
+      "VehicleProfile": {
+        "description": "车辆身份与缓存图片状态；图片字节不在本结构内，按 image_available 决定是否请求图片接口。",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "description": "颜色代码。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游 color，例如 tech_grey；缺失为 null。"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "description": "显示名。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游 display_name 或昵称；缺失为 null。"
+          },
+          "image_available": {
+            "description": "后端是否已缓存图片字节。",
+            "type": "boolean"
+          },
+          "image_fetched_at": {
+            "anyOf": [
+              {
+                "description": "下载时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未缓存为 null。"
+          },
+          "image_sha256": {
+            "anyOf": [
+              {
+                "description": "图片摘要。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缓存图片的十六进制 SHA-256；未缓存为 null。"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "description": "图片地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游 CDN 地址；客户端可直连，也可改走图片接口。"
+          },
+          "model_type": {
+            "anyOf": [
+              {
+                "description": "车型。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "如 ET5T；缺失为 null。"
+          },
+          "vehicle_id": {
+            "description": "上游车辆 ID。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "display_name",
+          "model_type",
+          "color",
+          "image_url",
+          "image_available",
+          "image_sha256",
+          "image_fetched_at"
+        ],
+        "type": "object"
+      },
       "VehicleSnapshot": {
         "description": "车辆 GPS 采样；不能替代官方行程。",
         "properties": {
@@ -3833,6 +3930,90 @@
           "server_time"
         ],
         "type": "object"
+      },
+      "VehicleTripTrack": {
+        "description": "单条官方行程的 GPS 轨迹，按采样时间升序；不包含其他行程的采样点。",
+        "properties": {
+          "journey_id": {
+            "description": "上游 journey_id。",
+            "type": "string"
+          },
+          "points": {
+            "description": "轨迹点列表。",
+            "items": {
+              "$ref": "#/components/schemas/VehicleTripTrackPoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "journey_id",
+          "points"
+        ],
+        "type": "object"
+      },
+      "VehicleTripTrackPoint": {
+        "description": "上游行程轨迹中的一个 GPS 采样点，数值按上游原样保存；坐标非法的点不入库。",
+        "properties": {
+          "latitude": {
+            "description": "纬度，WGS-84。",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "经度，WGS-84。",
+            "type": "number"
+          },
+          "np_status": {
+            "anyOf": [
+              {
+                "description": "辅助驾驶状态。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游 np_status 原值；缺失为 null。"
+          },
+          "power_consumption": {
+            "anyOf": [
+              {
+                "description": "瞬时功率。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游逐点 power_consumption 原值，可为负；缺失为 null。"
+          },
+          "sampled_at": {
+            "description": "采样时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "speed_kph": {
+            "anyOf": [
+              {
+                "description": "车速。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游该点车速，km/h；缺失为 null。"
+          }
+        },
+        "required": [
+          "sampled_at",
+          "latitude",
+          "longitude",
+          "speed_kph",
+          "power_consumption",
+          "np_status"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -3858,7 +4039,7 @@
   "info": {
     "description": "Actix Web / PostgreSQL + Diesel 后端的实际 HTTP 契约。注释写在 description 中，文件保持合法 JSON。所有日期时间为 RFC3339，距离为 km，功率为 W，电量为 kWh。车控、订单确认、候选匹配、分组与采样分段规则以服务端实现为准。公开只读接口与受保护接口的区别在每个 operation 中明确标注。export-openapi 是离线文档命令，不会启动服务或发送车辆指令。",
     "title": "NIOPowerSwapAssist Rust API",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "openapi": "3.1.0",
@@ -5791,6 +5972,143 @@
         ]
       }
     },
+    "/api/v1/vehicle/image": {
+      "get": {
+        "description": "返回后端缓存的车辆图片字节，Content-Type 取自上游响应。图片按上游 URL 缓存：URL 不变就一直复用，只有 URL 变化或本地缺字节时才重新下载；启动时拉取一次，不按天轮询。响应带 Cache-Control: public, max-age=86400 与 ETag（图片 sha256），If-None-Match 命中时返回 304。",
+        "operationId": "vehicleImage",
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "图片字节。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_image_not_found：后端尚未缓存图片。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "车辆图片",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/vehicle/profile": {
+      "get": {
+        "description": "返回车辆显示名、车型、颜色和上游图片地址，并说明后端是否已缓存图片字节。启动时后台从上游 switch/cars 拉取并写入当前租户的 vehicle_profile；图片按上游 URL 缓存，URL 不变就复用，不按天轮询。首次尚未完成或上游失败时本接口会同步补拉一次，仍失败返回 404。",
+        "operationId": "vehicleProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleProfile"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_profile_not_found：车辆画像尚未成功拉取。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "车辆身份与图片地址",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
     "/api/v1/vehicle/status": {
       "get": {
         "description": "透传 NIO 车辆状态 JSON；有有效 GPS 时尝试保存本地快照。保存失败只记录日志，不丢弃成功的上游状态响应。",
@@ -5940,6 +6258,97 @@
           }
         ],
         "summary": "已保存行程",
+        "tags": [
+          "行程"
+        ]
+      }
+    },
+    "/api/v1/vehicle/trips/{journey_id}/track": {
+      "get": {
+        "description": "返回数据库中已保存的官方 GPS 轨迹点，按采样时间升序。数据来自上游行程详情的 track 字段，约每 10 秒一个采样点；首次同步完成前可能返回 404。轨迹只属于该行程，不与其他行程拼接，也不用于推导里程或能耗。",
+        "operationId": "vehicleTripTrack",
+        "parameters": [
+          {
+            "description": "上游 journey_id；只允许 ASCII 字母、数字、连字符与下划线，最长 128 字节。",
+            "in": "path",
+            "name": "journey_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleTripTrack"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_journey_id：journey_id 含不允许的字符或为空。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "trip_track_not_found：该行程没有已保存的轨迹。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "行程轨迹",
         "tags": [
           "行程"
         ]
