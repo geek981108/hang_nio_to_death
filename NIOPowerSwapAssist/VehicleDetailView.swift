@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct VehicleDetailView: View {
     @ObservedObject var viewModel: VehicleViewModel
@@ -187,17 +188,21 @@ struct VehicleDetailView: View {
     }
 
     private func statusHero(_ dashboard: VehicleDashboard) -> some View {
-        VStack(spacing: 0) {
+        let vehicleTitle = viewModel.vehicleProfile?.displayName
+            ?? viewModel.vehicleProfile?.modelType.map { "NIO \($0)" }
+            ?? "NIO ET5T"
+        let vehicleColor = viewModel.vehicleProfile?.localizedColorName ?? "星灰"
+        return VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("NIO ET5T")
+                    Text(vehicleTitle)
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
                     HStack(spacing: 7) {
                         Circle()
                             .fill(dashboard.isConnected ? Color.green : Color.secondary)
                             .frame(width: 7, height: 7)
                         Text(vehicleStateLabel(dashboard))
-                        Text("· 星灰")
+                        Text("· \(vehicleColor)")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -213,7 +218,7 @@ struct VehicleDetailView: View {
             .padding(.horizontal, 22)
             .padding(.top, 24)
 
-            VehicleHeroArtwork()
+            VehicleHeroArtwork(imageData: viewModel.vehicleImageData)
                 .padding(.horizontal, 4)
                 .padding(.top, 22)
                 .padding(.bottom, 18)
@@ -221,7 +226,7 @@ struct VehicleDetailView: View {
                 .onTapGesture(count: 5) {
                     showingDebugDiagnostics = true
                 }
-                .accessibilityLabel("星灰 NIO ET5T")
+                .accessibilityLabel("\(vehicleColor) \(vehicleTitle)")
                 .accessibilityHint("连续点击五次打开诊断页面")
 
             VStack(spacing: 20) {
@@ -1124,18 +1129,29 @@ private struct BatteryPulseRing: View {
 }
 
 private struct VehicleHeroArtwork: View {
+    let imageData: Data?
+
     // Frame the car and its original ground shadow, excluding the large
     // transparent margins of the official 1080 × 675 asset.
     private let visibleWidth: CGFloat = 925
     private let visibleHeight: CGFloat = 425
 
     var body: some View {
-        GeometryReader { geometry in
-            let scale = geometry.size.width / visibleWidth
-            Image("ET5TTouringSide")
-                .resizable()
-                .frame(width: 1080 * scale, height: 675 * scale)
-                .offset(x: -75 * scale, y: -205 * scale)
+        Group {
+            if let imageData,
+               let image = VehicleArtworkCropper.heroImage(from: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                GeometryReader { geometry in
+                    let scale = geometry.size.width / visibleWidth
+                    Image("ET5TTouringSide")
+                        .resizable()
+                        .frame(width: 1080 * scale, height: 675 * scale)
+                        .offset(x: -75 * scale, y: -205 * scale)
+                }
+            }
         }
         .aspectRatio(visibleWidth / visibleHeight, contentMode: .fit)
         .clipped()
@@ -1148,6 +1164,109 @@ private struct VehicleHeroArtwork: View {
             ], startPoint: .leading, endPoint: .trailing)
         }
         .accessibilityElement(children: .ignore)
+    }
+}
+
+private enum VehicleArtworkCropper {
+    private static let cache = NSCache<NSString, UIImage>()
+    private static let heroAspectRatio: CGFloat = 925 / 425
+
+    static func heroImage(from data: Data) -> UIImage? {
+        let key = "\(data.count)-\(data.hashValue)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let source = UIImage(data: data),
+              let cropped = cropToVehicle(source) else { return nil }
+        cache.setObject(cropped, forKey: key)
+        return cropped
+    }
+
+    private static func cropToVehicle(_ image: UIImage) -> UIImage? {
+        guard let cgImage = image.cgImage else { return image }
+        let sourceWidth = cgImage.width
+        let sourceHeight = cgImage.height
+        let scanScale = min(1, 480 / CGFloat(max(sourceWidth, sourceHeight)))
+        let width = max(1, Int(CGFloat(sourceWidth) * scanScale))
+        let height = max(1, Int(CGFloat(sourceHeight) * scanScale))
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 255, count: height * bytesPerRow)
+
+        guard let context = CGContext(
+            data: &pixels,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return image }
+        context.setFillColor(UIColor.white.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .medium
+        // Bitmap row indices and CGImage.cropping use the same image-row order.
+        // Flipping here mirrors the detected bounds relative to the source.
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y * bytesPerRow + x * 4
+                let red = Int(pixels[index])
+                let green = Int(pixels[index + 1])
+                let blue = Int(pixels[index + 2])
+                let luminance = (red * 54 + green * 183 + blue * 19) / 256
+                let distanceFromWhite = max(255 - red, 255 - green, 255 - blue)
+                guard luminance < 222 || distanceFromWhite > 38 else { continue }
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+
+        guard maxX > minX,
+              maxY > minY,
+              maxX - minX > width / 5,
+              maxY - minY > height / 12 else { return image }
+
+        let inverseScale = 1 / scanScale
+        var subject = CGRect(
+            x: CGFloat(minX) * inverseScale,
+            y: CGFloat(minY) * inverseScale,
+            width: CGFloat(maxX - minX + 1) * inverseScale,
+            height: CGFloat(maxY - minY + 1) * inverseScale
+        )
+        subject = subject.insetBy(
+            dx: -subject.width * 0.10,
+            dy: -subject.height * 0.13
+        )
+        let center = CGPoint(x: subject.midX, y: subject.midY)
+        if subject.width / subject.height < heroAspectRatio {
+            subject.size.width = subject.height * heroAspectRatio
+        } else {
+            subject.size.height = subject.width / heroAspectRatio
+        }
+        subject.origin = CGPoint(
+            x: center.x - subject.width / 2,
+            y: center.y - subject.height / 2
+        )
+
+        let sourceBounds = CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight)
+        if subject.width > sourceBounds.width || subject.height > sourceBounds.height {
+            let widthScale = sourceBounds.width / subject.width
+            let heightScale = sourceBounds.height / subject.height
+            let fitScale = min(widthScale, heightScale)
+            subject.size.width *= fitScale
+            subject.size.height *= fitScale
+        }
+        subject.origin.x = min(max(0, subject.origin.x), sourceBounds.width - subject.width)
+        subject.origin.y = min(max(0, subject.origin.y), sourceBounds.height - subject.height)
+        subject = subject.integral
+
+        guard let result = cgImage.cropping(to: subject) else { return image }
+        return UIImage(cgImage: result, scale: image.scale, orientation: image.imageOrientation)
     }
 }
 

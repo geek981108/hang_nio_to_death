@@ -488,6 +488,87 @@ pub fn document() -> Value {
     );
     add("/api/v1/vehicle/trips", "get", trips);
 
+    let mut trip_track = operation(
+        "vehicleTripTrack",
+        "行程轨迹",
+        "返回数据库中已保存的官方 GPS 轨迹点，按采样时间升序。数据来自上游行程详情的 track 字段，约每 10 秒一个采样点；首次同步完成前可能返回 404。轨迹只属于该行程，不与其他行程拼接，也不用于推导里程或能耗。",
+        "行程",
+        "VehicleTripTrack",
+        true,
+    );
+    trip_track["parameters"] = json!([path_parameter(
+        "journey_id",
+        "上游 journey_id；只允许 ASCII 字母、数字、连字符与下划线，最长 128 字节。"
+    )]);
+    error(
+        &mut trip_track,
+        "400",
+        "invalid_journey_id：journey_id 含不允许的字符或为空。",
+    );
+    error(
+        &mut trip_track,
+        "404",
+        "trip_track_not_found：该行程没有已保存的轨迹。",
+    );
+    error(
+        &mut trip_track,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    add(
+        "/api/v1/vehicle/trips/{journey_id}/track",
+        "get",
+        trip_track,
+    );
+
+    let mut profile = operation(
+        "vehicleProfile",
+        "车辆身份与图片地址",
+        "返回车辆显示名、车型、颜色和上游图片地址，并说明后端是否已缓存图片字节。启动时后台从上游 switch/cars 拉取并写入当前租户的 vehicle_profile；图片按上游 URL 缓存，URL 不变就复用，不按天轮询。首次尚未完成或上游失败时本接口会同步补拉一次，仍失败返回 404。",
+        "车辆",
+        "VehicleProfile",
+        true,
+    );
+    error(
+        &mut profile,
+        "404",
+        "vehicle_profile_not_found：车辆画像尚未成功拉取。",
+    );
+    error(
+        &mut profile,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    add("/api/v1/vehicle/profile", "get", profile);
+
+    let mut image = json!({
+        "operationId": "vehicleImage",
+        "summary": "车辆图片",
+        "description": "返回后端缓存的车辆图片字节，Content-Type 取自上游响应。图片按上游 URL 缓存：URL 不变就一直复用，只有 URL 变化或本地缺字节时才重新下载；启动时拉取一次，不按天轮询。响应带 Cache-Control: public, max-age=86400 与 ETag（图片 sha256），If-None-Match 命中时返回 304。",
+        "tags": ["车辆"],
+        "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+        "responses": {"200": {"description": "图片字节。", "content": {
+            "image/png": {"schema": {"type": "string", "format": "binary"}},
+            "image/jpeg": {"schema": {"type": "string", "format": "binary"}}
+        }}}
+    });
+    error(
+        &mut image,
+        "401",
+        "unauthorized：普通 API Key 缺失/不匹配。",
+    );
+    error(
+        &mut image,
+        "404",
+        "vehicle_image_not_found：后端尚未缓存图片。",
+    );
+    error(
+        &mut image,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    add("/api/v1/vehicle/image", "get", image);
+
     let mut action = operation(
         "vehicleAction",
         "远程车辆指令",
@@ -2130,6 +2211,88 @@ fn schemas() -> Value {
             None,
         ),
     );
+    add(
+        "VehicleProfile",
+        object(
+            "车辆身份与缓存图片状态；图片字节不在本结构内，按 image_available 决定是否请求图片接口。",
+            &[
+                ("vehicle_id", text("上游车辆 ID。")),
+                (
+                    "display_name",
+                    opt(text("显示名。"), "上游 display_name 或昵称；缺失为 null。"),
+                ),
+                ("model_type", opt(text("车型。"), "如 ET5T；缺失为 null。")),
+                (
+                    "color",
+                    opt(
+                        text("颜色代码。"),
+                        "上游 color，例如 tech_grey；缺失为 null。",
+                    ),
+                ),
+                (
+                    "image_url",
+                    opt(
+                        text("图片地址。"),
+                        "上游 CDN 地址；客户端可直连，也可改走图片接口。",
+                    ),
+                ),
+                ("image_available", boolean("后端是否已缓存图片字节。")),
+                (
+                    "image_sha256",
+                    opt(
+                        text("图片摘要。"),
+                        "缓存图片的十六进制 SHA-256；未缓存为 null。",
+                    ),
+                ),
+                (
+                    "image_fetched_at",
+                    opt(date_time("下载时间。"), "未缓存为 null。"),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
+        "VehicleTripTrackPoint",
+        object(
+            "上游行程轨迹中的一个 GPS 采样点，数值按上游原样保存；坐标非法的点不入库。",
+            &[
+                ("sampled_at", date_time("采样时间。")),
+                ("latitude", number("纬度，WGS-84。")),
+                ("longitude", number("经度，WGS-84。")),
+                (
+                    "speed_kph",
+                    opt(number("车速。"), "上游该点车速，km/h；缺失为 null。"),
+                ),
+                (
+                    "power_consumption",
+                    opt(
+                        number("瞬时功率。"),
+                        "上游逐点 power_consumption 原值，可为负；缺失为 null。",
+                    ),
+                ),
+                (
+                    "np_status",
+                    opt(
+                        integer("辅助驾驶状态。"),
+                        "上游 np_status 原值；缺失为 null。",
+                    ),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
+        "VehicleTripTrack",
+        object(
+            "单条官方行程的 GPS 轨迹，按采样时间升序；不包含其他行程的采样点。",
+            &[
+                ("journey_id", text("上游 journey_id。")),
+                ("points", array("VehicleTripTrackPoint", "轨迹点列表。")),
+            ],
+            None,
+        ),
+    );
     let actions = [
         VehicleAction::UnlockDoors,
         VehicleAction::UnlockStart,
@@ -2416,6 +2579,8 @@ mod tests {
             "VehicleTripLocation",
             "VehicleTrip",
             "VehicleTripPage",
+            "VehicleTripTrack",
+            "VehicleTripTrackPoint",
         ] {
             let marker = format!("pub struct {name} {{");
             let body = source

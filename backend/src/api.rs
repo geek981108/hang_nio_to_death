@@ -17,7 +17,8 @@ use crate::{
     models::{
         ActiveServiceOrderPage, ImportedBattery, ImportedOrder, ServiceStatus, StationLiveStatus,
         SwapEventPage, SwapStation, SwapStationPage, VehicleChargingSamplePage,
-        VehicleChargingSessionPage, VehicleSnapshotPage, VehicleTripPage,
+        VehicleChargingSessionPage, VehicleProfileResponse, VehicleSnapshotPage, VehicleTripPage,
+        VehicleTripTrack,
     },
     nearby_stations::{NearbyError, NearbyStationResult, NioNearbyStationClient},
     nio_login::{LoginError, LoginInput, NioLogin, SmsInput},
@@ -300,7 +301,13 @@ pub fn configure(config: &mut web::ServiceConfig) {
             "/api/v1/vehicle/charging/sessions/{id}",
             web::get().to(vehicle_charging_session),
         )
+        .route("/api/v1/vehicle/profile", web::get().to(vehicle_profile))
+        .route("/api/v1/vehicle/image", web::get().to(vehicle_image))
         .route("/api/v1/vehicle/trips", web::get().to(vehicle_trips))
+        .route(
+            "/api/v1/vehicle/trips/{journey_id}/track",
+            web::get().to(vehicle_trip_track),
+        )
         .route("/api/v1/auth/sms", web::post().to(send_login_sms))
         .route("/api/v1/auth/login", web::post().to(login_with_sms))
         .route("/api/v1/vehicle/action", web::post().to(vehicle_action))
@@ -601,6 +608,116 @@ async fn vehicle_trips(
         let _ = sync.try_send(());
     }
     Ok(web::Json(page))
+}
+
+/// Vehicle identity plus whether the image bytes are cached. The image itself is
+/// served by the image endpoint so a client never needs the NIO CDN.
+async fn vehicle_profile(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<web::Json<VehicleProfileResponse>, ApiError> {
+    authorize(&state, &request)?;
+    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle_id = vehicle.vehicle_id();
+    if let Some(profile) = state.store.vehicle_profile(vehicle_id).await? {
+        return Ok(web::Json(profile.into()));
+    }
+    // Startup refresh may still be retrying; fill it in once on demand.
+    if let Err(error) = crate::vehicle_profile::refresh(&state.store, vehicle).await {
+        tracing::warn!(%error, "on-demand vehicle profile refresh failed");
+    }
+    state
+        .store
+        .vehicle_profile(vehicle_id)
+        .await?
+        .map(VehicleProfileResponse::from)
+        .map(web::Json)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "vehicle_profile_not_found",
+            message: "vehicle profile is not available yet".to_owned(),
+        })
+}
+
+async fn vehicle_image(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<HttpResponse, ApiError> {
+    authorize(&state, &request)?;
+    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let image = state
+        .store
+        .vehicle_profile_image(vehicle.vehicle_id())
+        .await?
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "vehicle_image_not_found",
+            message: "no cached vehicle image".to_owned(),
+        })?;
+    // The bytes only change when the upstream image URL changes, so a client can
+    // keep them for as long as its ETag matches.
+    let etag = image.sha256.as_ref().map(|sha| format!("\"{sha}\""));
+    if let Some(etag) = &etag
+        && request
+            .headers()
+            .get(actix_web::http::header::IF_NONE_MATCH)
+            .and_then(|value| value.to_str().ok())
+            == Some(etag.as_str())
+    {
+        return Ok(HttpResponse::NotModified()
+            .insert_header((actix_web::http::header::ETAG, etag.clone()))
+            .finish());
+    }
+    let mut response = HttpResponse::Ok();
+    response.content_type(image.content_type);
+    response.insert_header((
+        actix_web::http::header::CACHE_CONTROL,
+        "public, max-age=86400",
+    ));
+    if let Some(etag) = etag {
+        response.insert_header((actix_web::http::header::ETAG, etag));
+    }
+    Ok(response.body(image.bytes))
+}
+
+/// Journey ids are upstream strings; reject anything that is not a plain
+/// identifier so a bad path never reaches the database.
+fn valid_journey_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+async fn vehicle_trip_track(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    journey_id: web::Path<String>,
+) -> Result<web::Json<VehicleTripTrack>, ApiError> {
+    authorize(&state, &request)?;
+    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let journey_id = journey_id.into_inner();
+    if !valid_journey_id(&journey_id) {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            code: "invalid_journey_id",
+            message: "journey_id may only contain ASCII letters, digits, hyphens and underscores"
+                .to_owned(),
+        });
+    }
+    let points = state
+        .store
+        .vehicle_trip_track(vehicle.vehicle_id(), &journey_id)
+        .await?;
+    if points.is_empty() {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            code: "trip_track_not_found",
+            message: "no stored GPS track for this journey".to_owned(),
+        });
+    }
+    Ok(web::Json(VehicleTripTrack { journey_id, points }))
 }
 
 async fn vehicle_widget_info(
@@ -1391,6 +1508,17 @@ mod tests {
             let response = test::call_service(&app, request.to_request()).await;
             assert_eq!(response.status(), expected, "{path}");
         }
+    }
+
+    #[actix_web::test]
+    async fn journey_ids_are_restricted_to_path_safe_identifiers() {
+        assert!(valid_journey_id("1794288460"));
+        assert!(valid_journey_id("a-b_c9"));
+        assert!(!valid_journey_id(""));
+        assert!(!valid_journey_id("../etc/passwd"));
+        assert!(!valid_journey_id("a b"));
+        assert!(!valid_journey_id("行程"));
+        assert!(!valid_journey_id(&"9".repeat(129)));
     }
 
     #[actix_web::test]

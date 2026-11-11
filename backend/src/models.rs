@@ -386,3 +386,86 @@ pub struct VehicleTripPage {
     pub next_query_time: Option<i64>,
     pub server_time: Option<i64>,
 }
+
+/// One GPS sample of an upstream journey track. Values are exactly what the
+/// journey detail returned; no interpolation or smoothing is applied.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+pub struct VehicleTripTrackPoint {
+    pub sampled_at: DateTime<Utc>,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub speed_kph: Option<f64>,
+    pub power_consumption: Option<f64>,
+    pub np_status: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct VehicleTripTrack {
+    pub journey_id: String,
+    pub points: Vec<VehicleTripTrackPoint>,
+}
+
+/// Vehicle identity and cached image for one tenant. This is the write shape:
+/// the bytes travel with it so one upsert stores metadata and image together.
+#[derive(Clone, Debug)]
+pub struct VehicleProfile {
+    pub vehicle_id: String,
+    pub display_name: Option<String>,
+    pub model_type: Option<String>,
+    pub color: Option<String>,
+    pub image_url: Option<String>,
+    pub image_content_type: Option<String>,
+    pub image_bytes: Option<Vec<u8>>,
+    pub image_sha256: Option<String>,
+    pub image_fetched_at: Option<DateTime<Utc>>,
+}
+
+/// Read shape: the image bytes are deliberately not selected, only whether they
+/// exist, so a profile read never drags the image through JSON.
+#[derive(Clone, Debug, Deserialize)]
+pub struct StoredVehicleProfile {
+    pub vehicle_id: String,
+    pub display_name: Option<String>,
+    pub model_type: Option<String>,
+    pub color: Option<String>,
+    pub image_url: Option<String>,
+    pub image_available: bool,
+    pub image_sha256: Option<String>,
+    pub image_fetched_at: Option<DateTime<Utc>>,
+}
+
+/// Cached image as served: content type plus the digest used for ETag
+/// revalidation.
+pub struct CachedVehicleImage {
+    pub content_type: String,
+    pub sha256: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VehicleProfileResponse {
+    pub vehicle_id: String,
+    pub display_name: Option<String>,
+    pub model_type: Option<String>,
+    pub color: Option<String>,
+    pub image_url: Option<String>,
+    /// The App can fetch the cached bytes from the image endpoint when true.
+    pub image_available: bool,
+    pub image_sha256: Option<String>,
+    pub image_fetched_at: Option<DateTime<Utc>>,
+}
+
+impl From<StoredVehicleProfile> for VehicleProfileResponse {
+    fn from(profile: StoredVehicleProfile) -> Self {
+        Self {
+            vehicle_id: profile.vehicle_id,
+            display_name: profile.display_name,
+            model_type: profile.model_type,
+            color: profile.color,
+            image_url: profile.image_url,
+            image_available: profile.image_available,
+            image_sha256: profile.image_sha256,
+            image_fetched_at: profile.image_fetched_at,
+        }
+    }
+}

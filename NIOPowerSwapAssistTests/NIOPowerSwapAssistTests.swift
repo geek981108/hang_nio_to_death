@@ -407,6 +407,62 @@ struct NIOPowerSwapAssistTests {
         #expect(request.allHTTPHeaderFields?.keys.contains("NIO_BEARER_TOKEN") == false)
     }
 
+    @Test func vehicleImageRequestUsesBackendAuthAndConditionalETag() throws {
+        let key = String(repeating: "b", count: 64)
+        let configuration = try BackendConfiguration(
+            baseURLString: "https://vehicle.example.com/t/alice/",
+            apiKey: key
+        )
+        let request = BackendClient(configuration: configuration)
+            .makeVehicleImageRequest(cachedETag: "\"abc123\"")
+
+        #expect(request.url?.absoluteString == "https://vehicle.example.com/t/alice/api/v1/vehicle/image")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(key)")
+        #expect(request.value(forHTTPHeaderField: "Accept") == "image/*")
+        #expect(request.value(forHTTPHeaderField: "If-None-Match") == "\"abc123\"")
+    }
+
+    @Test func vehicleProfileDecodesImageCacheMetadata() throws {
+        let data = Data(#"""
+        {
+          "vehicle_id":"vehicle-1","display_name":"我的ET5T","model_type":"ET5T",
+          "color":"tech_grey","image_url":"https://cdn.example/car.png",
+          "image_available":true,"image_sha256":"abc123",
+          "image_fetched_at":"2026-11-11T08:00:00Z"
+        }
+        """#.utf8)
+        let profile = try JSONDecoder().decode(VehicleProfile.self, from: data)
+        #expect(profile.vehicleID == "vehicle-1")
+        #expect(profile.displayName == "我的ET5T")
+        #expect(profile.imageAvailable)
+        #expect(profile.imageSHA256 == "abc123")
+        #expect(profile.localizedColorName == "星灰")
+    }
+
+    @Test func vehicleImageDiskCacheIsScopedByBackendAndCanBeCleared() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let file = root.appendingPathComponent("vehicle-image.plist")
+        let cache = FileVehicleImageCache(fileURL: file)
+        let firstURL = try #require(URL(string: "https://vehicle.example.com/t/alice/"))
+        let secondURL = try #require(URL(string: "https://vehicle.example.com/t/bob/"))
+        let image = Data([0x89, 0x50, 0x4e, 0x47])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        cache.save(
+            data: image,
+            etag: "\"abc123\"",
+            vehicleID: "vehicle-1",
+            baseURL: firstURL
+        )
+        let loaded = try #require(cache.load(matching: firstURL))
+        #expect(loaded.data == image)
+        #expect(loaded.etag == "\"abc123\"")
+        #expect(cache.load(matching: secondURL) == nil)
+        cache.clear()
+        #expect(cache.load(matching: firstURL) == nil)
+    }
+
     @Test func vehicleActionRequestKeepsControlKeySeparateAndUsesExactConfirmation() throws {
         let apiKey = String(repeating: "a", count: 64)
         let controlKey = String(repeating: "c", count: 64)
