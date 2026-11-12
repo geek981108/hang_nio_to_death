@@ -461,6 +461,8 @@ final class VehicleViewModel: ObservableObject {
     var baseURLString: String { settingsStore.baseURLString }
     var savedAPIKey: String { settingsStore.apiKey() }
     var savedControlKey: String { settingsStore.controlKey() }
+    var vehicleTitle: String { vehicleProfile?.displayTitle ?? "我的蔚来" }
+    var vehicleColorLabel: String? { vehicleProfile?.localizedColorName }
     var debugBaseURLString: String {
         (try? settingsStore.configuration().baseURL.absoluteString) ?? "未配置"
     }

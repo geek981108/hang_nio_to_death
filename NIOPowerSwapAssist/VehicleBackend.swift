@@ -96,6 +96,27 @@ struct VehicleProfile: Decodable, Equatable, Sendable {
             return color
         }
     }
+
+    var displayTitle: String {
+        if let name = trimmed(displayName) { return name }
+        if let model = trimmed(modelType) { return "NIO \(model)" }
+        return "我的蔚来"
+    }
+
+    /// Bundled artwork only exists for models shipped with the app; every other
+    /// model falls back to the neutral placeholder instead of a wrong car.
+    var bundledArtworkAssetName: String? {
+        guard let model = trimmed(modelType) else { return nil }
+        return Self.bundledArtworkAssets[model.uppercased()]
+    }
+
+    private static let bundledArtworkAssets = ["ET5T": "ET5TTouringSide"]
+
+    private func trimmed(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
 }
 
 enum VehicleImageFetchResult: Sendable {

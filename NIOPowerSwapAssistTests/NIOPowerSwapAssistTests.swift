@@ -439,6 +439,28 @@ struct NIOPowerSwapAssistTests {
         #expect(profile.localizedColorName == "星灰")
     }
 
+    @Test func vehicleProfileTitleAndArtworkAdaptToVehicleModel() {
+        func makeProfile(displayName: String?, modelType: String?) -> VehicleProfile {
+            VehicleProfile(
+                vehicleID: "vehicle-1",
+                displayName: displayName,
+                modelType: modelType,
+                color: nil,
+                imageURL: nil,
+                imageAvailable: false,
+                imageSHA256: nil,
+                imageFetchedAt: nil
+            )
+        }
+
+        #expect(makeProfile(displayName: "我的ES6", modelType: "ES6").displayTitle == "我的ES6")
+        #expect(makeProfile(displayName: nil, modelType: "ES6").displayTitle == "NIO ES6")
+        #expect(makeProfile(displayName: "   ", modelType: "").displayTitle == "我的蔚来")
+        #expect(makeProfile(displayName: nil, modelType: "ES6").bundledArtworkAssetName == nil)
+        #expect(makeProfile(displayName: nil, modelType: "et5t").bundledArtworkAssetName == "ET5TTouringSide")
+        #expect(makeProfile(displayName: nil, modelType: nil).localizedColorName == nil)
+    }
+
     @Test func vehicleImageDiskCacheIsScopedByBackendAndCanBeCleared() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
