@@ -439,6 +439,19 @@ struct NIOPowerSwapAssistTests {
         #expect(profile.localizedColorName == "星灰")
     }
 
+    @Test func batteryIndicatorTracksStateOfCharge() {
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 7) == "battery.0percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 30) == "battery.25percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 55) == "battery.50percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 80) == "battery.75percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 96) == "battery.100percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: nil) == "battery.100percent")
+        #expect(BatteryIndicator.tint(stateOfCharge: 12) == AppPalette.red)
+        #expect(BatteryIndicator.tint(stateOfCharge: 35) == AppPalette.amber)
+        #expect(BatteryIndicator.tint(stateOfCharge: 82) == AppPalette.green)
+        #expect(BatteryIndicator.tint(stateOfCharge: nil) == AppPalette.graphite)
+    }
+
     @Test func vehicleImageDiskCacheIsScopedByBackendAndCanBeCleared() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
