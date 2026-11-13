@@ -50,7 +50,13 @@ final class StationViewModel: ObservableObject {
 
     var groupedBatteries: [(name: String, batteries: [BatteryModel])] {
         let groups = Dictionary(grouping: batteries, by: \.groupName)
-        let priority = ["75 kWh": 0, "70 kWh": 1, "100 kWh": 2, "150 kWh": 3]
+        let priority = [
+            "75 kWh": 0,
+            "70 kWh": 1,
+            "70/75 kWh": 2,
+            "100 kWh": 3,
+            "150 kWh": 4
+        ]
         return groups.map { (name: $0.key, batteries: $0.value) }
             .sorted {
                 let lhs = priority[$0.name] ?? 99

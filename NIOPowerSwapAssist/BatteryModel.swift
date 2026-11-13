@@ -29,7 +29,12 @@ struct BatteryModel: Identifiable, Hashable {
     }
 
     var groupName: String {
-        let normalized = batteryType.lowercased()
+        let normalized = batteryType
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+        if normalized.contains("70/75") || normalized.contains("70-75") {
+            return "70/75 kWh"
+        }
         if normalized.contains("150") { return "150 kWh" }
         if normalized.contains("100") { return "100 kWh" }
         if normalized.contains("75") { return "75 kWh" }

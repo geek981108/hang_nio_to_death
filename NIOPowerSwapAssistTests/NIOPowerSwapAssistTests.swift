@@ -195,6 +195,27 @@ struct NIOPowerSwapAssistTests {
         #expect(snapshot.feeInfo == nil)
     }
 
+    @Test func payloadParserUsesBatteryCapSeriesWhenBatteryIDIsMissing() throws {
+        let payload = """
+        {
+          "battery": {
+            "battery_list": [
+              {"battery_cap_series":0,"progress":100,"lower_case_desc":"70/75kWh","slot_id":1},
+              {"battery_cap_series":"3","progress":100,"lower_case_desc":"70/75kWh","slot_id":2},
+              {"battery_cap_series":2,"progress":100,"lower_case_desc":"400V 100kWh","slot_id":3},
+              {"progress":100,"lower_case_desc":"70/75kWh","slot_id":4},
+              {"battery_id":"P007LEGACY","progress":100,"lower_case_desc":"75kWh","slot_id":5}
+            ]
+          }
+        }
+        """
+
+        let batteries = try SwapStationPayloadParser.parse(Data(payload.utf8)).batteries
+        #expect(batteries.map(\.id) == ["slot-1", "slot-2", "slot-3", "slot-4", "P007LEGACY"])
+        #expect(batteries.map(\.batteryType) == ["70 kWh", "75 kWh", "100 kWh", "70/75 kWh", "70 kWh"])
+        #expect(batteries.map(\.groupName) == ["70 kWh", "75 kWh", "100 kWh", "70/75 kWh", "70 kWh"])
+    }
+
     @Test func missingInventoryReportsSafeFieldWithoutPayloadContents() {
         let payload = #"{"fee_info":{"current_fee":[]},"token":"secret-do-not-show"}"#
         do {
