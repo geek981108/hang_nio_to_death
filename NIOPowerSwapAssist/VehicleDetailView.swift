@@ -159,7 +159,11 @@ struct VehicleDetailView: View {
         }) { presentation in
             switch presentation {
             case .panel(let scope):
-                VehicleControlPanel(dashboard: viewModel.dashboard, scope: scope) { action, temperature, expandMirrors in
+                VehicleControlPanel(
+                    dashboard: viewModel.dashboard,
+                    scope: scope,
+                    vehicleTitle: viewModel.vehicleTitle
+                ) { action, temperature, expandMirrors in
                     queuedVehicleAction = PendingVehicleAction(
                         action: action,
                         temperature: temperature,
@@ -171,6 +175,7 @@ struct VehicleDetailView: View {
                 VehicleActionConfirmation(
                     pending: pending,
                     warning: vehicleActionWarning(pending),
+                    vehicleTitle: viewModel.vehicleTitle,
                     onCancel: { vehicleControlPresentation = nil },
                     onConfirm: {
                         queuedVehicleExecution = pending
@@ -188,10 +193,8 @@ struct VehicleDetailView: View {
     }
 
     private func statusHero(_ dashboard: VehicleDashboard) -> some View {
-        let vehicleTitle = viewModel.vehicleProfile?.displayName
-            ?? viewModel.vehicleProfile?.modelType.map { "NIO \($0)" }
-            ?? "NIO ET5T"
-        let vehicleColor = viewModel.vehicleProfile?.localizedColorName ?? "星灰"
+        let vehicleTitle = viewModel.vehicleTitle
+        let vehicleColor = viewModel.vehicleColorLabel
         return VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -202,7 +205,9 @@ struct VehicleDetailView: View {
                             .fill(dashboard.isConnected ? Color.green : Color.secondary)
                             .frame(width: 7, height: 7)
                         Text(vehicleStateLabel(dashboard))
-                        Text("· \(vehicleColor)")
+                        if let vehicleColor {
+                            Text("· \(vehicleColor)")
+                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -218,7 +223,10 @@ struct VehicleDetailView: View {
             .padding(.horizontal, 22)
             .padding(.top, 24)
 
-            VehicleHeroArtwork(imageData: viewModel.vehicleImageData)
+            VehicleHeroArtwork(
+                imageData: viewModel.vehicleImageData,
+                fallbackAssetName: viewModel.vehicleProfile?.bundledArtworkAssetName
+            )
                 .padding(.horizontal, 4)
                 .padding(.top, 22)
                 .padding(.bottom, 18)
@@ -226,7 +234,9 @@ struct VehicleDetailView: View {
                 .onTapGesture(count: 5) {
                     showingDebugDiagnostics = true
                 }
-                .accessibilityLabel("\(vehicleColor) \(vehicleTitle)")
+                .accessibilityLabel(
+                    vehicleColor.map { "\($0) \(vehicleTitle)" } ?? vehicleTitle
+                )
                 .accessibilityHint("连续点击五次打开诊断页面")
 
             VStack(spacing: 20) {
@@ -1134,6 +1144,7 @@ private struct BatteryPulseRing: View {
 
 private struct VehicleHeroArtwork: View {
     let imageData: Data?
+    let fallbackAssetName: String?
 
     // Frame the car and its original ground shadow, excluding the large
     // transparent margins of the official 1080 × 675 asset.
@@ -1147,14 +1158,24 @@ private struct VehicleHeroArtwork: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-            } else {
+            } else if let fallbackAssetName {
                 GeometryReader { geometry in
                     let scale = geometry.size.width / visibleWidth
-                    Image("ET5TTouringSide")
+                    Image(fallbackAssetName)
                         .resizable()
                         .frame(width: 1080 * scale, height: 675 * scale)
                         .offset(x: -75 * scale, y: -205 * scale)
                 }
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: "car.side.fill")
+                        .font(.system(size: 58, weight: .thin))
+                        .foregroundStyle(AppPalette.graphite.opacity(0.45))
+                    Text("车辆图片暂不可用")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .aspectRatio(visibleWidth / visibleHeight, contentMode: .fit)
@@ -1308,6 +1329,7 @@ private enum VehicleControlPresentation: Identifiable {
 private struct VehicleActionConfirmation: View {
     let pending: PendingVehicleAction
     let warning: String
+    let vehicleTitle: String
     let onCancel: () -> Void
     let onConfirm: () -> Void
     @State private var didConfirm = false
@@ -1376,7 +1398,7 @@ private struct VehicleActionConfirmation: View {
                     Image(systemName: "car.side").font(.title2)
                         .foregroundStyle(AppPalette.graphite)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("NIO ET5T").font(.subheadline.weight(.semibold))
+                        Text(vehicleTitle).font(.subheadline.weight(.semibold))
                         Text("本次操作的车辆").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
@@ -1483,6 +1505,7 @@ private enum VehicleControlScope: String {
 private struct VehicleControlPanel: View {
     let dashboard: VehicleDashboard?
     let scope: VehicleControlScope
+    let vehicleTitle: String
     let onSelect: (VehicleAction, Double?, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var temperature = 22.0
@@ -1493,7 +1516,7 @@ private struct VehicleControlPanel: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(scope.title).font(.title2.weight(.semibold))
                     HStack(spacing: 8) {
-                        Text("NIO ET5T")
+                        Text(vehicleTitle)
                         Text("·")
                         Text(lockLabel)
                     }

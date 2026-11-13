@@ -96,12 +96,34 @@ struct VehicleProfile: Decodable, Equatable, Sendable {
             return color
         }
     }
+
+    var displayTitle: String {
+        if let name = trimmed(displayName) { return name }
+        if let model = trimmed(modelType) { return "NIO \(model)" }
+        return "我的蔚来"
+    }
+
+    /// Bundled artwork only exists for models shipped with the app; every other
+    /// model falls back to the neutral placeholder instead of a wrong car.
+    var bundledArtworkAssetName: String? {
+        guard let model = trimmed(modelType) else { return nil }
+        return Self.bundledArtworkAssets[model.uppercased()]
+    }
+
+    private static let bundledArtworkAssets = ["ET5T": "ET5TTouringSide"]
+
+    private func trimmed(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
 }
 
 enum VehicleImageFetchResult: Sendable {
     case unavailable
     case notModified
     case downloaded(data: Data, etag: String?)
+    case failed
 }
 
 struct VehiclePresentation: Sendable {
@@ -717,35 +739,42 @@ struct BackendClient: Sendable {
         try await fetch(path: "api/v1/vehicle/profile")
     }
 
-    func fetchVehiclePresentation(cachedETag: String?) async throws -> VehiclePresentation {
+    func fetchVehiclePresentation(
+        cachedETag: String?,
+        cachedVehicleID: String?
+    ) async throws -> VehiclePresentation {
         let profile = try await fetchVehicleProfile()
         guard profile.imageAvailable else {
             return VehiclePresentation(profile: profile, image: .unavailable)
         }
-        let request = makeVehicleImageRequest(cachedETag: cachedETag)
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw BackendClientError.invalidResponse
-        }
-        if response.statusCode == 304 {
-            return VehiclePresentation(profile: profile, image: .notModified)
-        }
-        if response.statusCode == 401 {
-            throw BackendClientError.unauthorized
-        }
-        guard response.statusCode == 200 else {
-            throw BackendClientError.httpStatus(response.statusCode)
-        }
-        guard response.mimeType?.hasPrefix("image/") == true, !data.isEmpty else {
-            throw BackendClientError.invalidResponse
-        }
-        return VehiclePresentation(
-            profile: profile,
-            image: .downloaded(
-                data: data,
-                etag: response.value(forHTTPHeaderField: "ETag")
+        let matchingETag = cachedVehicleID == profile.vehicleID ? cachedETag : nil
+        do {
+            let request = makeVehicleImageRequest(cachedETag: matchingETag)
+            let (data, response) = try await session.data(for: request)
+            guard let response = response as? HTTPURLResponse else {
+                throw BackendClientError.invalidResponse
+            }
+            if response.statusCode == 304 {
+                return VehiclePresentation(profile: profile, image: .notModified)
+            }
+            guard response.statusCode == 200,
+                  response.mimeType?.hasPrefix("image/") == true,
+                  !data.isEmpty else {
+                throw BackendClientError.httpStatus(response.statusCode)
+            }
+            return VehiclePresentation(
+                profile: profile,
+                image: .downloaded(
+                    data: data,
+                    etag: response.value(forHTTPHeaderField: "ETag")
+                )
             )
-        )
+        } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
+            return VehiclePresentation(profile: profile, image: .failed)
+        }
     }
 
     func makeVehicleImageRequest(cachedETag: String?) -> URLRequest {

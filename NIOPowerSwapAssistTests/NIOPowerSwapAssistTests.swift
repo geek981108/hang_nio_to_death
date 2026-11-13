@@ -8,6 +8,7 @@
 import Foundation
 import Security
 import Testing
+import UIKit
 @testable import NIOPowerSwapAssist
 
 struct NIOPowerSwapAssistTests {
@@ -439,6 +440,28 @@ struct NIOPowerSwapAssistTests {
         #expect(profile.localizedColorName == "星灰")
     }
 
+    @Test func vehicleProfileTitleAndArtworkAdaptToVehicleModel() {
+        func makeProfile(displayName: String?, modelType: String?) -> VehicleProfile {
+            VehicleProfile(
+                vehicleID: "vehicle-1",
+                displayName: displayName,
+                modelType: modelType,
+                color: nil,
+                imageURL: nil,
+                imageAvailable: false,
+                imageSHA256: nil,
+                imageFetchedAt: nil
+            )
+        }
+
+        #expect(makeProfile(displayName: "我的ES6", modelType: "ES6").displayTitle == "我的ES6")
+        #expect(makeProfile(displayName: nil, modelType: "ES6").displayTitle == "NIO ES6")
+        #expect(makeProfile(displayName: "   ", modelType: "").displayTitle == "我的蔚来")
+        #expect(makeProfile(displayName: nil, modelType: "ES6").bundledArtworkAssetName == nil)
+        #expect(makeProfile(displayName: nil, modelType: "et5t").bundledArtworkAssetName == "ET5TTouringSide")
+        #expect(makeProfile(displayName: nil, modelType: nil).localizedColorName == nil)
+    }
+
     @Test func batteryIndicatorTracksStateOfCharge() {
         #expect(BatteryIndicator.symbolName(stateOfCharge: 7) == "battery.0percent")
         #expect(BatteryIndicator.symbolName(stateOfCharge: 30) == "battery.25percent")
@@ -468,12 +491,13 @@ struct NIOPowerSwapAssistTests {
             vehicleID: "vehicle-1",
             baseURL: firstURL
         )
-        let loaded = try #require(cache.load(matching: firstURL))
+        let loaded = try #require(cache.load(matching: firstURL, vehicleID: "vehicle-1"))
         #expect(loaded.data == image)
         #expect(loaded.etag == "\"abc123\"")
-        #expect(cache.load(matching: secondURL) == nil)
+        #expect(cache.load(matching: firstURL, vehicleID: "vehicle-2") == nil)
+        #expect(cache.load(matching: secondURL, vehicleID: "vehicle-1") == nil)
         cache.clear()
-        #expect(cache.load(matching: firstURL) == nil)
+        #expect(cache.load(matching: firstURL, vehicleID: "vehicle-1") == nil)
     }
 
     @Test func vehicleActionRequestKeepsControlKeySeparateAndUsesExactConfirmation() throws {
@@ -1141,7 +1165,7 @@ struct NIOPowerSwapAssistTests {
         #expect(model.dashboard?.vehicleID == "new-vehicle")
         #expect(model.errorMessage == nil)
         #expect(!model.isLoading)
-        #expect(fixture.scenario.requestCount(host: "new.fixture.invalid") == 7)
+        #expect(fixture.scenario.requestCount(host: "new.fixture.invalid") == 8)
     }
 
     @Test @MainActor func cancelledRefreshCallerDoesNotCancelSharedWork() async throws {
@@ -1155,7 +1179,7 @@ struct NIOPowerSwapAssistTests {
         await firstCaller.value
 
         #expect(model.dashboard?.vehicleID == "old-vehicle")
-        #expect(fixture.scenario.requestCount(host: "old.fixture.invalid") == 7)
+        #expect(fixture.scenario.requestCount(host: "old.fixture.invalid") == 8)
         #expect(model.errorMessage == nil)
     }
 
@@ -1219,6 +1243,117 @@ struct NIOPowerSwapAssistTests {
         #expect(model.dashboard?.vehicleID == "old-vehicle")
         #expect(!model.isShowingCachedDashboard)
         #expect(cache.load(matching: baseURL)?.dashboard.vehicleID == "old-vehicle")
+    }
+
+    @Test @MainActor func successfulProfileSurvivesImageFailureOnFirstLoad() async throws {
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .httpFailure
+        )
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+
+        await model.refresh()
+
+        #expect(model.vehicleProfile?.vehicleID == "vehicle-a")
+        #expect(model.vehicleTitle == "车辆 A")
+        #expect(model.vehicleImageData == nil)
+    }
+
+    @Test @MainActor func sameVehicleKeepsValidImageWhenARefreshImageFails() async throws {
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(fixtureImageData(seed: 1), etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+        await model.refresh()
+        let firstImage = try #require(model.vehicleImageData)
+
+        fixture.scenario.update(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A 新名称",
+            imageReply: .httpFailure
+        )
+        await model.refresh()
+
+        #expect(model.vehicleTitle == "车辆 A 新名称")
+        #expect(model.vehicleImageData == firstImage)
+    }
+
+    @Test @MainActor func changingVehicleReplacesImageAndDoesNotSendTheOldETag() async throws {
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(fixtureImageData(seed: 1), etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+        await model.refresh()
+        let firstImage = try #require(model.vehicleImageData)
+
+        let secondImage = fixtureImageData(seed: 2)
+        fixture.scenario.update(
+            vehicleID: "vehicle-b",
+            displayName: "车辆 B",
+            imageReply: .success(secondImage, etag: "\"b1\"")
+        )
+        await model.refresh()
+
+        #expect(model.vehicleProfile?.vehicleID == "vehicle-b")
+        #expect(model.vehicleImageData == secondImage)
+        #expect(model.vehicleImageData != firstImage)
+        #expect(fixture.scenario.lastImageConditionalETag() == nil)
+        #expect(fixture.cache.load(matching: fixture.baseURL, vehicleID: "vehicle-a") == nil)
+        #expect(fixture.cache.load(matching: fixture.baseURL, vehicleID: "vehicle-b")?.data == secondImage)
+    }
+
+    @Test @MainActor func changingVehicleClearsOldImageWhenNewImageRequestFails() async throws {
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(fixtureImageData(seed: 1), etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+        await model.refresh()
+        #expect(model.vehicleImageData != nil)
+
+        fixture.scenario.update(
+            vehicleID: "vehicle-b",
+            displayName: "车辆 B",
+            imageReply: .httpFailure
+        )
+        await model.refresh()
+
+        #expect(model.vehicleProfile?.vehicleID == "vehicle-b")
+        #expect(model.vehicleTitle == "车辆 B")
+        #expect(model.vehicleImageData == nil)
+        #expect(fixture.cache.load(matching: fixture.baseURL, vehicleID: "vehicle-a") == nil)
+    }
+
+    @Test @MainActor func changingVehicleClearsOldImageWhenNewImageCannotDecode() async throws {
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(fixtureImageData(seed: 1), etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+        await model.refresh()
+
+        fixture.scenario.update(
+            vehicleID: "vehicle-b",
+            displayName: "车辆 B",
+            imageReply: .invalidImage
+        )
+        await model.refresh()
+
+        #expect(model.vehicleProfile?.vehicleID == "vehicle-b")
+        #expect(model.vehicleImageData == nil)
+        #expect(fixture.cache.load(matching: fixture.baseURL, vehicleID: "vehicle-a") == nil)
     }
 
     @Test @MainActor func analyticsAndCouponsRefreshWithoutJoiningForegroundPolling() async throws {
@@ -1332,6 +1467,202 @@ struct NIOPowerSwapAssistTests {
         }
     }
     #endif
+}
+
+@MainActor
+private func fixtureImageData(seed: Int) -> Data {
+    let color = seed == 1 ? UIColor.systemBlue : UIColor.systemOrange
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+        color.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+    }
+    return image.pngData()!
+}
+
+private enum VehicleImageReply: Sendable {
+    case success(Data, etag: String)
+    case httpFailure
+    case invalidImage
+}
+
+@MainActor
+private final class VehicleIdentityFixture {
+    let key = "vehicle-identity-\(UUID().uuidString)"
+    let service = "nio-vehicle-identity-tests-\(UUID().uuidString)"
+    let suite = "nio-vehicle-identity-defaults-\(UUID().uuidString)"
+    let baseURL = URL(string: "https://identity.fixture.invalid")!
+    let scenario: VehicleIdentityScenario
+    let settings: BackendSettingsStore
+    let session: URLSession
+    let cache: FileVehicleImageCache
+    private let cacheRoot: URL
+
+    init(vehicleID: String, displayName: String, imageReply: VehicleImageReply) throws {
+        scenario = VehicleIdentityScenario(
+            vehicleID: vehicleID,
+            displayName: displayName,
+            imageReply: imageReply
+        )
+        settings = BackendSettingsStore(
+            defaults: UserDefaults(suiteName: suite)!,
+            keychainService: service
+        )
+        try settings.save(baseURLString: baseURL.absoluteString, apiKey: key, controlKey: "")
+        cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        cache = FileVehicleImageCache(
+            fileURL: cacheRoot.appendingPathComponent("vehicle-image.plist")
+        )
+        VehicleIdentityURLProtocol.register(scenario, for: key)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VehicleIdentityURLProtocol.self]
+        session = URLSession(configuration: configuration)
+    }
+
+    func model() -> VehicleViewModel {
+        VehicleViewModel(
+            settingsStore: settings,
+            session: session,
+            vehicleImageCache: cache
+        )
+    }
+
+    func cleanUp() {
+        session.invalidateAndCancel()
+        VehicleIdentityURLProtocol.unregister(key)
+        SecItemDelete([
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service
+        ] as CFDictionary)
+        UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: cacheRoot)
+    }
+}
+
+private final class VehicleIdentityScenario: @unchecked Sendable {
+    private let lock = NSLock()
+    private var vehicleID: String
+    private var displayName: String
+    private var imageReply: VehicleImageReply
+    private var imageConditionalETags: [String?] = []
+
+    init(vehicleID: String, displayName: String, imageReply: VehicleImageReply) {
+        self.vehicleID = vehicleID
+        self.displayName = displayName
+        self.imageReply = imageReply
+    }
+
+    func update(vehicleID: String, displayName: String, imageReply: VehicleImageReply) {
+        lock.lock()
+        self.vehicleID = vehicleID
+        self.displayName = displayName
+        self.imageReply = imageReply
+        lock.unlock()
+    }
+
+    func lastImageConditionalETag() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return imageConditionalETags.last ?? nil
+    }
+
+    func reply(for request: URLRequest) -> (Data, Int, [String: String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        let path = request.url!.path
+        if path == "/api/v1/vehicle/image" {
+            imageConditionalETags.append(request.value(forHTTPHeaderField: "If-None-Match"))
+            switch imageReply {
+            case .success(let data, let etag):
+                return (data, 200, ["Content-Type": "image/png", "ETag": etag])
+            case .httpFailure:
+                return (Data("upstream failure".utf8), 502, ["Content-Type": "text/plain"])
+            case .invalidImage:
+                return (Data("not an image".utf8), 200, ["Content-Type": "image/png"])
+            }
+        }
+        let vehicle: [String: Any] = [
+            "vehicle_id": vehicleID,
+            "connection_status": ["connected": true],
+            "exterior_status": ["vehicle_state": 2],
+            "soc_status": ["soc": 84]
+        ]
+        let body: [String: Any]
+        switch path {
+        case "/api/v1/vehicle/profile":
+            body = [
+                "vehicle_id": vehicleID,
+                "display_name": displayName,
+                "model_type": "ET5T",
+                "color": "tech_grey",
+                "image_url": "https://cdn.fixture.invalid/\(vehicleID).png",
+                "image_available": true,
+                "image_sha256": "sha-\(vehicleID)",
+                "image_fetched_at": "2026-11-13T08:00:00Z"
+            ]
+        case "/api/v1/vehicle/status":
+            body = ["result_code": "success", "data": vehicle]
+        case "/api/v1/vehicle/widget-info":
+            body = ["result_code": "success", "data": ["status": vehicle]]
+        default:
+            body = ["items": [], "limit": 2000, "offset": 0, "has_more": false]
+        }
+        return (
+            try! JSONSerialization.data(withJSONObject: body),
+            200,
+            ["Content-Type": "application/json"]
+        )
+    }
+}
+
+private final class VehicleIdentityURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    private static var scenarios: [String: VehicleIdentityScenario] = [:]
+    private var work: DispatchWorkItem?
+
+    static func register(_ scenario: VehicleIdentityScenario, for key: String) {
+        lock.lock()
+        scenarios["Bearer \(key)"] = scenario
+        lock.unlock()
+    }
+
+    static func unregister(_ key: String) {
+        lock.lock()
+        scenarios.removeValue(forKey: "Bearer \(key)")
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.lock.lock()
+        let scenario = Self.scenarios[
+            request.value(forHTTPHeaderField: "Authorization") ?? ""
+        ]
+        Self.lock.unlock()
+        guard let scenario else {
+            client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
+            return
+        }
+        let (data, status, headers) = scenario.reply(for: request)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let response = HTTPURLResponse(
+                url: self.request.url!,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: headers
+            )!
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: data)
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+        self.work = work
+        DispatchQueue.global().async(execute: work)
+    }
+
+    override func stopLoading() { work?.cancel() }
 }
 
 private actor StationRefreshScenario {
