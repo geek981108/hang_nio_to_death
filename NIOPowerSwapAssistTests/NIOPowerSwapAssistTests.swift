@@ -1284,9 +1284,9 @@ struct NIOPowerSwapAssistTests {
             stationName: "滨江换电站",
             available75Count: 3,
             available75Batteries: [
-                .init(batteryID: "one", slotID: 1, stateOfCharge: 100, productionDate: "2025-03-30"),
-                .init(batteryID: "two", slotID: 2, stateOfCharge: 96, productionDate: "2024-11-09"),
-                .init(batteryID: "three", slotID: 3, stateOfCharge: 93, productionDate: nil)
+                .init(batteryID: "one", slotID: 1, batteryCapSeries: 3, stateOfCharge: 100, productionDate: "2025-03-30"),
+                .init(batteryID: "two", slotID: 2, batteryCapSeries: 3, stateOfCharge: 96, productionDate: "2024-11-09"),
+                .init(batteryID: nil, slotID: 3, batteryCapSeries: 3, stateOfCharge: 93, productionDate: nil)
             ]
         )
 
