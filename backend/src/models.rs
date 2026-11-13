@@ -52,6 +52,9 @@ pub struct StationFeePeriod {
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct StationBatteryReadiness {
     pub slot_id: Option<i64>,
+    /// Upstream battery family code. Current observed mapping: 0=70 kWh,
+    /// 3=75 kWh and 2=400 V 100 kWh.
+    pub battery_cap_series: Option<i64>,
     pub capacity_kwh: Option<f64>,
     pub progress_percent: Option<f64>,
     pub battery_occupied: Option<bool>,
@@ -62,6 +65,19 @@ pub struct StationBatteryReadiness {
     /// Internal only; the live-status API deliberately does not expose battery IDs.
     #[serde(skip_serializing)]
     pub battery_id: Option<String>,
+    pub production_date: Option<NaiveDate>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct StationAvailableBattery {
+    /// Upstream stopped returning this field in the station payload. Keep it
+    /// optional for compatibility with older responses.
+    pub battery_id: Option<String>,
+    pub slot_id: Option<i64>,
+    pub battery_cap_series: Option<i64>,
+    pub capacity_kwh: Option<f64>,
+    pub soc_percent: Option<f64>,
+    pub occupied: bool,
     pub production_date: Option<NaiveDate>,
 }
 
@@ -88,7 +104,7 @@ pub struct StationLiveStatus {
     pub queue: StationLiveQueue,
     pub battery_readiness: Vec<StationBatteryReadiness>,
     pub available_75_count: usize,
-    pub available_75_batteries: Vec<BatteryObservation>,
+    pub available_75_batteries: Vec<StationAvailableBattery>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
