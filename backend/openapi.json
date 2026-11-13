@@ -1770,9 +1770,113 @@
         ],
         "type": "object"
       },
+      "StationAvailableBattery": {
+        "description": "满足实时可换条件的电池。新版上游不再提供电池 ID 与生产日期。",
+        "properties": {
+          "battery_cap_series": {
+            "anyOf": [
+              {
+                "description": "上游电池系列代码。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "battery_id": {
+            "anyOf": [
+              {
+                "description": "旧版上游电池 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "新版上游缺失时为 null。"
+          },
+          "capacity_kwh": {
+            "anyOf": [
+              {
+                "description": "容量，kWh。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无法识别时为 null。"
+          },
+          "occupied": {
+            "description": "是否已经分配。",
+            "type": "boolean"
+          },
+          "production_date": {
+            "anyOf": [
+              {
+                "description": "生产日期。",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "新版上游不提供电池 ID 时为 null。"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "description": "站内槽位编号。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "soc_percent": {
+            "anyOf": [
+              {
+                "description": "电量，%。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          }
+        },
+        "required": [
+          "battery_id",
+          "slot_id",
+          "battery_cap_series",
+          "capacity_kwh",
+          "soc_percent",
+          "occupied",
+          "production_date"
+        ],
+        "type": "object"
+      },
       "StationBatteryReadiness": {
         "description": "站内电池充电进度与预计完成时间；充电完成不保证可立即换入。不会返回电池 ID。",
         "properties": {
+          "battery_cap_series": {
+            "anyOf": [
+              {
+                "description": "上游电池系列代码。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh；未知代码不猜测。"
+          },
           "battery_occupied": {
             "anyOf": [
               {
@@ -1788,7 +1892,7 @@
           "capacity_kwh": {
             "anyOf": [
               {
-                "description": "由上游电池描述识别的容量，kWh。",
+                "description": "优先由 battery_cap_series 识别的容量，kWh。",
                 "type": "number"
               },
               {
@@ -1861,6 +1965,7 @@
         },
         "required": [
           "slot_id",
+          "battery_cap_series",
           "capacity_kwh",
           "progress_percent",
           "battery_occupied",
@@ -2023,7 +2128,7 @@
           "available_75_batteries": {
             "description": "所有可换 75 kWh 电池，未截断到 Widget 展示条数。",
             "items": {
-              "$ref": "#/components/schemas/BatteryObservation"
+              "$ref": "#/components/schemas/StationAvailableBattery"
             },
             "type": "array"
           },

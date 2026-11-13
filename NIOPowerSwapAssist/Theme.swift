@@ -21,6 +21,9 @@ enum AppPalette {
     static let amber = adaptive(
         light: UIColor(red: 0.65, green: 0.38, blue: 0.17, alpha: 1),
         dark: UIColor(red: 0.91, green: 0.69, blue: 0.41, alpha: 1))
+    static let red = adaptive(
+        light: UIColor(red: 0.66, green: 0.22, blue: 0.19, alpha: 1),
+        dark: UIColor(red: 0.94, green: 0.51, blue: 0.47, alpha: 1))
     static let violet = adaptive(
         light: UIColor(red: 0.49, green: 0.43, blue: 0.65, alpha: 1),
         dark: UIColor(red: 0.75, green: 0.66, blue: 0.90, alpha: 1))
@@ -34,6 +37,27 @@ enum AppPalette {
 
     private static func adaptive(light: UIColor, dark: UIColor) -> Color {
         Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
+}
+
+/// Battery glyph buckets follow the fill steps of the SF Symbols battery family.
+enum BatteryIndicator {
+    static func symbolName(stateOfCharge: Double?) -> String {
+        guard let stateOfCharge else { return "battery.100percent" }
+        switch stateOfCharge {
+        case ..<12.5: return "battery.0percent"
+        case ..<37.5: return "battery.25percent"
+        case ..<62.5: return "battery.50percent"
+        case ..<87.5: return "battery.75percent"
+        default: return "battery.100percent"
+        }
+    }
+
+    static func tint(stateOfCharge: Double?) -> Color {
+        guard let stateOfCharge else { return AppPalette.graphite }
+        if stateOfCharge < 20 { return AppPalette.red }
+        if stateOfCharge < 50 { return AppPalette.amber }
+        return AppPalette.green
     }
 }
 

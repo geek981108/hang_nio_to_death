@@ -462,6 +462,19 @@ struct NIOPowerSwapAssistTests {
         #expect(makeProfile(displayName: nil, modelType: nil).localizedColorName == nil)
     }
 
+    @Test func batteryIndicatorTracksStateOfCharge() {
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 7) == "battery.0percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 30) == "battery.25percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 55) == "battery.50percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 80) == "battery.75percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: 96) == "battery.100percent")
+        #expect(BatteryIndicator.symbolName(stateOfCharge: nil) == "battery.100percent")
+        #expect(BatteryIndicator.tint(stateOfCharge: 12) == AppPalette.red)
+        #expect(BatteryIndicator.tint(stateOfCharge: 35) == AppPalette.amber)
+        #expect(BatteryIndicator.tint(stateOfCharge: 82) == AppPalette.green)
+        #expect(BatteryIndicator.tint(stateOfCharge: nil) == AppPalette.graphite)
+    }
+
     @Test func vehicleImageDiskCacheIsScopedByBackendAndCanBeCleared() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1406,9 +1419,9 @@ struct NIOPowerSwapAssistTests {
             stationName: "滨江换电站",
             available75Count: 3,
             available75Batteries: [
-                .init(batteryID: "one", slotID: 1, stateOfCharge: 100, productionDate: "2025-03-30"),
-                .init(batteryID: "two", slotID: 2, stateOfCharge: 96, productionDate: "2024-11-09"),
-                .init(batteryID: "three", slotID: 3, stateOfCharge: 93, productionDate: nil)
+                .init(batteryID: "one", slotID: 1, batteryCapSeries: 3, stateOfCharge: 100, productionDate: "2025-03-30"),
+                .init(batteryID: "two", slotID: 2, batteryCapSeries: 3, stateOfCharge: 96, productionDate: "2024-11-09"),
+                .init(batteryID: nil, slotID: 3, batteryCapSeries: 3, stateOfCharge: 93, productionDate: nil)
             ]
         )
 

@@ -324,18 +324,19 @@ struct VehicleDetailView: View {
         } label: {
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "battery.75percent")
+                    Image(systemName: BatteryIndicator.symbolName(stateOfCharge: dashboard.stateOfCharge))
                         .symbolEffect(.bounce, value: reduceMotion ? 0 : batteryTapCount)
                         .overlay {
                             if let batteryPulseID {
-                                BatteryPulseRing().id(batteryPulseID)
+                                BatteryPulseRing(tint: BatteryIndicator.tint(stateOfCharge: dashboard.stateOfCharge))
+                                    .id(batteryPulseID)
                             }
                         }
                     Text(dashboard.stateOfCharge.map { "\(Int($0.rounded()))%" } ?? "--")
                         .contentTransition(.numericText())
                 }
                 .font(.system(size: 26, weight: .medium, design: .rounded).monospacedDigit())
-                .foregroundStyle(AppPalette.green)
+                .foregroundStyle(BatteryIndicator.tint(stateOfCharge: dashboard.stateOfCharge))
                 .scaleEffect(batteryPulseID == nil ? 1 : 1.07, anchor: .trailing)
                 Text("剩余电量").font(.caption).foregroundStyle(.secondary)
             }
@@ -518,7 +519,9 @@ struct VehicleDetailView: View {
             HStack {
                 Label(
                     "电池与充电",
-                    systemImage: isCharging ? "battery.100percent.bolt" : "battery.75percent"
+                    systemImage: isCharging
+                        ? "battery.100percent.bolt"
+                        : BatteryIndicator.symbolName(stateOfCharge: dashboard.stateOfCharge)
                 )
                     .font(.headline)
                     .foregroundStyle(isCharging ? AppPalette.green : .primary)
@@ -1123,11 +1126,12 @@ struct VehicleDetailView: View {
 }
 
 private struct BatteryPulseRing: View {
+    let tint: Color
     @State private var expanded = false
 
     var body: some View {
         Circle()
-            .stroke(AppPalette.green.opacity(0.55), lineWidth: 2)
+            .stroke(tint.opacity(0.55), lineWidth: 2)
             .frame(width: 36, height: 36)
             .scaleEffect(expanded ? 2.0 : 0.7)
             .opacity(expanded ? 0 : 1)

@@ -312,14 +312,16 @@ struct NIOStationLiveStatus: Decodable, Sendable {
     }
 
     struct Battery: Decodable, Equatable, Sendable {
-        let batteryID: String
+        let batteryID: String?
         let slotID: Int?
+        let batteryCapSeries: Int?
         let stateOfCharge: Double?
         let productionDate: String?
 
         enum CodingKeys: String, CodingKey {
             case batteryID = "battery_id"
             case slotID = "slot_id"
+            case batteryCapSeries = "battery_cap_series"
             case stateOfCharge = "soc_percent"
             case productionDate = "production_date"
         }
