@@ -130,7 +130,7 @@ struct VehicleImageCacheEntry: Codable, Equatable {
 }
 
 protocol VehicleImageCaching: AnyObject {
-    func load(matching baseURL: URL) -> VehicleImageCacheEntry?
+    func load(matching baseURL: URL, vehicleID: String) -> VehicleImageCacheEntry?
     func save(data: Data, etag: String?, vehicleID: String, baseURL: URL)
     func clear()
 }
@@ -153,11 +153,12 @@ final class FileVehicleImageCache: VehicleImageCaching {
         self.encoder = encoder
     }
 
-    func load(matching baseURL: URL) -> VehicleImageCacheEntry? {
+    func load(matching baseURL: URL, vehicleID: String) -> VehicleImageCacheEntry? {
         guard let data = try? Data(contentsOf: fileURL),
               let entry = try? decoder.decode(VehicleImageCacheEntry.self, from: data),
               entry.schemaVersion == 1,
-              entry.baseURLString == baseURL.absoluteString else { return nil }
+              entry.baseURLString == baseURL.absoluteString,
+              entry.vehicleID == vehicleID else { return nil }
         return entry
     }
 
@@ -373,6 +374,7 @@ final class VehicleViewModel: ObservableObject {
     private let dashboardCache: VehicleDashboardCaching?
     private let vehicleImageCache: VehicleImageCaching?
     private var vehicleImageETag: String?
+    private var vehicleImageVehicleID: String?
     private var settingsRevision = UUID()
     private var refreshToken = UUID()
     private var activeRefreshTask: Task<Void, Never>?
@@ -451,11 +453,8 @@ final class VehicleViewModel: ObservableObject {
             lastDashboardRefreshAt = entry.savedAt
             isShowingCachedDashboard = true
         }
-        if let entry = vehicleImageCache?.load(matching: configuration.baseURL),
-           UIImage(data: entry.data) != nil {
-            vehicleImageData = entry.data
-            vehicleImageETag = entry.etag
-        }
+        // The same backend URL may later represent a different vehicle. Wait
+        // for the profile before accepting a cached image for display.
     }
 
     var baseURLString: String { settingsStore.baseURLString }
@@ -514,6 +513,7 @@ final class VehicleViewModel: ObservableObject {
             vehicleProfile = nil
             vehicleImageData = nil
             vehicleImageETag = nil
+            vehicleImageVehicleID = nil
             isShowingCachedDashboard = false
             lastDashboardRefreshAt = nil
             history = []
@@ -686,6 +686,7 @@ final class VehicleViewModel: ObservableObject {
 
     private func refreshAll(using client: BackendClient, token: UUID) async {
         let cachedVehicleImageETag = vehicleImageETag
+        let cachedVehicleID = vehicleImageVehicleID
         await withTaskGroup(of: VehicleRefreshResult.self) { group in
             group.addTask {
                 .dashboard(await captureVehicleRequest { try await client.fetchDashboard() })
@@ -694,7 +695,8 @@ final class VehicleViewModel: ObservableObject {
                 .presentation(
                     await captureVehicleRequest {
                         try await client.fetchVehiclePresentation(
-                            cachedETag: cachedVehicleImageETag
+                            cachedETag: cachedVehicleImageETag,
+                            cachedVehicleID: cachedVehicleID
                         )
                     }
                 )
@@ -780,15 +782,42 @@ final class VehicleViewModel: ObservableObject {
     }
 
     private func updateVehiclePresentation(_ presentation: VehiclePresentation) {
+        let vehicleChanged = [vehicleProfile?.vehicleID, vehicleImageVehicleID]
+            .compactMap { $0 }
+            .contains { $0 != presentation.profile.vehicleID }
+        if vehicleChanged {
+            vehicleImageData = nil
+            vehicleImageETag = nil
+            vehicleImageVehicleID = nil
+            vehicleImageCache?.clear()
+        }
         if vehicleProfile != presentation.profile {
             vehicleProfile = presentation.profile
+        }
+        if vehicleImageData == nil,
+           let activeBaseURL,
+           let entry = vehicleImageCache?.load(
+               matching: activeBaseURL,
+               vehicleID: presentation.profile.vehicleID
+           ),
+           UIImage(data: entry.data) != nil {
+            vehicleImageData = entry.data
+            vehicleImageETag = entry.etag
+            vehicleImageVehicleID = entry.vehicleID
         }
         switch presentation.image {
         case .unavailable:
             vehicleImageData = nil
             vehicleImageETag = nil
+            vehicleImageVehicleID = nil
             vehicleImageCache?.clear()
         case .notModified:
+            if vehicleImageVehicleID != presentation.profile.vehicleID {
+                vehicleImageData = nil
+                vehicleImageETag = nil
+                vehicleImageVehicleID = nil
+            }
+        case .failed:
             break
         case .downloaded(let data, let responseETag):
             guard UIImage(data: data) != nil else { return }
@@ -796,6 +825,7 @@ final class VehicleViewModel: ObservableObject {
                 ?? presentation.profile.imageSHA256.map { "\"\($0)\"" }
             vehicleImageData = data
             vehicleImageETag = etag
+            vehicleImageVehicleID = presentation.profile.vehicleID
             if let activeBaseURL {
                 vehicleImageCache?.save(
                     data: data,
