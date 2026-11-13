@@ -45,7 +45,6 @@ pub struct StationCoordinates {
 
 pub struct StationLiveDetails {
     pub captured_at: DateTime<Utc>,
-    pub batteries: Vec<BatteryObservation>,
     pub current_fees: Vec<StationFeeItem>,
     pub fee_periods: Vec<StationFeePeriod>,
     pub fee_notices: Vec<String>,
@@ -326,7 +325,6 @@ fn parse_live_details(payload: &Value, captured_at: DateTime<Utc>) -> StationLiv
     let upstream_queue = parse_queue_status(payload, None);
     StationLiveDetails {
         captured_at,
-        batteries: parse_batteries(payload),
         current_fees: parse_current_fees(payload),
         fee_periods,
         fee_notices,
@@ -453,7 +451,7 @@ fn parse_batteries(payload: &Value) -> Vec<BatteryObservation> {
             }
             let description =
                 string_value(&value["lower_case_desc"]).map(|value| value.replace(['(', ')'], ""));
-            let capacity_kwh = capacity_from(&battery_id, description.as_deref());
+            let capacity_kwh = capacity_from_value(value, &battery_id, description.as_deref());
             Some(BatteryObservation {
                 production_date: production_date_from_id(&battery_id),
                 battery_id,
@@ -491,7 +489,9 @@ fn parse_battery_readiness(
                 .filter(|value| (1..=1440).contains(value));
             StationBatteryReadiness {
                 slot_id: i64_value(&value["slot_id"]),
-                capacity_kwh: capacity_from(
+                battery_cap_series: i64_value(&value["battery_cap_series"]),
+                capacity_kwh: capacity_from_value(
+                    value,
                     &string_value(&value["battery_id"]).unwrap_or_default(),
                     value["lower_case_desc"].as_str(),
                 ),
@@ -551,6 +551,20 @@ fn capacity_from(battery_id: &str, description: Option<&str>) -> Option<f64> {
         return Some(70.0);
     }
     None
+}
+
+fn capacity_from_value(value: &Value, battery_id: &str, description: Option<&str>) -> Option<f64> {
+    capacity_from_series(&value["battery_cap_series"])
+        .or_else(|| capacity_from(battery_id, description))
+}
+
+fn capacity_from_series(value: &Value) -> Option<f64> {
+    match i64_value(value)? {
+        0 => Some(70.0),
+        3 => Some(75.0),
+        2 => Some(100.0),
+        _ => None,
+    }
 }
 
 fn string_value(value: &Value) -> Option<String> {
@@ -700,23 +714,27 @@ mod tests {
             serde_json::from_slice(&raw).expect("parse station response envelope");
         let decrypted = decrypt_payload(&envelope.data).expect("decrypt station response");
         let payload: Value = serde_json::from_slice(&decrypted).expect("parse decrypted JSON");
-        let batteries = parse_batteries(&payload);
+        let details = parse_live_details(&payload, Utc::now());
         assert!(
-            !batteries.is_empty(),
-            "real station response should contain identifiable batteries"
+            !details.battery_readiness.is_empty(),
+            "real station response should contain battery readiness entries"
         );
-        let dated_count = batteries
+        assert!(
+            details
+                .battery_readiness
+                .iter()
+                .any(|battery| battery.capacity_kwh.is_some()),
+            "real station response should contain a recognized battery series"
+        );
+        let identified_count = details
+            .battery_readiness
             .iter()
-            .filter(|battery| battery.production_date.is_some())
+            .filter(|battery| battery.battery_id.is_some())
             .count();
-        assert!(
-            dated_count > 0,
-            "real station response should contain at least one decodable production date"
-        );
         eprintln!(
-            "validated {} batteries; {} production dates decoded",
-            batteries.len(),
-            dated_count
+            "validated {} batteries; {} still include upstream IDs",
+            details.battery_readiness.len(),
+            identified_count
         );
     }
 
@@ -812,5 +830,34 @@ mod tests {
         let serialized = serde_json::to_value(&detail.battery_readiness).unwrap();
         assert!(!serialized.to_string().contains("P007"));
         assert!(!serialized.to_string().contains("battery_id"));
+    }
+
+    #[test]
+    fn derives_capacity_from_series_when_upstream_omits_battery_id() {
+        let payload = serde_json::json!({
+            "battery": {"battery_cap_level_sort_list": [{"battery_list": [
+                {"battery_cap_series":0,"slot_id":2,"progress":100,"lower_case_desc":"(70/75kWh)","battery_occupied":false,"charging_time_desc":"可用"},
+                {"battery_cap_series":3,"slot_id":12,"progress":100,"lower_case_desc":"(70/75kWh)","battery_occupied":false,"charging_time_desc":"可用"},
+                {"battery_cap_series":2,"slot_id":10,"progress":100,"lower_case_desc":"(400V 100kWh)","battery_occupied":false,"charging_time_desc":"可用"}
+            ]}]}
+        });
+        let at = DateTime::parse_from_rfc3339("2026-11-13T06:23:59Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let details = parse_live_details(&payload, at);
+        assert!(
+            parse_batteries(&payload).is_empty(),
+            "no synthetic battery IDs"
+        );
+        assert_eq!(details.battery_readiness.len(), 3);
+        for (series, capacity) in [(0, 70.0), (3, 75.0), (2, 100.0)] {
+            let battery = details
+                .battery_readiness
+                .iter()
+                .find(|battery| battery.battery_cap_series == Some(series))
+                .unwrap();
+            assert_eq!(battery.capacity_kwh, Some(capacity));
+            assert_eq!(battery.battery_id, None);
+        }
     }
 }

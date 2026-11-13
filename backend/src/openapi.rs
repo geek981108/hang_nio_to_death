@@ -1297,9 +1297,16 @@ fn schemas() -> Value {
                     opt(integer("站内槽位编号。"), "上游缺失时为 null。"),
                 ),
                 (
+                    "battery_cap_series",
+                    opt(
+                        integer("上游电池系列代码。"),
+                        "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh；未知代码不猜测。",
+                    ),
+                ),
+                (
                     "capacity_kwh",
                     opt(
-                        number("由上游电池描述识别的容量，kWh。"),
+                        number("优先由 battery_cap_series 识别的容量，kWh。"),
                         "无法识别时为 null。",
                     ),
                 ),
@@ -1337,6 +1344,34 @@ fn schemas() -> Value {
                         date_time("接收时间加上上游剩余分钟数得到的估计充电完成时间。"),
                         "无可信分钟数时为 null；不是保证可换时间。",
                     ),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
+        "StationAvailableBattery",
+        object(
+            "满足实时可换条件的电池。新版上游不再提供电池 ID 与生产日期。",
+            &[
+                (
+                    "battery_id",
+                    opt(text("旧版上游电池 ID。"), "新版上游缺失时为 null。"),
+                ),
+                ("slot_id", opt(integer("站内槽位编号。"), "缺失时为 null。")),
+                (
+                    "battery_cap_series",
+                    opt(integer("上游电池系列代码。"), "缺失时为 null。"),
+                ),
+                (
+                    "capacity_kwh",
+                    opt(number("容量，kWh。"), "无法识别时为 null。"),
+                ),
+                ("soc_percent", opt(number("电量，%。"), "缺失时为 null。")),
+                ("occupied", boolean("是否已经分配。")),
+                (
+                    "production_date",
+                    opt(date("生产日期。"), "新版上游不提供电池 ID 时为 null。"),
                 ),
             ],
             None,
@@ -1381,7 +1416,7 @@ fn schemas() -> Value {
                 (
                     "available_75_batteries",
                     array(
-                        "BatteryObservation",
+                        "StationAvailableBattery",
                         "所有可换 75 kWh 电池，未截断到 Widget 展示条数。",
                     ),
                 ),

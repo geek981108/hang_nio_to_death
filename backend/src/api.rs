@@ -1149,12 +1149,21 @@ async fn get_station_live(
     );
     let details = provider.fetch_live_details().await?;
     let available_75_batteries = details
-        .batteries
-        .into_iter()
+        .battery_readiness
+        .iter()
         .filter(|battery| {
             battery.capacity_kwh == Some(75.0)
-                && !battery.occupied
-                && battery.soc_percent.is_some_and(|soc| soc >= 92.0)
+                && battery.battery_occupied == Some(false)
+                && battery.progress_percent.is_some_and(|soc| soc >= 92.0)
+        })
+        .map(|battery| crate::models::StationAvailableBattery {
+            battery_id: battery.battery_id.clone(),
+            slot_id: battery.slot_id,
+            battery_cap_series: battery.battery_cap_series,
+            capacity_kwh: battery.capacity_kwh,
+            soc_percent: battery.progress_percent,
+            occupied: battery.battery_occupied.unwrap_or(false),
+            production_date: battery.production_date,
         })
         .collect::<Vec<_>>();
     Ok(web::Json(StationLiveStatus {
