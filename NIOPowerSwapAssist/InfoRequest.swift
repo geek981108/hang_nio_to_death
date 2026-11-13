@@ -291,12 +291,11 @@ enum SwapStationPayloadParser {
             let description = raw.lowerCaseDescription?
                 .replacingOccurrences(of: "(", with: "")
                 .replacingOccurrences(of: ")", with: "") ?? ""
-            let type: String
-            if description.contains("75") {
-                type = batteryID.hasPrefix("P007") ? "70 kWh" : "75 kWh"
-            } else {
-                type = description
-            }
+            let type = batteryType(
+                series: raw.batteryCapSeries,
+                batteryID: batteryID,
+                description: description
+            )
 
             return BatteryModel(
                 id: batteryID.isEmpty ? "slot-\(raw.slotID.value)" : batteryID,
@@ -327,6 +326,34 @@ enum SwapStationPayloadParser {
             batteries: batteries.sorted { $0.slotID < $1.slotID },
             feeInfo: fees.isEmpty && periods.isEmpty ? nil : FeeInfo(currentFees: fees, periods: periods, notices: notices)
         )
+    }
+
+    private static func batteryType(
+        series: Int?,
+        batteryID: String,
+        description: String
+    ) -> String {
+        switch series {
+        case 0: return "70 kWh"
+        case 3: return "75 kWh"
+        case 2: return "100 kWh"
+        default: break
+        }
+
+        let compactDescription = description
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+        if compactDescription.contains("70"), compactDescription.contains("75") {
+            guard !batteryID.isEmpty else { return "70/75 kWh" }
+            return batteryID.hasPrefix("P007") ? "70 kWh" : "75 kWh"
+        }
+        if compactDescription.contains("150") { return "150 kWh" }
+        if compactDescription.contains("100") { return "100 kWh" }
+        if compactDescription.contains("75") {
+            return batteryID.hasPrefix("P007") ? "70 kWh" : "75 kWh"
+        }
+        if compactDescription.contains("70") { return "70 kWh" }
+        return description
     }
 
     private static func manufactureDate(from batteryID: String) -> String? {
@@ -397,6 +424,7 @@ private struct BatteryGroup: Decodable {
 
 private struct BatteryDTO: Decodable {
     let batteryID: String?
+    let batteryCapSeries: Int?
     let progress: FlexibleDouble
     let lowerCaseDescription: String?
     let chargingTimeDescription: FlexibleInt
@@ -405,6 +433,7 @@ private struct BatteryDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case batteryID = "battery_id"
+        case batteryCapSeries = "battery_cap_series"
         case progress
         case lowerCaseDescription = "lower_case_desc"
         case chargingTimeDescription = "charging_time_desc"
@@ -415,6 +444,7 @@ private struct BatteryDTO: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         batteryID = try? container.decode(String.self, forKey: .batteryID)
+        batteryCapSeries = (try? container.decode(FlexibleInt.self, forKey: .batteryCapSeries))?.value
         progress = (try? container.decode(FlexibleDouble.self, forKey: .progress)) ?? .zero
         lowerCaseDescription = try? container.decode(String.self, forKey: .lowerCaseDescription)
         chargingTimeDescription = (try? container.decode(FlexibleInt.self, forKey: .chargingTimeDescription)) ?? .zero
