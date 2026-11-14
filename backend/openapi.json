@@ -1875,7 +1875,7 @@
                 "type": "null"
               }
             ],
-            "description": "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh；未知代码不猜测。"
+            "description": "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh、8=102 kWh；未知代码不猜测。"
           },
           "battery_occupied": {
             "anyOf": [

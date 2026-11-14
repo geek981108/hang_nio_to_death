@@ -53,7 +53,7 @@ pub struct StationFeePeriod {
 pub struct StationBatteryReadiness {
     pub slot_id: Option<i64>,
     /// Upstream battery family code. Current observed mapping: 0=70 kWh,
-    /// 3=75 kWh and 2=400 V 100 kWh.
+    /// 3=75 kWh, 2=400 V 100 kWh and 8=102 kWh.
     pub battery_cap_series: Option<i64>,
     pub capacity_kwh: Option<f64>,
     pub progress_percent: Option<f64>,
