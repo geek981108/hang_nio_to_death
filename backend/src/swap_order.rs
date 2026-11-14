@@ -7,7 +7,7 @@
 //! Request shapes follow the domestic 6.9.6 flow (`nioapp-powerswap-cn` H5
 //! `startSwapping`): the scan carries `spot_id` and `vehicle_id`; the create
 //! carries `action`/`service_type` (empty for a plain swap), `scene`, and the
-//! fixed `model_type_year=G1.2`.
+//! vehicle's `model_type_year` (`NIO_SWAP_MODEL_TYPE_YEAR`, default `G1.2`).
 
 use std::{env, sync::Arc, time::Duration};
 
@@ -44,6 +44,7 @@ pub struct SwapOrderRuntime {
 struct SwapOrderClient {
     profile: VehicleConfig,
     model_type: String,
+    model_type_year: String,
     target_battery_cap_level: u8,
     http: Client,
     gate: Mutex<()>,
@@ -127,15 +128,24 @@ impl SwapOrderRuntime {
                 "swap vehicle model contains unsupported characters",
             ));
         }
+        let model_type_year =
+            nonempty_env("NIO_SWAP_MODEL_TYPE_YEAR").unwrap_or_else(|| "G1.2".to_owned());
+        if !valid_model_year(&model_type_year) {
+            return Err(SwapOrderError::InvalidConfig(
+                "swap model type year contains unsupported characters",
+            ));
+        }
         let target_battery_cap_level = nonempty_env("NIO_SWAP_TARGET_BATTERY_CAP_LEVEL")
             .unwrap_or_else(|| "1".to_owned())
             .parse::<u8>()
             .map_err(|_| {
-                SwapOrderError::InvalidConfig("target battery capacity level must be 1 or 2")
+                SwapOrderError::InvalidConfig("target battery capacity level must be 1, 2, or 8")
             })?;
-        if !matches!(target_battery_cap_level, 1 | 2) {
+        // 1 = standard / 2 = long range for the 75/100 kWh families; 8 is the
+        // level the app sends for the 102 kWh pack used by the 2026 ES8.
+        if !matches!(target_battery_cap_level, 1 | 2 | 8) {
             return Err(SwapOrderError::InvalidConfig(
-                "target battery capacity level must be 1 or 2",
+                "target battery capacity level must be 1, 2, or 8",
             ));
         }
         let http = Client::builder()
@@ -151,6 +161,7 @@ impl SwapOrderRuntime {
             client: Arc::new(SwapOrderClient {
                 profile,
                 model_type,
+                model_type_year,
                 target_battery_cap_level,
                 http,
                 gate: Mutex::new(()),
@@ -193,6 +204,7 @@ impl SwapOrderClient {
             &self.profile.vehicle_id,
             coordinates,
             &self.model_type,
+            &self.model_type_year,
             self.target_battery_cap_level,
         );
         let envelope = self.post_form_once(CREATE_PATH, &create_form).await?;
@@ -293,12 +305,14 @@ fn build_scan_form(station_id: &str, vehicle_id: &str) -> Vec<(String, String)> 
 ///
 /// `action` and `service_type` are empty strings for a plain swap; the app only
 /// fills them from `cross_swap_info_list` for a cross-level battery selection.
-/// `scene` names the popup configuration; `model_type_year` is fixed to G1.2.
+/// `scene` names the popup configuration; `model_type_year` is the configured
+/// vehicle year (`G1.2` unless `NIO_SWAP_MODEL_TYPE_YEAR` says otherwise).
 fn build_create_form(
     station_id: &str,
     vehicle_id: &str,
     coordinates: StationCoordinates,
     model_type: &str,
+    model_type_year: &str,
     target_battery_cap_level: u8,
 ) -> Vec<(String, String)> {
     vec![
@@ -314,7 +328,7 @@ fn build_create_form(
         ),
         ("model_type".to_owned(), model_type.to_owned()),
         ("scene".to_owned(), CREATE_SCENE.to_owned()),
-        ("model_type_year".to_owned(), "G1.2".to_owned()),
+        ("model_type_year".to_owned(), model_type_year.to_owned()),
     ]
 }
 
@@ -408,6 +422,14 @@ fn valid_model_component(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+}
+
+fn valid_model_year(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 16
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.')
 }
 
 fn nonempty_env(name: &str) -> Option<String> {
@@ -512,6 +534,7 @@ mod tests {
                 longitude: 116.407423,
             },
             "ET5T",
+            "G1.2",
             1,
         );
         let names: Vec<&str> = form.iter().map(|(name, _)| name.as_str()).collect();
@@ -545,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn create_form_keeps_fixed_model_type_year() {
+    fn create_form_sends_configured_model_type_year() {
         let form = build_create_form(
             "PS-1",
             "vehicle-1",
@@ -553,11 +576,23 @@ mod tests {
                 latitude: 39.0,
                 longitude: 117.0,
             },
-            "ET5T",
-            2,
+            "ES8",
+            "G1.1",
+            8,
         );
-        assert!(form.contains(&("model_type_year".to_owned(), "G1.2".to_owned())));
+        assert!(form.contains(&("model_type_year".to_owned(), "G1.1".to_owned())));
+        assert!(form.contains(&("target_battery_cap_level".to_owned(), "8".to_owned())));
         assert_eq!(form.len(), 10);
+    }
+
+    #[test]
+    fn model_year_accepts_only_short_alphanumeric_values() {
+        assert!(valid_model_year("G1.2"));
+        assert!(valid_model_year("G1.1"));
+        assert!(!valid_model_year(""));
+        assert!(!valid_model_year("G1 2"));
+        assert!(!valid_model_year("G1.2&x=1"));
+        assert!(!valid_model_year(&"G".repeat(17)));
     }
 
     #[test]

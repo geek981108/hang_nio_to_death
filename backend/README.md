@@ -148,7 +148,8 @@ HTTPS 反向代理，保留 `API_KEY`，不要直接暴露 Rust 端口。
 | `NIO_CONTROL_PIN_FILE` | 空 | 解锁和手动签发共用的 PIN 密钥文件绝对路径；文件必须为 0600，内容须绑定当前 `NIO_VEHICLE_ID` |
 | `NIO_CONTROL_ALLOW_SHARED_API_KEY` | `false` | 仅显式设为 `true` 时允许与普通 API Key 相同；调用车控仍需两个请求头 |
 | `NIO_SWAP_MODEL_TYPE` | `ET5T` | 真实下单使用的车型；由服务端配置，客户端不能覆盖 |
-| `NIO_SWAP_TARGET_BATTERY_CAP_LEVEL` | `1` | 目标电池档位，仅允许 1 或 2；由服务端配置，客户端不能覆盖 |
+| `NIO_SWAP_MODEL_TYPE_YEAR` | `G1.2` | 真实下单发送的 `model_type_year`，需与车辆年款一致（如 2026 款 ES8 为 `G1.1`）；只允许字母、数字和点 |
+| `NIO_SWAP_TARGET_BATTERY_CAP_LEVEL` | `1` | 目标电池档位，允许 1、2 或 8（8 为 102 kWh 电池）；由服务端配置，客户端不能覆盖 |
 | `SERVICE_ORDER_URL` | 空 | 服务订单完整 HTTPS URL；配置后启用订单轮询 |
 | `SERVICE_ORDER_ACCESS_TOKEN` | 空 | 服务订单 Bearer Token；未填时沿用 `NIO_BEARER_TOKEN` |
 | `SERVICE_ORDER_HEADERS_JSON` | `{}` | 可选的服务订单请求头 JSON |
@@ -156,7 +157,8 @@ HTTPS 反向代理，保留 `API_KEY`，不要直接暴露 Rust 端口。
 | `STATION_URL_TEMPLATE` | 空 | 目标站接口模板，必须含 `{station_id}`；可复用车辆配置占位符 |
 | `STATION_TEMPLATE_HEADERS_JSON` | `{}` | 目标站请求头；未填 Authorization 时沿用 `NIO_BEARER_TOKEN` |
 
-换电下单的 `model_type_year` 固定发送 `G1.2`，不读取年款环境变量。
+换电下单的 `model_type_year` 读取 `NIO_SWAP_MODEL_TYPE_YEAR`，未配置时发送 `G1.2`。
+
 
 `STATION_URL` 与 `STATION_HEADERS_JSON` 必须同时配置。服务会为已验证的
 `app.nio.com/nio/app/bff/map/resources/v1/swap/` 路径自动刷新 `timestamp` 和 `sign`，再解密响应。
@@ -439,7 +441,7 @@ cargo run --locked -- backfill-tracks --concurrency 20  # 上游限流时降低�
 - `GET /api/v1/stations?limit=100&offset=0&q=滨海`：按站点 ID、名称、地址或运营方搜索，结果按最近一次换电时间倒序返回；`q` 可省略；
 - `GET /api/v1/stations/search?name=红星美凯龙滨海`：先查本地目录，本地无结果时才远端搜索，并把换电站名称、ID、地址和经纬度写回本地；
 - `GET /api/v1/stations/{station_id}`：按站点 ID 查询单个映射，未收录时返回 `404 station_not_found`。
-- `GET /api/v1/stations/{station_id}/live`：使用后端站点请求模板实时返回当前费率和 75 kWh 可用电池数量；可用口径与 App 一致，为未占用且 SOC 不低于 92%。新版上游不再返回电池 ID，容量优先按 `battery_cap_series` 判断：`0=70 kWh`、`3=75 kWh`、`2=400V 100 kWh`。生产日期仅在旧版响应仍带电池 ID 时可解析。
+- `GET /api/v1/stations/{station_id}/live`：使用后端站点请求模板实时返回当前费率和 75 kWh 可用电池数量；可用口径与 App 一致，为未占用且 SOC 不低于 92%。新版上游不再返回电池 ID，容量优先按 `battery_cap_series` 判断：`0=70 kWh`、`3=75 kWh`、`2=400V 100 kWh`、`8=102 kWh`；描述明确写着 102 kWh 时以描述为准。生产日期仅在旧版响应仍带电池 ID 时可解析。
 
 `history` 与 `trips` 的语义严格分离：GPS 采样点不会被拼装成历史行程，采样点之间的距离也不会冒充官方行程里程。
 

@@ -537,6 +537,11 @@ fn capacity_from(battery_id: &str, description: Option<&str>) -> Option<f64> {
     if description.contains("150") {
         return Some(150.0);
     }
+    // The 102 kWh pack (2026 ES8) has no known `battery_cap_series` code yet;
+    // its description is the only signal, and it must win over the 100 check.
+    if description.contains("102") {
+        return Some(102.0);
+    }
     if description.contains("100") {
         return Some(100.0);
     }
@@ -554,6 +559,11 @@ fn capacity_from(battery_id: &str, description: Option<&str>) -> Option<f64> {
 }
 
 fn capacity_from_value(value: &Value, battery_id: &str, description: Option<&str>) -> Option<f64> {
+    // An explicit 102 kWh description wins: the series code of that pack has
+    // not been observed, so it must not be folded into the 100 kWh family.
+    if description.is_some_and(|text| text.contains("102")) {
+        return Some(102.0);
+    }
     capacity_from_series(&value["battery_cap_series"])
         .or_else(|| capacity_from(battery_id, description))
 }
@@ -563,6 +573,9 @@ fn capacity_from_series(value: &Value) -> Option<f64> {
         0 => Some(70.0),
         3 => Some(75.0),
         2 => Some(100.0),
+        // Observed on packs whose description reads "(102kWh)"; it is also
+        // the target_battery_cap_level the app sends for that pack.
+        8 => Some(102.0),
         _ => None,
     }
 }
@@ -830,6 +843,31 @@ mod tests {
         let serialized = serde_json::to_value(&detail.battery_readiness).unwrap();
         assert!(!serialized.to_string().contains("P007"));
         assert!(!serialized.to_string().contains("battery_id"));
+    }
+
+    #[test]
+    fn recognises_102_kwh_pack_from_description() {
+        assert_eq!(capacity_from("", Some("(102kWh)")), Some(102.0));
+        assert_eq!(
+            capacity_from_value(
+                &serde_json::json!({"battery_cap_series": 2}),
+                "",
+                Some("(102kWh)")
+            ),
+            Some(102.0)
+        );
+        assert_eq!(
+            capacity_from_value(
+                &serde_json::json!({"battery_cap_series": 2}),
+                "",
+                Some("(400V 100kWh)")
+            ),
+            Some(100.0)
+        );
+        assert_eq!(
+            capacity_from_value(&serde_json::json!({"battery_cap_series": 8}), "", None),
+            Some(102.0)
+        );
     }
 
     #[test]

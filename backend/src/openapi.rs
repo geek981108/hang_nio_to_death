@@ -1300,7 +1300,7 @@ fn schemas() -> Value {
                     "battery_cap_series",
                     opt(
                         integer("上游电池系列代码。"),
-                        "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh；未知代码不猜测。",
+                        "当前已确认 0=70 kWh、3=75 kWh、2=400V 100 kWh、8=102 kWh；未知代码不猜测。",
                     ),
                 ),
                 (
