@@ -61,6 +61,7 @@
 		C38B0E100000000000000001 /* BackendEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000002 /* BackendEventStream.swift */; };
 		C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000004 /* DebugDiagnosticsView.swift */; };
 		C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
+		C38B0E1000000000000000A1 /* BackendClientCertificate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E1000000000000000A2 /* BackendClientCertificate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -205,6 +206,7 @@
 		C38B0E100000000000000002 /* BackendEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendEventStream.swift; sourceTree = "<group>"; };
 		C38B0E100000000000000004 /* DebugDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugDiagnosticsView.swift; sourceTree = "<group>"; };
 		C38B0E100000000000000006 /* TemporaryBackendTLS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryBackendTLS.swift; sourceTree = "<group>"; };
+		C38B0E1000000000000000A2 /* BackendClientCertificate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClientCertificate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -334,6 +336,7 @@
 				C38B0E100000000000000002 /* BackendEventStream.swift */,
 				C38B0E100000000000000004 /* DebugDiagnosticsView.swift */,
 				C38B0E100000000000000006 /* TemporaryBackendTLS.swift */,
+				C38B0E1000000000000000A2 /* BackendClientCertificate.swift */,
 			);
 			path = NIOPowerSwapAssist;
 			sourceTree = "<group>";
@@ -795,6 +798,7 @@
 				C38B0E100000000000000001 /* BackendEventStream.swift in Sources */,
 				C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */,
 				C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */,
+				C38B0E1000000000000000A1 /* BackendClientCertificate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
