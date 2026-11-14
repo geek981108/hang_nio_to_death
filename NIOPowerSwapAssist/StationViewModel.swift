@@ -65,10 +65,12 @@ final class StationViewModel: ObservableObject {
 
     /// Marks a backend station lookup as in flight; keeps the current batteries
     /// on screen when the same station is refreshed.
-    func beginExternalRefresh(name: String?) {
+    @discardableResult
+    func beginExternalRefresh(name: String?) -> UUID {
         activeRefreshTask?.cancel()
         activeRefreshTask = nil
-        refreshToken = UUID()
+        let token = UUID()
+        refreshToken = token
         if currentRequestName != name {
             batteries = []
             feeInfo = nil
@@ -78,16 +80,23 @@ final class StationViewModel: ObservableObject {
         currentRequestName = name
         errorMessage = nil
         isLoading = true
+        return token
     }
 
-    func failExternalRefresh(_ message: String) {
+    func isExternalRefreshActive(_ token: UUID) -> Bool {
+        refreshToken == token
+    }
+
+    func failExternalRefresh(_ message: String, token: UUID) {
+        guard refreshToken == token else { return }
         isLoading = false
         errorMessage = message
     }
 
     /// Shows a snapshot fetched through the backend (nearest station or a saved
     /// station's live data) instead of replaying a saved cURL request.
-    func apply(snapshot: SwapStationSnapshot, name: String) {
+    func apply(snapshot: SwapStationSnapshot, name: String, token: UUID) {
+        guard refreshToken == token else { return }
         activeRefreshTask?.cancel()
         activeRefreshTask = nil
         refreshToken = UUID()

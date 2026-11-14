@@ -1127,6 +1127,17 @@ async fn get_station_live(
     Ok(web::Json(station_live(&state, station_id).await?))
 }
 
+/// Coordinates from a recent vehicle status sample. A small future skew is
+/// tolerated, but an old location must not select a station for a real order.
+fn current_vehicle_position(status: &serde_json::Value, now: DateTime<Utc>) -> Option<(f64, f64)> {
+    let snapshot = snapshot_from_status(status)?;
+    let age_seconds = now.signed_duration_since(snapshot.sampled_at).num_seconds();
+    if !(-300..=900).contains(&age_seconds) {
+        return None;
+    }
+    Some((snapshot.latitude, snapshot.longitude))
+}
+
 /// Live status of the swap station nearest to the vehicle's reported position.
 async fn nearest_station_live(
     state: web::Data<AppState>,
@@ -1140,17 +1151,8 @@ async fn nearest_station_live(
         code: "vehicle_position_unavailable",
         message: "vehicle status did not contain a valid position sample".to_owned(),
     };
-    let latitude = status
-        .pointer("/data/position_status/latitude")
-        .and_then(serde_json::Value::as_f64)
-        .ok_or_else(position_unavailable)?;
-    let longitude = status
-        .pointer("/data/position_status/longitude")
-        .and_then(serde_json::Value::as_f64)
-        .ok_or_else(position_unavailable)?;
-    if !route_estimate::valid_coordinate(latitude, longitude) {
-        return Err(position_unavailable());
-    }
+    let (latitude, longitude) =
+        current_vehicle_position(&status, Utc::now()).ok_or_else(position_unavailable)?;
     let nearby_client = state
         .nearby_stations
         .as_ref()
@@ -1560,6 +1562,37 @@ mod tests {
             mcp_origin: "http://127.0.0.1:1".into(),
             mcp_oauth: None,
         }
+    }
+
+    #[actix_web::test]
+    async fn nearest_position_accepts_numeric_strings_and_rejects_stale_samples() {
+        let now = Utc.with_ymd_and_hms(2026, 11, 15, 8, 0, 0).unwrap();
+        let fresh = serde_json::json!({
+            "data": {
+                "vehicle_id": "vehicle-1",
+                "position_status": {
+                    "latitude": "31.2304",
+                    "longitude": "121.4737",
+                    "sample_time": now.timestamp_millis().to_string()
+                }
+            }
+        });
+        assert_eq!(
+            current_vehicle_position(&fresh, now),
+            Some((31.2304, 121.4737))
+        );
+
+        let stale = serde_json::json!({
+            "data": {
+                "vehicle_id": "vehicle-1",
+                "position_status": {
+                    "latitude": 31.2304,
+                    "longitude": 121.4737,
+                    "sample_time": now.timestamp_millis() - 901_000
+                }
+            }
+        });
+        assert_eq!(current_vehicle_position(&stale, now), None);
     }
 
     #[actix_web::test]
