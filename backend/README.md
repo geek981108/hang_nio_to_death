@@ -250,6 +250,8 @@ Content-Type: application/json
 
 `GET /api/v1/stations/{id}/live` 返回完整分时费率、当前费率及站点说明；队列与电池就绪
 数据保留上游可验证字段，未知值返回 `null`，充电倒计时不保证到站可换。
+`GET /api/v1/stations/nearest` 读取一次车辆定位，经地图接口找到直线距离最近的换电站，再返回与
+`/live` 相同的实时数据，并附 `straight_line_distance_km`；车辆坐标不出现在响应中。
 `POST /api/v1/stations/{id}/straight-line-energy` 用请求坐标和站点坐标算地理直线距离，
 能耗仅读取后台每日持久化的最近累计 100 公里行程结果，不在本次请求中拉取行程或写库。
 已知目录站点优先使用目录坐标；周边地图新发现但目录尚无的站点，可将地图结果的

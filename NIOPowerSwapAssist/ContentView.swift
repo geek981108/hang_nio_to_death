@@ -35,6 +35,9 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .vehicle
     @State private var didInitialLoad = false
     @State private var failureToast: APIErrorNotice?
+    /// Follow the station closest to the vehicle instead of a saved station.
+    @AppStorage("stationUsesNearest") private var usesNearestStation = false
+    @State private var nearestStationID: String?
 
     init() {
         #if DEBUG
@@ -138,11 +141,13 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingRequestEditor) {
             RequestEditorView(isPresented: $showingRequestEditor, viewContext: viewContext) { request, name in
+                leaveNearestStationMode()
                 Task { await viewModel.refresh(request: request, name: name) }
             }
         }
         .sheet(isPresented: $showingSavedRequests) {
             SavedRequestsView(isPresented: $showingSavedRequests) { request, name in
+                leaveNearestStationMode()
                 if let request {
                     Task { await viewModel.refresh(request: request, name: name) }
                 } else {
@@ -156,6 +161,7 @@ struct ContentView: View {
                 vehicleViewModel: vehicleViewModel,
                 templateRequest: stationRequestTemplate
             ) { request, name in
+                leaveNearestStationMode()
                 Task { await viewModel.refresh(request: request, name: name) }
             }
         }
@@ -251,6 +257,16 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button {
+                        usesNearestStation = true
+                        Task { await refreshWithCurrentRequest() }
+                    } label: {
+                        Label(
+                            "自动：离车最近换电站",
+                            systemImage: usesNearestStation ? "checkmark" : "location.viewfinder"
+                        )
+                    }
+                    .disabled(!vehicleViewModel.isConfigured)
                     Button("已保存的站点", systemImage: "list.bullet") {
                         showingSavedRequests = true
                     }
@@ -291,7 +307,7 @@ struct ContentView: View {
                     .frame(width: 38, height: 38)
                     .background(.white.opacity(0.10), in: Circle())
                 }
-                .disabled(viewModel.isLoading || selectedItem == nil)
+                .disabled(viewModel.isLoading || (selectedItem == nil && !usesNearestStation))
                 .accessibilityLabel("刷新换电站状态")
             }
             if !viewModel.batteries.isEmpty {
@@ -300,7 +316,10 @@ struct ContentView: View {
                         Text("\(viewModel.readyCount)")
                             .font(.system(size: 56, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(Color(red: 0.65, green: 0.87, blue: 0.72))
-                        Text("块电池可换").font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                        Text(viewModel.preferredBatteryType == StationViewModel.allBatteryTypes
+                             ? "块电池可换"
+                             : "块可换 · \(viewModel.preferredBatteryType)")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.8))
                     }
                     Spacer()
                     Image(systemName: "bolt.car")
@@ -393,7 +412,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        if selectedItem == nil {
+        if selectedItem == nil && !usesNearestStation {
             ContentUnavailableView {
                 Label("添加换电站", systemImage: "bolt.car")
             } description: {
@@ -414,6 +433,7 @@ struct ContentView: View {
     }
 
     private var selectedStationID: String? {
+        if usesNearestStation { return nearestStationID }
         guard let selectedItem else { return nil }
         return selectedItem.stationID ?? NIOSwapRequestSigner.stationID(from: selectedItem.url)
     }
@@ -426,10 +446,40 @@ struct ContentView: View {
         return InfoRequest(url: item.url, headers: item.headers)
     }
 
+    private func leaveNearestStationMode() {
+        usesNearestStation = false
+        nearestStationID = nil
+    }
+
+    private func refreshNearestStation(updateWidgetConfiguration: Bool) async {
+        viewModel.beginExternalRefresh(name: viewModel.currentRequestName)
+        do {
+            let nearest = try await vehicleViewModel.fetchNearestStationLive()
+            guard usesNearestStation else { return }
+            nearestStationID = nearest.stationID
+            viewModel.apply(snapshot: nearest.stationSnapshot(), name: nearest.displayName)
+            if updateWidgetConfiguration {
+                try? BackendSettingsStore.shared.saveWidgetStation(
+                    id: nearest.stationID,
+                    name: nearest.stationName
+                )
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard usesNearestStation else { return }
+            viewModel.failExternalRefresh("最近换电站获取失败：\((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
+        }
+    }
+
     private func refreshWithCurrentRequest(updateWidgetConfiguration: Bool = true) async {
         #if DEBUG
         if DesignPreviewMode.current != nil { return }
         #endif
+        if usesNearestStation {
+            await refreshNearestStation(updateWidgetConfiguration: updateWidgetConfiguration)
+            return
+        }
         guard let selectedItem else {
             if updateWidgetConfiguration {
                 BackendSettingsStore.shared.clearWidgetStation()
@@ -445,6 +495,24 @@ struct ContentView: View {
                 )
             } else {
                 BackendSettingsStore.shared.clearWidgetStation()
+            }
+        }
+        // With a backend, query the saved station through it: the backend signs
+        // with its own (renewable) NIO session, while the saved request carries
+        // a captured token that eventually expires.
+        if vehicleViewModel.isConfigured,
+           let stationID = selectedItem.stationID ?? NIOSwapRequestSigner.stationID(from: selectedItem.url) {
+            let name = selectedItem.name ?? stationID
+            viewModel.beginExternalRefresh(name: name)
+            do {
+                let live = try await vehicleViewModel.fetchStationLive(id: stationID)
+                guard !usesNearestStation, self.selectedItem?.objectID == selectedItem.objectID else { return }
+                viewModel.apply(snapshot: live.stationSnapshot(), name: name)
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                // Fall back to the saved request below.
             }
         }
         await viewModel.refresh(

@@ -36,6 +36,7 @@ struct BatteryModel: Identifiable, Hashable {
             return "70/75 kWh"
         }
         if normalized.contains("150") { return "150 kWh" }
+        if normalized.contains("102") { return "102 kWh" }
         if normalized.contains("100") { return "100 kWh" }
         if normalized.contains("75") { return "75 kWh" }
         if normalized.contains("70") { return "70 kWh" }

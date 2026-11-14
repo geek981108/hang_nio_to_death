@@ -210,7 +210,7 @@ struct BackendStationPickerView: View {
                     }
                 }
 
-                if templateRequest == nil {
+                if templateRequest == nil && !vehicleViewModel.isConfigured {
                     Section {
                         Label(
                             "请先通过 cURL 添加一个换电站，后续站点将复用它的授权和请求参数。",
@@ -254,7 +254,10 @@ struct BackendStationPickerView: View {
                         stationRow(station, isSaved: savedIDs.contains(station.stationID))
                     }
                     .foregroundStyle(.primary)
-                    .disabled(templateRequest == nil || savedIDs.contains(station.stationID))
+                    .disabled(
+                        (templateRequest == nil && !vehicleViewModel.isConfigured)
+                            || savedIDs.contains(station.stationID)
+                    )
                 }
 
                 if let errorMessage {
@@ -353,12 +356,18 @@ struct BackendStationPickerView: View {
     }
 
     private func add(_ station: SwapStation) {
-        guard let templateRequest else {
-            errorMessage = "请先通过 cURL 添加一个可用的换电站请求。"
-            return
-        }
         do {
-            let request = try templateRequest.replacingStationID(station.stationID)
+            // The backend queries saved stations itself, so a captured request is
+            // only needed when there is no backend to ask.
+            let request: InfoRequest
+            if let templateRequest {
+                request = try templateRequest.replacingStationID(station.stationID)
+            } else if vehicleViewModel.isConfigured {
+                request = InfoRequest(url: NIOSwapRequestSigner.stationURL(for: station.stationID), headers: [:])
+            } else {
+                errorMessage = "请先配置车辆后端，或通过 cURL 添加一个可用的换电站请求。"
+                return
+            }
             let insertionIndex = nextIndex
             let newItem = SwapStations(context: viewContext)
             newItem.stationID = station.stationID

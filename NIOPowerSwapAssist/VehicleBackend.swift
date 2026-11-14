@@ -328,6 +328,118 @@ struct NIOStationLiveStatus: Decodable, Sendable {
     }
 }
 
+/// Live station data fetched through the backend: `GET /api/v1/stations/nearest`
+/// (station closest to the vehicle, with distance) or `/api/v1/stations/{id}/live`
+/// (a chosen station, no distance). The backend signs these requests with its
+/// own NIO session, so no captured app token is involved.
+struct NearestStationLive: Decodable, Sendable {
+    let stationID: String
+    let stationName: String
+    let straightLineDistanceKm: Double?
+    let currentFees: [FeeEntry]
+    let feePeriods: [FeePeriodEntry]
+    let feeNotices: [String]
+    let batteryReadiness: [BatteryReadinessEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case stationID = "station_id"
+        case stationName = "station_name"
+        case straightLineDistanceKm = "straight_line_distance_km"
+        case currentFees = "current_fees"
+        case feePeriods = "fee_periods"
+        case feeNotices = "fee_notices"
+        case batteryReadiness = "battery_readiness"
+    }
+
+    struct FeeEntry: Decodable, Sendable {
+        let feeType: String?
+        let name: String?
+        let fee: String?
+        let unit: String?
+        let currency: String?
+
+        enum CodingKeys: String, CodingKey {
+            case feeType = "fee_type"
+            case name, fee, unit, currency
+        }
+
+        var item: FeeItem {
+            FeeItem(type: feeType, name: name ?? "", fee: fee ?? "", unit: unit ?? "", currency: currency ?? "¥")
+        }
+    }
+
+    struct FeePeriodEntry: Decodable, Sendable {
+        let timePeriod: String
+        let fees: [FeeEntry]
+
+        enum CodingKeys: String, CodingKey {
+            case timePeriod = "time_period"
+            case fees
+        }
+    }
+
+    struct BatteryReadinessEntry: Decodable, Sendable {
+        let slotID: Int?
+        let batteryCapSeries: Int?
+        let capacityKwh: Double?
+        let progressPercent: Double?
+        let batteryOccupied: Bool?
+        let batteryID: String?
+        let productionDate: String?
+        let chargingRemainingMinutes: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case slotID = "slot_id"
+            case batteryCapSeries = "battery_cap_series"
+            case capacityKwh = "capacity_kwh"
+            case progressPercent = "progress_percent"
+            case batteryOccupied = "battery_occupied"
+            case batteryID = "battery_id"
+            case productionDate = "production_date"
+            case chargingRemainingMinutes = "charging_remaining_minutes"
+        }
+    }
+
+    var displayName: String {
+        guard let distance = straightLineDistanceKm else { return stationName }
+        return "\(stationName) · 距车 \(String(format: "%.1f", distance)) km"
+    }
+
+    /// Same presentation model as a station fetched through a saved request.
+    func stationSnapshot() -> SwapStationSnapshot {
+        let batteries = batteryReadiness.map { entry -> BatteryModel in
+            let type: String
+            switch entry.capacityKwh {
+            case 70: type = "70 kWh"
+            case 75: type = "75 kWh"
+            case 100: type = "100 kWh"
+            case 102: type = "102 kWh"
+            case 150: type = "150 kWh"
+            default: type = "其他电池"
+            }
+            let slot = entry.slotID ?? 0
+            return BatteryModel(
+                id: entry.batteryID ?? "slot-\(slot)",
+                chargingProgress: min(max(entry.progressPercent ?? 0, 0), 100),
+                batteryType: type,
+                chargingRemainingMinutes: (entry.chargingRemainingMinutes ?? 0) > 0
+                    ? entry.chargingRemainingMinutes
+                    : nil,
+                isOccupied: entry.batteryOccupied ?? false,
+                manufactureDate: entry.productionDate,
+                slotID: slot
+            )
+        }
+        .sorted { $0.slotID < $1.slotID }
+        let fees = currentFees.map(\.item)
+        let periods = feePeriods.map { FeePeriod(timePeriod: $0.timePeriod, fees: $0.fees.map(\.item)) }
+        let feeInfo = fees.isEmpty && periods.isEmpty && feeNotices.isEmpty
+            ? nil
+            : FeeInfo(currentFees: fees, periods: periods, notices: feeNotices)
+        return SwapStationSnapshot(batteries: batteries, feeInfo: feeInfo)
+    }
+}
+
 enum BackendClientError: LocalizedError, Equatable {
     case invalidBaseURL
     case invalidAPIKey
@@ -855,6 +967,15 @@ struct BackendClient: Sendable {
     }
 
     func fetchSwapStationLive(id: String) async throws -> NIOStationLiveStatus {
+        try await fetch(path: "api/v1/stations/\(id)/live")
+    }
+
+    func fetchNearestStationLive() async throws -> NearestStationLive {
+        try await fetch(path: "api/v1/stations/nearest")
+    }
+
+    /// Full live data of one station, queried by the backend.
+    func fetchStationLiveDetails(id: String) async throws -> NearestStationLive {
         try await fetch(path: "api/v1/stations/\(id)/live")
     }
 

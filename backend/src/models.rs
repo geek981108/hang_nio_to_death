@@ -107,6 +107,25 @@ pub struct StationLiveStatus {
     pub available_75_batteries: Vec<StationAvailableBattery>,
 }
 
+/// Live status of the swap station nearest to the vehicle's reported position.
+/// Same payload as `StationLiveStatus`, plus the straight-line distance from
+/// the vehicle; the vehicle coordinates themselves are not returned.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct NearestStationLive {
+    pub station_id: String,
+    pub station_name: String,
+    pub straight_line_distance_km: f64,
+    pub captured_at: DateTime<Utc>,
+    pub current_fees: Vec<StationFeeItem>,
+    pub fee_periods: Vec<StationFeePeriod>,
+    pub fee_notices: Vec<String>,
+    pub fee_timezone: Option<String>,
+    pub queue: StationLiveQueue,
+    pub battery_readiness: Vec<StationBatteryReadiness>,
+    pub available_75_count: usize,
+    pub available_75_batteries: Vec<StationAvailableBattery>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ObservedSwapStation {
     pub station_id: String,

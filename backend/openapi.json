@@ -1507,6 +1507,97 @@
         ],
         "type": "object"
       },
+      "NearestStationLive": {
+        "description": "离车最近换电站的一次实时查询结果。",
+        "properties": {
+          "available_75_batteries": {
+            "description": "所有可换 75 kWh 电池，未截断到 Widget 展示条数。",
+            "items": {
+              "$ref": "#/components/schemas/StationAvailableBattery"
+            },
+            "type": "array"
+          },
+          "available_75_count": {
+            "description": "满足可换筛选条件的 75 kWh 电池数量。",
+            "type": "integer"
+          },
+          "battery_readiness": {
+            "description": "站内电池充电进度，不等于保证可换。",
+            "items": {
+              "$ref": "#/components/schemas/StationBatteryReadiness"
+            },
+            "type": "array"
+          },
+          "captured_at": {
+            "description": "查询完成时间。",
+            "format": "date-time",
+            "type": "string"
+          },
+          "current_fees": {
+            "description": "当前费率分项。",
+            "items": {
+              "$ref": "#/components/schemas/StationFeeItem"
+            },
+            "type": "array"
+          },
+          "fee_notices": {
+            "description": "上游费率特殊说明和适用条件。",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "fee_periods": {
+            "description": "上游完整分时费率，不只包含当前时段。",
+            "items": {
+              "$ref": "#/components/schemas/StationFeePeriod"
+            },
+            "type": "array"
+          },
+          "fee_timezone": {
+            "anyOf": [
+              {
+                "description": "上游显式提供的费率时区。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未提供时为 null；time_period 保留原文。"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/StationLiveQueue"
+          },
+          "station_id": {
+            "description": "站点 ID。",
+            "type": "string"
+          },
+          "station_name": {
+            "description": "地图接口返回的站点名称，缺失时使用目录名称。",
+            "type": "string"
+          },
+          "straight_line_distance_km": {
+            "description": "车辆上报位置到站点的地理直线距离，公里；不是道路距离。",
+            "type": "number"
+          }
+        },
+        "required": [
+          "station_id",
+          "station_name",
+          "straight_line_distance_km",
+          "captured_at",
+          "current_fees",
+          "fee_periods",
+          "fee_notices",
+          "fee_timezone",
+          "queue",
+          "battery_readiness",
+          "available_75_count",
+          "available_75_batteries"
+        ],
+        "type": "object"
+      },
       "NioLoginInput": {
         "description": "提交短信验证码。",
         "properties": {
@@ -5079,6 +5170,76 @@
           "站点"
         ],
         "x-read-only-calculation": true
+      }
+    },
+    "/api/v1/stations/nearest": {
+      "get": {
+        "description": "读取一次车辆状态中的定位，使用 NIO CN 只读地图接口查找直线距离最近的换电站，再按站点模板查询一次实时库存与费率。响应与 liveStation 相同，并附带车到站的地理直线距离；不返回车辆坐标。最近站点的名称与坐标会幂等写入本地站点目录。",
+        "operationId": "nearestStationLive",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NearestStationLive"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "upstream_error：上游 HTTP、协议、解密或数据形状失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured / vehicle_position_unavailable / no_nearby_station / station_template_not_configured：NIO 会话、车辆定位、附近站点或站点模板不可用。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "离车最近换电站实时库存与费率",
+        "tags": [
+          "站点"
+        ]
       }
     },
     "/api/v1/stations/search": {
