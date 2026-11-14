@@ -1127,14 +1127,10 @@ async fn get_station_live(
     Ok(web::Json(station_live(&state, station_id).await?))
 }
 
-/// Coordinates from a recent vehicle status sample. A small future skew is
-/// tolerated, but an old location must not select a station for a real order.
-fn current_vehicle_position(status: &serde_json::Value, now: DateTime<Utc>) -> Option<(f64, f64)> {
+/// Coordinates from the vehicle's last valid position sample. Parked vehicles
+/// may sleep without updating the sample timestamp, so age is not rejected.
+fn current_vehicle_position(status: &serde_json::Value) -> Option<(f64, f64)> {
     let snapshot = snapshot_from_status(status)?;
-    let age_seconds = now.signed_duration_since(snapshot.sampled_at).num_seconds();
-    if !(-300..=900).contains(&age_seconds) {
-        return None;
-    }
     Some((snapshot.latitude, snapshot.longitude))
 }
 
@@ -1152,7 +1148,7 @@ async fn nearest_station_live(
         message: "vehicle status did not contain a valid position sample".to_owned(),
     };
     let (latitude, longitude) =
-        current_vehicle_position(&status, Utc::now()).ok_or_else(position_unavailable)?;
+        current_vehicle_position(&status).ok_or_else(position_unavailable)?;
     let nearby_client = state
         .nearby_stations
         .as_ref()
@@ -1565,7 +1561,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn nearest_position_accepts_numeric_strings_and_rejects_stale_samples() {
+    async fn nearest_position_accepts_numeric_strings_and_old_parked_samples() {
         let now = Utc.with_ymd_and_hms(2026, 11, 15, 8, 0, 0).unwrap();
         let fresh = serde_json::json!({
             "data": {
@@ -1577,12 +1573,9 @@ mod tests {
                 }
             }
         });
-        assert_eq!(
-            current_vehicle_position(&fresh, now),
-            Some((31.2304, 121.4737))
-        );
+        assert_eq!(current_vehicle_position(&fresh), Some((31.2304, 121.4737)));
 
-        let stale = serde_json::json!({
+        let old_sample = serde_json::json!({
             "data": {
                 "vehicle_id": "vehicle-1",
                 "position_status": {
@@ -1592,7 +1585,10 @@ mod tests {
                 }
             }
         });
-        assert_eq!(current_vehicle_position(&stale, now), None);
+        assert_eq!(
+            current_vehicle_position(&old_sample),
+            Some((31.2304, 121.4737))
+        );
     }
 
     #[actix_web::test]
