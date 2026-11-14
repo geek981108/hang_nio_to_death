@@ -1,0 +1,4 @@
+# 预编译的后端二进制，按 README 编译或从 CI 产物下载
+/nio-swap-history-backend
+# 车图兜底素材（可选，本地自备）
+/www/vehicle-fallback.png

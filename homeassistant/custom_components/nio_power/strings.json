@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "配置蔚来 NIO Power 后端",
+        "description": "填写自建后端代理服务的地址与密钥。所有值均由你个人的部署生成。",
+        "data": {
+          "backend_url": "后端地址",
+          "api_key": "API Key",
+          "control_key": "车控 Key（可选）",
+          "station_id": "换电站 ID（留空 = 自动显示离车最近的换电站）",
+          "scan_interval": "刷新间隔（秒）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接后端，请检查地址与 API Key"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NIO Power 选项",
+        "data": {
+          "station_id": "换电站 ID（可选）",
+          "scan_interval": "刷新间隔（秒）"
+        }
+      }
+    }
+  }
+}
