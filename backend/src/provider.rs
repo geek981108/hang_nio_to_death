@@ -44,6 +44,8 @@ pub struct StationCoordinates {
 }
 
 pub struct StationLiveDetails {
+    /// Station name carried by the live payload, when present.
+    pub station_name: Option<String>,
     pub captured_at: DateTime<Utc>,
     pub current_fees: Vec<StationFeeItem>,
     pub fee_periods: Vec<StationFeePeriod>,
@@ -323,7 +325,13 @@ fn parse_live_details(payload: &Value, captured_at: DateTime<Utc>) -> StationLiv
         .map(str::to_owned)
         .collect();
     let upstream_queue = parse_queue_status(payload, None);
+    let station_name = [&payload["name"], &payload["data"]["name"]]
+        .into_iter()
+        .filter_map(string_value)
+        .map(|name| name.trim().to_owned())
+        .find(|name| !name.is_empty());
     StationLiveDetails {
+        station_name,
         captured_at,
         current_fees: parse_current_fees(payload),
         fee_periods,

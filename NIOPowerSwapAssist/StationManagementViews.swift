@@ -4,7 +4,7 @@ import SwiftUI
 struct RequestEditorView: View {
     @Binding var isPresented: Bool
     let viewContext: NSManagedObjectContext
-    let onSaved: (InfoRequest, String) -> Void
+    let onSaved: (InfoRequest, String, String?) -> Void
 
     @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \SwapStations.index, ascending: true)])
     private var items: FetchedResults<SwapStations>
@@ -71,7 +71,7 @@ struct RequestEditorView: View {
             }
             item.selected = true
             try viewContext.save()
-            onSaved(request, normalizedName)
+            onSaved(request, normalizedName, stationID)
             isPresented = false
         } catch {
             viewContext.rollback()
@@ -93,7 +93,7 @@ struct SavedRequestsView: View {
     ) private var items: FetchedResults<SwapStations>
 
     @Binding var isPresented: Bool
-    let onRequestSelected: (InfoRequest?, String?) -> Void
+    let onRequestSelected: (InfoRequest?, String?, String?) -> Void
     @State private var errorMessage: String?
 
     var body: some View {
@@ -146,7 +146,11 @@ struct SavedRequestsView: View {
         }
         do {
             try viewContext.save()
-            onRequestSelected(InfoRequest(url: item.url, headers: item.headers), item.name)
+            onRequestSelected(
+                InfoRequest(url: item.url, headers: item.headers),
+                item.name,
+                item.stationID ?? NIOSwapRequestSigner.stationID(from: item.url)
+            )
             isPresented = false
         } catch {
             viewContext.rollback()
@@ -166,7 +170,10 @@ struct SavedRequestsView: View {
             if deletingSelected {
                 onRequestSelected(
                     replacement.map { InfoRequest(url: $0.url, headers: $0.headers) },
-                    replacement?.name
+                    replacement?.name,
+                    replacement.flatMap {
+                        $0.stationID ?? NIOSwapRequestSigner.stationID(from: $0.url)
+                    }
                 )
             }
         } catch {
@@ -186,7 +193,7 @@ struct BackendStationPickerView: View {
     @Binding var isPresented: Bool
     @ObservedObject var vehicleViewModel: VehicleViewModel
     let templateRequest: InfoRequest?
-    let onAdded: (InfoRequest, String) -> Void
+    let onAdded: (InfoRequest, String, String) -> Void
 
     @State private var query = ""
     @State private var stations: [SwapStation] = []
@@ -210,7 +217,7 @@ struct BackendStationPickerView: View {
                     }
                 }
 
-                if templateRequest == nil {
+                if templateRequest == nil && !vehicleViewModel.isConfigured {
                     Section {
                         Label(
                             "请先通过 cURL 添加一个换电站，后续站点将复用它的授权和请求参数。",
@@ -254,7 +261,10 @@ struct BackendStationPickerView: View {
                         stationRow(station, isSaved: savedIDs.contains(station.stationID))
                     }
                     .foregroundStyle(.primary)
-                    .disabled(templateRequest == nil || savedIDs.contains(station.stationID))
+                    .disabled(
+                        (templateRequest == nil && !vehicleViewModel.isConfigured)
+                            || savedIDs.contains(station.stationID)
+                    )
                 }
 
                 if let errorMessage {
@@ -353,12 +363,18 @@ struct BackendStationPickerView: View {
     }
 
     private func add(_ station: SwapStation) {
-        guard let templateRequest else {
-            errorMessage = "请先通过 cURL 添加一个可用的换电站请求。"
-            return
-        }
         do {
-            let request = try templateRequest.replacingStationID(station.stationID)
+            // The backend queries saved stations itself, so a captured request is
+            // only needed when there is no backend to ask.
+            let request: InfoRequest
+            if let templateRequest {
+                request = try templateRequest.replacingStationID(station.stationID)
+            } else if vehicleViewModel.isConfigured {
+                request = InfoRequest(url: NIOSwapRequestSigner.stationURL(for: station.stationID), headers: [:])
+            } else {
+                errorMessage = "请先配置车辆后端，或通过 cURL 添加一个可用的换电站请求。"
+                return
+            }
             let insertionIndex = nextIndex
             let newItem = SwapStations(context: viewContext)
             newItem.stationID = station.stationID
@@ -369,7 +385,7 @@ struct BackendStationPickerView: View {
             savedStations.forEach { $0.selected = false }
             newItem.selected = true
             try viewContext.save()
-            onAdded(request, station.stationName)
+            onAdded(request, station.stationName, station.stationID)
             isPresented = false
         } catch {
             viewContext.rollback()

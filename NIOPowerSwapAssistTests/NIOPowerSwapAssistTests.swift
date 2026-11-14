@@ -1416,6 +1416,33 @@ struct NIOPowerSwapAssistTests {
         #expect(!model.isLoading)
     }
 
+    @Test @MainActor func staleExternalStationResultCannotReplaceNewerSelection() {
+        let model = StationViewModel()
+        let first = model.beginExternalRefresh(name: "Station A")
+        let second = model.beginExternalRefresh(name: "Station B")
+        let staleSnapshot = SwapStationSnapshot(batteries: [BatteryModel(
+            id: "battery-a", chargingProgress: 100, batteryType: "75 kWh",
+            chargingRemainingMinutes: nil, isOccupied: false,
+            manufactureDate: nil, slotID: 1
+        )], feeInfo: nil)
+
+        model.apply(snapshot: staleSnapshot, name: "Station A", token: first)
+        model.failExternalRefresh("stale error", token: first)
+        #expect(model.currentRequestName == "Station B")
+        #expect(model.batteries.isEmpty)
+        #expect(model.errorMessage == nil)
+        #expect(model.isLoading)
+
+        let currentSnapshot = SwapStationSnapshot(batteries: [BatteryModel(
+            id: "battery-b", chargingProgress: 100, batteryType: "75 kWh",
+            chargingRemainingMinutes: nil, isOccupied: false,
+            manufactureDate: nil, slotID: 2
+        )], feeInfo: nil)
+        model.apply(snapshot: currentSnapshot, name: "Station B", token: second)
+        #expect(model.batteries.map(\.id) == ["battery-b"])
+        #expect(!model.isLoading)
+    }
+
     @Test func widgetUsesFiveMinutesOnlyForActiveVehicleStates() {
         func snapshot(state: Int?, chargeState: Int? = 0, swapping: Bool = false) -> WidgetVehicleSnapshot {
             WidgetVehicleSnapshot(

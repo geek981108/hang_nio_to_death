@@ -328,6 +328,19 @@ pub fn document() -> Value {
         "station_template_not_configured：站点请求模板未配置。",
     );
     add("/api/v1/stations/{id}/live", "get", live);
+    let mut nearest = operation(
+        "nearestStationLive",
+        "离车最近换电站实时库存与费率",
+        "读取一次车辆状态中的定位，使用 NIO CN 只读地图接口查找直线距离最近的换电站，再按站点模板查询一次实时库存与费率。响应与 liveStation 相同，并附带车到站的地理直线距离；不返回车辆坐标。最近站点的名称与坐标会幂等写入本地站点目录。",
+        "站点",
+        "NearestStationLive",
+        true,
+    );
+    upstream_errors(
+        &mut nearest,
+        "vehicle_not_configured / vehicle_position_unavailable / no_nearby_station / station_template_not_configured：NIO 会话、车辆定位、附近站点或站点模板不可用。",
+    );
+    add("/api/v1/stations/nearest", "get", nearest);
 
     let mut straight_line = operation(
         "estimateStraightLineEnergy",
@@ -1384,6 +1397,60 @@ fn schemas() -> Value {
             &[
                 ("station_id", text("站点 ID。")),
                 ("station_name", text("目录名称，未知目录时使用站点 ID。")),
+                ("captured_at", date_time("查询完成时间。")),
+                ("current_fees", array("StationFeeItem", "当前费率分项。")),
+                (
+                    "fee_periods",
+                    array("StationFeePeriod", "上游完整分时费率，不只包含当前时段。"),
+                ),
+                (
+                    "fee_notices",
+                    json!({"type":"array","items":{"type":"string"},"description":"上游费率特殊说明和适用条件。"}),
+                ),
+                (
+                    "fee_timezone",
+                    opt(
+                        text("上游显式提供的费率时区。"),
+                        "未提供时为 null；time_period 保留原文。",
+                    ),
+                ),
+                ("queue", reference("StationLiveQueue")),
+                (
+                    "battery_readiness",
+                    array(
+                        "StationBatteryReadiness",
+                        "站内电池充电进度，不等于保证可换。",
+                    ),
+                ),
+                (
+                    "available_75_count",
+                    integer("满足可换筛选条件的 75 kWh 电池数量。"),
+                ),
+                (
+                    "available_75_batteries",
+                    array(
+                        "StationAvailableBattery",
+                        "所有可换 75 kWh 电池，未截断到 Widget 展示条数。",
+                    ),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
+        "NearestStationLive",
+        object(
+            "离车最近换电站的一次实时查询结果。",
+            &[
+                ("station_id", text("站点 ID。")),
+                (
+                    "station_name",
+                    text("地图接口返回的站点名称，缺失时使用目录名称。"),
+                ),
+                (
+                    "straight_line_distance_km",
+                    number("车辆上报位置到站点的地理直线距离，公里；不是道路距离。"),
+                ),
                 ("captured_at", date_time("查询完成时间。")),
                 ("current_fees", array("StationFeeItem", "当前费率分项。")),
                 (
@@ -2593,6 +2660,7 @@ mod tests {
             "BatteryObservation",
             "StationFeeItem",
             "StationLiveStatus",
+            "NearestStationLive",
             "SwapStation",
             "SwapStationPage",
             "SwapPaymentItem",

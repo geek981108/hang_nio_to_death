@@ -1246,6 +1246,31 @@ final class VehicleViewModel: ObservableObject {
         return event
     }
 
+    /// Live data of the swap station nearest to the vehicle (backend lookup).
+    func fetchNearestStationLive() async throws -> NearestStationLive {
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let nearest = try await client(for: configuration).fetchNearestStationLive()
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return nearest
+    }
+
+    /// Live data of a saved station, queried by the backend instead of the
+    /// app replaying a captured request (whose token expires).
+    func fetchStationLive(id: String) async throws -> NearestStationLive {
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let live = try await client(for: configuration).fetchStationLiveDetails(id: id)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return live
+    }
+
     func fetchSwapStations(search: String? = nil) async throws -> [SwapStation] {
         #if DEBUG
         if isDesignPreview { return [] }

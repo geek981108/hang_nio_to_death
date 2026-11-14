@@ -84,6 +84,11 @@ enum NIOSwapRequestSigner {
     private static let supportedPathPrefix = "/nio/app/bff/map/resources/v1/swap/"
     private static let signingSalt = "2bc9b00fdcf8f7ded6d77afdd7077e79"
 
+    /// Unsigned station URL used to remember a station chosen from the backend.
+    static func stationURL(for stationID: String) -> URL? {
+        URL(string: "https://\(supportedHost)\(supportedPathPrefix)\(stationID)")
+    }
+
     static func stationID(from url: URL?) -> String? {
         guard let url,
               url.host?.lowercased() == supportedHost,
@@ -348,6 +353,7 @@ enum SwapStationPayloadParser {
             return batteryID.hasPrefix("P007") ? "70 kWh" : "75 kWh"
         }
         if compactDescription.contains("150") { return "150 kWh" }
+        if compactDescription.contains("102") { return "102 kWh" }
         if compactDescription.contains("100") { return "100 kWh" }
         if compactDescription.contains("75") {
             return batteryID.hasPrefix("P007") ? "70 kWh" : "75 kWh"

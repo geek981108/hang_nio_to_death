@@ -15,8 +15,8 @@ use crate::{
     daily_checkin::{self, DailyCheckInError},
     events::EventHub,
     models::{
-        ActiveServiceOrderPage, ImportedBattery, ImportedOrder, ServiceStatus, StationLiveStatus,
-        SwapEventPage, SwapStation, SwapStationPage, VehicleChargingSamplePage,
+        ActiveServiceOrderPage, ImportedBattery, ImportedOrder, NearestStationLive, ServiceStatus,
+        StationLiveStatus, SwapEventPage, SwapStation, SwapStationPage, VehicleChargingSamplePage,
         VehicleChargingSessionPage, VehicleProfileResponse, VehicleSnapshotPage, VehicleTripPage,
         VehicleTripTrack,
     },
@@ -278,6 +278,10 @@ pub fn configure(config: &mut web::ServiceConfig) {
         .route("/api/v1/stations", web::get().to(list_stations))
         .route("/api/v1/stations/search", web::get().to(search_stations))
         .route("/api/v1/stations/nearby", web::post().to(nearby_stations))
+        .route(
+            "/api/v1/stations/nearest",
+            web::get().to(nearest_station_live),
+        )
         .route("/api/v1/stations/{id}", web::get().to(get_station))
         .route(
             "/api/v1/stations/{id}/live",
@@ -1120,6 +1124,96 @@ async fn get_station_live(
     if !valid_station_id(&station_id) {
         return Err(ApiError::bad_request("station id is invalid"));
     }
+    Ok(web::Json(station_live(&state, station_id).await?))
+}
+
+/// Coordinates from a recent vehicle status sample. A small future skew is
+/// tolerated, but an old location must not select a station for a real order.
+fn current_vehicle_position(status: &serde_json::Value, now: DateTime<Utc>) -> Option<(f64, f64)> {
+    let snapshot = snapshot_from_status(status)?;
+    let age_seconds = now.signed_duration_since(snapshot.sampled_at).num_seconds();
+    if !(-300..=900).contains(&age_seconds) {
+        return None;
+    }
+    Some((snapshot.latitude, snapshot.longitude))
+}
+
+/// Live status of the swap station nearest to the vehicle's reported position.
+async fn nearest_station_live(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<web::Json<NearestStationLive>, ApiError> {
+    authorize(&state, &request)?;
+    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let status = vehicle.status().await?;
+    let position_unavailable = || ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        code: "vehicle_position_unavailable",
+        message: "vehicle status did not contain a valid position sample".to_owned(),
+    };
+    let (latitude, longitude) =
+        current_vehicle_position(&status, Utc::now()).ok_or_else(position_unavailable)?;
+    let nearby_client = state
+        .nearby_stations
+        .as_ref()
+        .ok_or_else(vehicle_not_configured)?;
+    let nearby = nearby_client
+        .search(latitude, longitude)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "NIO nearby station lookup failed");
+            ApiError {
+                status: StatusCode::BAD_GATEWAY,
+                code: "upstream_error",
+                message: error.to_string(),
+            }
+        })?;
+    let nearest = nearby
+        .stations
+        .into_iter()
+        .filter(|station| valid_station_id(&station.station_id))
+        .min_by(|left, right| {
+            left.straight_line_distance_km
+                .total_cmp(&right.straight_line_distance_km)
+        })
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "no_nearby_station",
+            message: "no nearby swap station was found".to_owned(),
+        })?;
+    // Persist the identity so later lookups by ID can show the station name.
+    if let Some(name) = nearest.name.as_deref()
+        && let Err(error) = state
+            .store
+            .upsert_searched_swap_station(
+                &nearest.station_id,
+                name,
+                None,
+                nearest.latitude,
+                nearest.longitude,
+            )
+            .await
+    {
+        tracing::warn!(%error, "failed to persist nearest station identity");
+    }
+    let live = station_live(&state, nearest.station_id.clone()).await?;
+    Ok(web::Json(NearestStationLive {
+        station_id: live.station_id,
+        station_name: nearest.name.unwrap_or(live.station_name),
+        straight_line_distance_km: nearest.straight_line_distance_km,
+        captured_at: live.captured_at,
+        current_fees: live.current_fees,
+        fee_periods: live.fee_periods,
+        fee_notices: live.fee_notices,
+        fee_timezone: live.fee_timezone,
+        queue: live.queue,
+        battery_readiness: live.battery_readiness,
+        available_75_count: live.available_75_count,
+        available_75_batteries: live.available_75_batteries,
+    }))
+}
+
+async fn station_live(state: &AppState, station_id: String) -> Result<StationLiveStatus, ApiError> {
     let template = state.station_template.as_ref().ok_or_else(|| ApiError {
         status: StatusCode::SERVICE_UNAVAILABLE,
         code: "station_template_not_configured",
@@ -1148,6 +1242,8 @@ async fn get_station_live(
         template.url_template.replace("{station_id}", &station_id),
     );
     let details = provider.fetch_live_details().await?;
+    // Unknown catalogue IDs fall back to the name in the live payload itself.
+    let station_name = details.station_name.clone().unwrap_or(station_name);
     let available_75_batteries = details
         .battery_readiness
         .iter()
@@ -1166,7 +1262,7 @@ async fn get_station_live(
             production_date: battery.production_date,
         })
         .collect::<Vec<_>>();
-    Ok(web::Json(StationLiveStatus {
+    Ok(StationLiveStatus {
         station_id,
         station_name,
         captured_at: details.captured_at,
@@ -1178,7 +1274,7 @@ async fn get_station_live(
         battery_readiness: details.battery_readiness,
         available_75_count: available_75_batteries.len(),
         available_75_batteries,
-    }))
+    })
 }
 
 async fn straight_line_energy(
@@ -1466,6 +1562,37 @@ mod tests {
             mcp_origin: "http://127.0.0.1:1".into(),
             mcp_oauth: None,
         }
+    }
+
+    #[actix_web::test]
+    async fn nearest_position_accepts_numeric_strings_and_rejects_stale_samples() {
+        let now = Utc.with_ymd_and_hms(2026, 11, 15, 8, 0, 0).unwrap();
+        let fresh = serde_json::json!({
+            "data": {
+                "vehicle_id": "vehicle-1",
+                "position_status": {
+                    "latitude": "31.2304",
+                    "longitude": "121.4737",
+                    "sample_time": now.timestamp_millis().to_string()
+                }
+            }
+        });
+        assert_eq!(
+            current_vehicle_position(&fresh, now),
+            Some((31.2304, 121.4737))
+        );
+
+        let stale = serde_json::json!({
+            "data": {
+                "vehicle_id": "vehicle-1",
+                "position_status": {
+                    "latitude": 31.2304,
+                    "longitude": 121.4737,
+                    "sample_time": now.timestamp_millis() - 901_000
+                }
+            }
+        });
+        assert_eq!(current_vehicle_position(&stale, now), None);
     }
 
     #[actix_web::test]

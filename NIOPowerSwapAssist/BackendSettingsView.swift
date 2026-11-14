@@ -7,6 +7,7 @@ struct BackendSettingsView: View {
     @State private var apiKey: String
     @State private var controlKey: String
     @State private var errorMessage: String?
+    @State private var batteryFilter: String
 
     init(isPresented: Binding<Bool>, viewModel: VehicleViewModel) {
         _isPresented = isPresented
@@ -14,6 +15,7 @@ struct BackendSettingsView: View {
         _baseURLString = State(initialValue: viewModel.baseURLString)
         _apiKey = State(initialValue: viewModel.savedAPIKey)
         _controlKey = State(initialValue: viewModel.savedControlKey)
+        _batteryFilter = State(initialValue: StationViewModel.preferredBatteryTypeSetting)
     }
 
     var body: some View {
@@ -34,6 +36,21 @@ struct BackendSettingsView: View {
                     Text("Actix 后端")
                 } footer: {
                     Text("两套 Key 均保存在系统 Keychain。车控 Key 与普通 API Key 相互独立，车辆控制和换电下单共用车控 Key；留空会关闭这两类操作入口。")
+                }
+
+                Section {
+                    Picker("换电站电池过滤", selection: $batteryFilter) {
+                        ForEach(StationViewModel.batteryFilterOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .onChange(of: batteryFilter) { _, newValue in
+                        StationViewModel.preferredBatteryTypeSetting = newValue
+                    }
+                } header: {
+                    Text("换电站")
+                } footer: {
+                    Text("换电站页面只统计与你的车匹配的电池档位，顶部数字为该档位可换电池数；选「全部」显示站内所有电池。")
                 }
 
                 if let errorMessage {
