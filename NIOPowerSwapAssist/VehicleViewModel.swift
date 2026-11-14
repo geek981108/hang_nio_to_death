@@ -478,6 +478,28 @@ final class VehicleViewModel: ObservableObject {
             couponsErrorMessage
         ].compactMap { $0 }.first
     }
+    var hasClientCertificate: Bool { settingsStore.hasClientCertificate }
+
+    /// Stores a TLS client certificate (Cloudflare API Shield mTLS) and makes
+    /// every following request, including the event stream, present it.
+    func saveClientCertificate(p12Data: Data, password: String) throws {
+        #if DEBUG
+        if isDesignPreview { throw BackendClientError.vehicleControlFailed("设计预览不保存客户端证书。") }
+        #endif
+        try settingsStore.saveClientCertificate(p12Data: p12Data, password: password)
+        clientCertificateDidChange()
+    }
+
+    func clearClientCertificate() {
+        settingsStore.clearClientCertificate()
+        clientCertificateDidChange()
+    }
+
+    private func clientCertificateDidChange() {
+        BackendClientCertificate.shared.invalidate()
+        monitorConfigurationRevision = UUID()
+    }
+
     func saveSettings(baseURLString: String, apiKey: String, controlKey: String) throws {
         #if DEBUG
         if isDesignPreview { throw BackendClientError.vehicleControlFailed("设计预览不保存连接设置。") }

@@ -210,15 +210,11 @@ private final class BackendEventStreamTransport: NSObject, URLSessionDataDelegat
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        let protectionSpace = challenge.protectionSpace
-        if TemporaryBackendTLS.isEnabled,
-           protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-           protectionSpace.host.lowercased() == allowedHost,
-           let trust = protectionSpace.serverTrust {
-            completionHandler(.useCredential, URLCredential(trust: trust))
-        } else {
-            completionHandler(.performDefaultHandling, nil)
-        }
+        let (disposition, credential) = BackendAuthentication.response(
+            for: challenge,
+            allowedHost: allowedHost
+        )
+        completionHandler(disposition, credential)
     }
 
     func urlSession(
