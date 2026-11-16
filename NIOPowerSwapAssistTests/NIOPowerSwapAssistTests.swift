@@ -195,6 +195,26 @@ struct NIOPowerSwapAssistTests {
         #expect(snapshot.feeInfo == nil)
     }
 
+    @Test func maintenanceStateDisablesSwapAndPreservesNotification() throws {
+        let payload = """
+        {
+          "battery": {"battery_list": []},
+          "is_scannable": false,
+          "rich_tags": [
+            {"text":"领航换电","type":"positive"},
+            {"text":"维护中","type":"negative"}
+          ],
+          "notification": "【临时下线】由于电力维修，预计稍后恢复上线。"
+        }
+        """
+
+        let snapshot = try SwapStationPayloadParser.parse(Data(payload.utf8))
+        let state = try #require(snapshot.serviceState)
+        #expect(state.statusText == "维护中")
+        #expect(state.notification?.contains("电力维修") == true)
+        #expect(!state.allowsSwap)
+    }
+
     @Test func payloadParserUsesBatteryCapSeriesWhenBatteryIDIsMissing() throws {
         let payload = """
         {
@@ -1441,6 +1461,59 @@ struct NIOPowerSwapAssistTests {
         model.apply(snapshot: currentSnapshot, name: "Station B", token: second)
         #expect(model.batteries.map(\.id) == ["battery-b"])
         #expect(!model.isLoading)
+    }
+
+    @Test @MainActor func stationViewModelAppliesMaintenanceState() {
+        let model = StationViewModel()
+        let token = model.beginExternalRefresh(name: "维护站")
+        model.apply(
+            snapshot: SwapStationSnapshot(
+                batteries: [],
+                feeInfo: nil,
+                serviceState: StationServiceState(
+                    isScannable: false,
+                    statusText: "维护中",
+                    notification: "电力维修"
+                )
+            ),
+            name: "维护站",
+            token: token
+        )
+
+        #expect(!model.allowsSwap)
+        #expect(model.stationServiceState?.statusText == "维护中")
+    }
+
+    @Test @MainActor func refreshingSameStationKeepsLastSuccessfulSnapshotVisible() {
+        let model = StationViewModel()
+        let first = model.beginExternalRefresh(name: "Station A")
+        model.apply(
+            snapshot: SwapStationSnapshot(
+                batteries: [BatteryModel(
+                    id: "battery-a",
+                    chargingProgress: 100,
+                    batteryType: "75 kWh",
+                    chargingRemainingMinutes: nil,
+                    isOccupied: false,
+                    manufactureDate: nil,
+                    slotID: 1
+                )],
+                feeInfo: nil,
+                serviceState: StationServiceState(
+                    isScannable: false,
+                    statusText: "维护中",
+                    notification: "电力维修"
+                )
+            ),
+            name: "Station A",
+            token: first
+        )
+
+        _ = model.beginExternalRefresh(name: model.currentRequestName)
+
+        #expect(model.batteries.map(\.id) == ["battery-a"])
+        #expect(model.stationServiceState?.statusText == "维护中")
+        #expect(model.isLoading)
     }
 
     @Test func widgetUsesFiveMinutesOnlyForActiveVehicleStates() {

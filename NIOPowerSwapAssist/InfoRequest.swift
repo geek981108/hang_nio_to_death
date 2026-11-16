@@ -329,7 +329,14 @@ enum SwapStationPayloadParser {
 
         return SwapStationSnapshot(
             batteries: batteries.sorted { $0.slotID < $1.slotID },
-            feeInfo: fees.isEmpty && periods.isEmpty ? nil : FeeInfo(currentFees: fees, periods: periods, notices: notices)
+            feeInfo: fees.isEmpty && periods.isEmpty ? nil : FeeInfo(currentFees: fees, periods: periods, notices: notices),
+            serviceState: StationServiceState(
+                isScannable: payload.isScannable,
+                statusText: payload.richTags.first {
+                    $0.type?.localizedCaseInsensitiveCompare("negative") == .orderedSame
+                }?.text,
+                notification: payload.notification
+            )
         )
     }
 
@@ -392,10 +399,16 @@ private struct EncryptedEnvelope: Decodable {
 private struct SwapStationPayload: Decodable {
     let battery: BatteryPayload
     let feeInfo: FeePayload?
+    let isScannable: Bool?
+    let richTags: [StationStatusTagDTO]
+    let notification: String?
 
     enum CodingKeys: String, CodingKey {
         case battery
         case feeInfo = "fee_info"
+        case isScannable = "is_scannable"
+        case richTags = "rich_tags"
+        case notification
     }
 
     init(from decoder: Decoder) throws {
@@ -404,7 +417,15 @@ private struct SwapStationPayload: Decodable {
         // Fee metadata is supplemental. A malformed or temporarily absent fee
         // section must not discard otherwise valid live battery inventory.
         feeInfo = try? container.decode(FeePayload.self, forKey: .feeInfo)
+        isScannable = try? container.decode(Bool.self, forKey: .isScannable)
+        richTags = (try? container.decode([StationStatusTagDTO].self, forKey: .richTags)) ?? []
+        notification = try? container.decode(String.self, forKey: .notification)
     }
+}
+
+private struct StationStatusTagDTO: Decodable {
+    let text: String
+    let type: String?
 }
 
 private struct BatteryPayload: Decodable {

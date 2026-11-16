@@ -129,7 +129,7 @@ const TOOLS: &[ToolSpec] = &[
     },
     ToolSpec {
         name: "nio_station_live",
-        description: "Fetch one read-only station detail by id. Returns current_fees and every fee_period with units/currency/notices/timezone if supplied, queue observations, and per-slot charging countdown; estimated charge completion does not guarantee swap availability.",
+        description: "Fetch one read-only station detail by id. Returns current_fees and every fee_period with units/currency/notices/timezone if supplied, is_scannable, status_tags and notification for maintenance/unavailable states, queue observations, and per-slot charging countdown; estimated charge completion does not guarantee swap availability.",
         method: "GET",
         path: "/api/v1/stations/{id}/live",
         query_keys: &[],

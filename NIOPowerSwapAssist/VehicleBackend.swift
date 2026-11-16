@@ -340,6 +340,9 @@ struct NearestStationLive: Decodable, Sendable {
     let feePeriods: [FeePeriodEntry]
     let feeNotices: [String]
     let batteryReadiness: [BatteryReadinessEntry]
+    let isScannable: Bool?
+    let statusTags: [StatusTag]?
+    let notification: String?
 
     enum CodingKeys: String, CodingKey {
         case stationID = "station_id"
@@ -349,6 +352,14 @@ struct NearestStationLive: Decodable, Sendable {
         case feePeriods = "fee_periods"
         case feeNotices = "fee_notices"
         case batteryReadiness = "battery_readiness"
+        case isScannable = "is_scannable"
+        case statusTags = "status_tags"
+        case notification
+    }
+
+    struct StatusTag: Decodable, Sendable {
+        let text: String
+        let type: String?
     }
 
     struct FeeEntry: Decodable, Sendable {
@@ -436,7 +447,18 @@ struct NearestStationLive: Decodable, Sendable {
         let feeInfo = fees.isEmpty && periods.isEmpty && feeNotices.isEmpty
             ? nil
             : FeeInfo(currentFees: fees, periods: periods, notices: feeNotices)
-        return SwapStationSnapshot(batteries: batteries, feeInfo: feeInfo)
+        let unavailableText = statusTags?.first {
+            $0.type?.localizedCaseInsensitiveCompare("negative") == .orderedSame
+        }?.text
+        return SwapStationSnapshot(
+            batteries: batteries,
+            feeInfo: feeInfo,
+            serviceState: StationServiceState(
+                isScannable: isScannable,
+                statusText: unavailableText,
+                notification: notification
+            )
+        )
     }
 }
 

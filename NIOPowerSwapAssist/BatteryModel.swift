@@ -181,6 +181,23 @@ struct FeeInfo: Hashable {
 struct SwapStationSnapshot: Hashable {
     let batteries: [BatteryModel]
     let feeInfo: FeeInfo?
+    let serviceState: StationServiceState?
+
+    init(batteries: [BatteryModel], feeInfo: FeeInfo?, serviceState: StationServiceState? = nil) {
+        self.batteries = batteries
+        self.feeInfo = feeInfo
+        self.serviceState = serviceState
+    }
+}
+
+struct StationServiceState: Hashable {
+    let isScannable: Bool?
+    let statusText: String?
+    let notification: String?
+
+    var allowsSwap: Bool {
+        isScannable != false && statusText == nil
+    }
 }
 
 extension BatteryModel {
