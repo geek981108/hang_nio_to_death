@@ -1516,6 +1516,41 @@ struct NIOPowerSwapAssistTests {
         #expect(model.isLoading)
     }
 
+    @Test @MainActor func cancelledExternalStationRefreshStopsLoadingWithoutDiscardingSnapshot() {
+        let model = StationViewModel()
+        let initial = model.beginExternalRefresh(name: "Station A")
+        model.apply(
+            snapshot: SwapStationSnapshot(
+                batteries: [BatteryModel(
+                    id: "battery-a",
+                    chargingProgress: 100,
+                    batteryType: "75 kWh",
+                    chargingRemainingMinutes: nil,
+                    isOccupied: false,
+                    manufactureDate: nil,
+                    slotID: 1
+                )],
+                feeInfo: nil
+            ),
+            name: "Station A",
+            token: initial
+        )
+
+        let cancelled = model.beginExternalRefresh(name: model.currentRequestName)
+        model.cancelExternalRefresh(token: cancelled)
+
+        #expect(model.batteries.map(\.id) == ["battery-a"])
+        #expect(model.errorMessage == nil)
+        #expect(!model.isLoading)
+        #expect(!model.isExternalRefreshActive(cancelled))
+    }
+
+    @Test func recognisesBothSwiftAndURLSessionCancellationErrors() {
+        #expect(CancellationError().isTaskCancellation)
+        #expect(URLError(.cancelled).isTaskCancellation)
+        #expect(!URLError(.timedOut).isTaskCancellation)
+    }
+
     @Test func widgetUsesFiveMinutesOnlyForActiveVehicleStates() {
         func snapshot(state: Int?, chargeState: Int? = 0, swapping: Bool = false) -> WidgetVehicleSnapshot {
             WidgetVehicleSnapshot(

@@ -244,7 +244,7 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
-            .refreshable { await refreshWithCurrentRequest(updateWidgetConfiguration: false) }
+            .refreshable { await refreshFromPullToRefresh() }
 
             if viewModel.isLoading && viewModel.batteries.isEmpty {
                 ProgressView("正在获取换电站状态…")
@@ -494,9 +494,11 @@ struct ContentView: View {
                     name: nearest.stationName
                 )
             }
-        } catch is CancellationError {
-            return
         } catch {
+            if error.isTaskCancellation {
+                viewModel.cancelExternalRefresh(token: token)
+                return
+            }
             guard usesNearestStation, viewModel.isExternalRefreshActive(token) else { return }
             nearestStationID = nil
             viewModel.failExternalRefresh(
@@ -536,9 +538,11 @@ struct ContentView: View {
                 guard !usesNearestStation, viewModel.isExternalRefreshActive(token) else { return }
                 viewModel.apply(snapshot: live.stationSnapshot(), name: resolvedName, token: token)
                 return
-            } catch is CancellationError {
-                return
             } catch {
+                if error.isTaskCancellation {
+                    viewModel.cancelExternalRefresh(token: token)
+                    return
+                }
                 guard !usesNearestStation, viewModel.isExternalRefreshActive(token) else { return }
                 viewModel.failExternalRefresh(
                     "换电站获取失败：\((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)",
@@ -572,6 +576,16 @@ struct ContentView: View {
             stationID: selectedItem.stationID,
             updateWidgetConfiguration: updateWidgetConfiguration
         )
+    }
+
+    /// SwiftUI owns and may cancel the task passed to `refreshable`. Keep the
+    /// actual request in an independent task so a refresh-control lifecycle
+    /// change does not cancel URLSession and surface a false “已取消” error.
+    private func refreshFromPullToRefresh() async {
+        let refreshTask = Task { @MainActor in
+            await refreshWithCurrentRequest(updateWidgetConfiguration: false)
+        }
+        await refreshTask.value
     }
 
 }

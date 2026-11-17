@@ -1,5 +1,15 @@
 import Foundation
 
+extension Error {
+    /// Swift cancellation can surface either as `CancellationError` or as the
+    /// URL loading system's cancelled error, depending on where it is observed.
+    var isTaskCancellation: Bool {
+        if self is CancellationError { return true }
+        let error = self as NSError
+        return error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled
+    }
+}
+
 struct BackendConfiguration: Equatable, Sendable {
     let baseURL: URL
     let apiKey: String
@@ -904,7 +914,7 @@ struct BackendClient: Sendable {
                 )
             )
         } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+            if Task.isCancelled || error.isTaskCancellation {
                 throw CancellationError()
             }
             return VehiclePresentation(profile: profile, image: .failed)
