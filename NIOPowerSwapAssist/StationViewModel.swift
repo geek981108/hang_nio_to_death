@@ -96,6 +96,14 @@ final class StationViewModel: ObservableObject {
         errorMessage = message
     }
 
+    /// Ends a cancelled backend lookup without replacing the last successful
+    /// station snapshot or presenting cancellation as a request failure.
+    func cancelExternalRefresh(token: UUID) {
+        guard refreshToken == token else { return }
+        refreshToken = UUID()
+        isLoading = false
+    }
+
     /// Shows a snapshot fetched through the backend (nearest station or a saved
     /// station's live data) instead of replaying a saved cURL request.
     func apply(snapshot: SwapStationSnapshot, name: String, token: UUID) {
@@ -190,7 +198,7 @@ final class StationViewModel: ObservableObject {
             feeInfo = snapshot.feeInfo
             stationServiceState = snapshot.serviceState
             lastUpdated = Date()
-        } catch is CancellationError {
+        } catch where error.isTaskCancellation {
             return
         } catch {
             guard refreshToken == token else { return }
