@@ -18,7 +18,7 @@ use crate::{
     config::StationConfig,
     models::{
         BatteryObservation, StationBatteryReadiness, StationFeeItem, StationFeePeriod,
-        StationLiveQueue, StationQueueStatus, StationSnapshot,
+        StationLiveQueue, StationQueueStatus, StationSnapshot, StationStatusTag,
     },
 };
 
@@ -51,6 +51,9 @@ pub struct StationLiveDetails {
     pub fee_periods: Vec<StationFeePeriod>,
     pub fee_notices: Vec<String>,
     pub fee_timezone: Option<String>,
+    pub is_scannable: Option<bool>,
+    pub status_tags: Vec<StationStatusTag>,
+    pub notification: Option<String>,
     pub queue: StationLiveQueue,
     pub battery_readiness: Vec<StationBatteryReadiness>,
 }
@@ -330,6 +333,19 @@ fn parse_live_details(payload: &Value, captured_at: DateTime<Utc>) -> StationLiv
         .filter_map(string_value)
         .map(|name| name.trim().to_owned())
         .find(|name| !name.is_empty());
+    let status_tags = payload["rich_tags"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|tag| {
+            let text = string_value(&tag["text"])?;
+            let text = text.trim();
+            (!text.is_empty()).then(|| StationStatusTag {
+                text: text.to_owned(),
+                tag_type: string_value(&tag["type"]),
+            })
+        })
+        .collect();
     StationLiveDetails {
         station_name,
         captured_at,
@@ -338,6 +354,11 @@ fn parse_live_details(payload: &Value, captured_at: DateTime<Utc>) -> StationLiv
         fee_notices,
         fee_timezone: string_value(&fee_info["timezone"])
             .or_else(|| string_value(&fee_info["time_zone"])),
+        is_scannable: payload["is_scannable"].as_bool(),
+        status_tags,
+        notification: string_value(&payload["notification"])
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty()),
         queue: StationLiveQueue {
             vehicles_ahead: upstream_queue.vehicles_ahead,
             waiting_description: upstream_queue.waiting_description,
@@ -851,6 +872,28 @@ mod tests {
         let serialized = serde_json::to_value(&detail.battery_readiness).unwrap();
         assert!(!serialized.to_string().contains("P007"));
         assert!(!serialized.to_string().contains("battery_id"));
+    }
+
+    #[test]
+    fn live_details_preserve_maintenance_state() {
+        let payload = serde_json::json!({
+            "battery": {"battery_list": []},
+            "is_scannable": false,
+            "notification": "【临时下线】由于电力维修，预计稍后恢复上线。",
+            "rich_tags": [
+                {"text":"领航换电","type":"positive"},
+                {"text":"维护中","type":"negative"}
+            ]
+        });
+        let details = parse_live_details(&payload, Utc::now());
+        assert_eq!(details.is_scannable, Some(false));
+        assert_eq!(details.status_tags.len(), 2);
+        assert_eq!(details.status_tags[1].text, "维护中");
+        assert_eq!(details.status_tags[1].tag_type.as_deref(), Some("negative"));
+        assert_eq!(
+            details.notification.as_deref(),
+            Some("【临时下线】由于电力维修，预计稍后恢复上线。")
+        );
     }
 
     #[test]

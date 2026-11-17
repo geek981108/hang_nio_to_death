@@ -174,7 +174,7 @@ struct ContentView: View {
         .alert("创建真实换电订单", isPresented: $showingSwapOrderConfirmation) {
             Button("取消", role: .cancel) {}
             Button("确认下单", role: .destructive) {
-                guard let stationID = selectedStationID else { return }
+                guard viewModel.allowsSwap, let stationID = selectedStationID else { return }
                 Task { _ = try? await vehicleViewModel.createSwapOrder(stationID: stationID) }
             }
         } message: {
@@ -225,7 +225,7 @@ struct ContentView: View {
 
                     if let error = viewModel.errorMessage {
                         ErrorBanner(message: error) {
-                            Task { await refreshWithCurrentRequest() }
+                            Task { await refreshWithCurrentRequest(updateWidgetConfiguration: false) }
                         } dismiss: {
                             viewModel.dismissError()
                         }
@@ -244,7 +244,7 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
-            .refreshable { await refreshWithCurrentRequest() }
+            .refreshable { await refreshWithCurrentRequest(updateWidgetConfiguration: false) }
 
             if viewModel.isLoading && viewModel.batteries.isEmpty {
                 ProgressView("正在获取换电站状态…")
@@ -299,7 +299,7 @@ struct ContentView: View {
                 }
                 Spacer(minLength: 0)
                 Button {
-                    Task { await refreshWithCurrentRequest() }
+                    Task { await refreshWithCurrentRequest(updateWidgetConfiguration: false) }
                 } label: {
                     Group {
                         if viewModel.isLoading { ProgressView().tint(.white) }
@@ -336,6 +336,20 @@ struct ContentView: View {
                 Text("选择站点，查看电池与实时费率")
                     .font(.caption).foregroundStyle(.white.opacity(0.6))
             }
+            if let state = viewModel.stationServiceState, !state.allowsSwap {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(state.statusText ?? "暂不可换电", systemImage: "wrench.and.screwdriver.fill")
+                        .font(.subheadline.weight(.semibold))
+                    if let notification = state.notification, !notification.isEmpty {
+                        Text(notification)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+            }
             Button {
                 if vehicleViewModel.isVehicleControlConfigured {
                     showingSwapOrderConfirmation = true
@@ -349,7 +363,9 @@ struct ContentView: View {
                     } else {
                         Image(systemName: "bolt.fill")
                     }
-                    Text(vehicleViewModel.isVehicleControlConfigured ? "发起换电" : "配置车控 Key")
+                    Text(!viewModel.allowsSwap
+                         ? (viewModel.stationServiceState?.statusText ?? "暂不可换电")
+                         : (vehicleViewModel.isVehicleControlConfigured ? "发起换电" : "配置车控 Key"))
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
@@ -361,6 +377,7 @@ struct ContentView: View {
                 selectedStationID == nil
                     || vehicleViewModel.isCreatingSwapOrder
                     || !vehicleViewModel.isConfigured
+                    || !viewModel.allowsSwap
             )
         }
         .foregroundStyle(.white)
@@ -423,6 +440,13 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
             }
             .padding(.top, 40)
+        } else if let state = viewModel.stationServiceState, !state.allowsSwap {
+            ContentUnavailableView(
+                state.statusText ?? "暂不可换电",
+                systemImage: "wrench.and.screwdriver",
+                description: Text(state.notification ?? "该站点当前暂停换电服务，请稍后再试。")
+            )
+            .padding(.top, 40)
         } else if viewModel.errorMessage == nil {
             ContentUnavailableView("暂无电池信息", systemImage: "battery.0percent", description: Text("该站点当前没有返回可展示的电池。"))
                 .padding(.top, 40)
@@ -456,10 +480,9 @@ struct ContentView: View {
         // Never keep a previous nearest station eligible for a real order while
         // the current vehicle position is still being resolved.
         nearestStationID = nil
-        if updateWidgetConfiguration {
-            BackendSettingsStore.shared.clearWidgetStation()
-        }
-        let token = viewModel.beginExternalRefresh(name: nil)
+        // A refresh is not a station switch. Keep the last successful snapshot
+        // visible while the new nearest-station request is in flight.
+        let token = viewModel.beginExternalRefresh(name: viewModel.currentRequestName)
         do {
             let nearest = try await vehicleViewModel.fetchNearestStationLive()
             guard usesNearestStation, viewModel.isExternalRefreshActive(token) else { return }

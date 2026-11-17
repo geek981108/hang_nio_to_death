@@ -92,6 +92,13 @@ pub struct StationLiveQueue {
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct StationStatusTag {
+    pub text: String,
+    #[serde(rename = "type")]
+    pub tag_type: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct StationLiveStatus {
     pub station_id: String,
     pub station_name: String,
@@ -101,6 +108,10 @@ pub struct StationLiveStatus {
     pub fee_notices: Vec<String>,
     /// None when the upstream payload does not explicitly identify a timezone.
     pub fee_timezone: Option<String>,
+    /// Whether the upstream currently permits starting a station interaction.
+    pub is_scannable: Option<bool>,
+    pub status_tags: Vec<StationStatusTag>,
+    pub notification: Option<String>,
     pub queue: StationLiveQueue,
     pub battery_readiness: Vec<StationBatteryReadiness>,
     pub available_75_count: usize,
@@ -120,6 +131,9 @@ pub struct NearestStationLive {
     pub fee_periods: Vec<StationFeePeriod>,
     pub fee_notices: Vec<String>,
     pub fee_timezone: Option<String>,
+    pub is_scannable: Option<bool>,
+    pub status_tags: Vec<StationStatusTag>,
+    pub notification: Option<String>,
     pub queue: StationLiveQueue,
     pub battery_readiness: Vec<StationBatteryReadiness>,
     pub available_75_count: usize,

@@ -5,6 +5,7 @@ import Foundation
 final class StationViewModel: ObservableObject {
     @Published private(set) var batteries: [BatteryModel] = []
     @Published private(set) var feeInfo: FeeInfo?
+    @Published private(set) var stationServiceState: StationServiceState?
     @Published private(set) var isLoading = false
     @Published private(set) var currentRequestName: String?
     @Published private(set) var lastUpdated: Date?
@@ -62,6 +63,7 @@ final class StationViewModel: ObservableObject {
     var readyCount: Int { visibleBatteries.filter { $0.status == .ready }.count }
     var chargingCount: Int { visibleBatteries.filter { $0.status == .charging }.count }
     var occupiedCount: Int { visibleBatteries.filter { $0.status == .occupied }.count }
+    var allowsSwap: Bool { stationServiceState?.allowsSwap ?? true }
 
     /// Marks a backend station lookup as in flight; keeps the current batteries
     /// on screen when the same station is refreshed.
@@ -74,6 +76,7 @@ final class StationViewModel: ObservableObject {
         if currentRequestName != name {
             batteries = []
             feeInfo = nil
+            stationServiceState = nil
             lastUpdated = nil
         }
         currentRequest = nil
@@ -104,6 +107,7 @@ final class StationViewModel: ObservableObject {
         currentRequestName = name
         batteries = snapshot.batteries
         feeInfo = snapshot.feeInfo
+        stationServiceState = snapshot.serviceState
         lastUpdated = .now
         errorMessage = nil
         isLoading = false
@@ -139,6 +143,7 @@ final class StationViewModel: ObservableObject {
         currentRequestName = nil
         batteries = []
         feeInfo = nil
+        stationServiceState = nil
         lastUpdated = nil
         errorMessage = nil
         isLoading = false
@@ -161,6 +166,7 @@ final class StationViewModel: ObservableObject {
         if currentRequest != request {
             batteries = []
             feeInfo = nil
+            stationServiceState = nil
             lastUpdated = nil
         }
         currentRequest = request
@@ -182,6 +188,7 @@ final class StationViewModel: ObservableObject {
             guard refreshToken == token else { return }
             batteries = snapshot.batteries
             feeInfo = snapshot.feeInfo
+            stationServiceState = snapshot.serviceState
             lastUpdated = Date()
         } catch is CancellationError {
             return

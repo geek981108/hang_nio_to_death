@@ -313,7 +313,7 @@ pub fn document() -> Value {
     let mut live = operation(
         "liveStation",
         "站点实时库存与费率",
-        "通过已配置站点模板发送一次实时只读请求。保留上游完整分时费率、当前费率和说明，队列及电池充电时间字段明确区分未知；可换 75 kWh 电池仍按容量=75、未占用、progress≥92 筛选，但不保证到站即可换。未知目录 ID 仍可通过有效模板查询。",
+        "通过已配置站点模板发送一次实时只读请求。保留上游完整分时费率、当前费率、状态标签、扫码可用性和通知；队列及电池充电时间字段明确区分未知。可换 75 kWh 电池仍按容量=75、未占用、progress≥92 筛选，但不保证到站即可换。未知目录 ID 仍可通过有效模板查询。",
         "站点",
         "StationLiveStatus",
         true,
@@ -1391,6 +1391,23 @@ fn schemas() -> Value {
         ),
     );
     add(
+        "StationStatusTag",
+        object(
+            "上游站点状态标签；negative 类型可表示维护中等不可用状态。",
+            &[
+                ("text", text("标签原文。")),
+                (
+                    "type",
+                    opt(
+                        text("上游标签类型，如 positive 或 negative。"),
+                        "缺失时为 null。",
+                    ),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
         "StationLiveStatus",
         object(
             "一次实时站点查询结果。",
@@ -1412,6 +1429,21 @@ fn schemas() -> Value {
                     opt(
                         text("上游显式提供的费率时区。"),
                         "未提供时为 null；time_period 保留原文。",
+                    ),
+                ),
+                (
+                    "is_scannable",
+                    opt(boolean("上游是否允许发起站点扫码交互。"), "缺失时为 null。"),
+                ),
+                (
+                    "status_tags",
+                    array("StationStatusTag", "上游站点状态标签；保留 negative 标签。"),
+                ),
+                (
+                    "notification",
+                    opt(
+                        text("上游站点通知原文，如维护原因和预计恢复时间。"),
+                        "缺失时为 null。",
                     ),
                 ),
                 ("queue", reference("StationLiveQueue")),
@@ -1466,6 +1498,21 @@ fn schemas() -> Value {
                     opt(
                         text("上游显式提供的费率时区。"),
                         "未提供时为 null；time_period 保留原文。",
+                    ),
+                ),
+                (
+                    "is_scannable",
+                    opt(boolean("上游是否允许发起站点扫码交互。"), "缺失时为 null。"),
+                ),
+                (
+                    "status_tags",
+                    array("StationStatusTag", "上游站点状态标签；保留 negative 标签。"),
+                ),
+                (
+                    "notification",
+                    opt(
+                        text("上游站点通知原文，如维护原因和预计恢复时间。"),
+                        "缺失时为 null。",
                     ),
                 ),
                 ("queue", reference("StationLiveQueue")),

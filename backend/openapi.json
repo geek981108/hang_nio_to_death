@@ -1566,6 +1566,30 @@
             ],
             "description": "未提供时为 null；time_period 保留原文。"
           },
+          "is_scannable": {
+            "anyOf": [
+              {
+                "description": "上游是否允许发起站点扫码交互。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "notification": {
+            "anyOf": [
+              {
+                "description": "上游站点通知原文，如维护原因和预计恢复时间。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
           "queue": {
             "$ref": "#/components/schemas/StationLiveQueue"
           },
@@ -1576,6 +1600,13 @@
           "station_name": {
             "description": "地图接口返回的站点名称，缺失时使用目录名称。",
             "type": "string"
+          },
+          "status_tags": {
+            "description": "上游站点状态标签；保留 negative 标签。",
+            "items": {
+              "$ref": "#/components/schemas/StationStatusTag"
+            },
+            "type": "array"
           },
           "straight_line_distance_km": {
             "description": "车辆上报位置到站点的地理直线距离，公里；不是道路距离。",
@@ -1591,6 +1622,9 @@
           "fee_periods",
           "fee_notices",
           "fee_timezone",
+          "is_scannable",
+          "status_tags",
+          "notification",
           "queue",
           "battery_readiness",
           "available_75_count",
@@ -2272,6 +2306,30 @@
             ],
             "description": "未提供时为 null；time_period 保留原文。"
           },
+          "is_scannable": {
+            "anyOf": [
+              {
+                "description": "上游是否允许发起站点扫码交互。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
+          "notification": {
+            "anyOf": [
+              {
+                "description": "上游站点通知原文，如维护原因和预计恢复时间。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          },
           "queue": {
             "$ref": "#/components/schemas/StationLiveQueue"
           },
@@ -2282,6 +2340,13 @@
           "station_name": {
             "description": "目录名称，未知目录时使用站点 ID。",
             "type": "string"
+          },
+          "status_tags": {
+            "description": "上游站点状态标签；保留 negative 标签。",
+            "items": {
+              "$ref": "#/components/schemas/StationStatusTag"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -2292,10 +2357,39 @@
           "fee_periods",
           "fee_notices",
           "fee_timezone",
+          "is_scannable",
+          "status_tags",
+          "notification",
           "queue",
           "battery_readiness",
           "available_75_count",
           "available_75_batteries"
+        ],
+        "type": "object"
+      },
+      "StationStatusTag": {
+        "description": "上游站点状态标签；negative 类型可表示维护中等不可用状态。",
+        "properties": {
+          "text": {
+            "description": "标签原文。",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "description": "上游标签类型，如 positive 或 negative。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "缺失时为 null。"
+          }
+        },
+        "required": [
+          "text",
+          "type"
         ],
         "type": "object"
       },
@@ -5408,7 +5502,7 @@
     },
     "/api/v1/stations/{id}/live": {
       "get": {
-        "description": "通过已配置站点模板发送一次实时只读请求。保留上游完整分时费率、当前费率和说明，队列及电池充电时间字段明确区分未知；可换 75 kWh 电池仍按容量=75、未占用、progress≥92 筛选，但不保证到站即可换。未知目录 ID 仍可通过有效模板查询。",
+        "description": "通过已配置站点模板发送一次实时只读请求。保留上游完整分时费率、当前费率、状态标签、扫码可用性和通知；队列及电池充电时间字段明确区分未知。可换 75 kWh 电池仍按容量=75、未占用、progress≥92 筛选，但不保证到站即可换。未知目录 ID 仍可通过有效模板查询。",
         "operationId": "liveStation",
         "parameters": [
           {
