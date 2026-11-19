@@ -1,0 +1,35 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Device is already configured"
+    },
+    "step": {
+      "user": {
+        "title": "Configure NIO Power backend",
+        "description": "Enter the address and keys of your self-hosted backend proxy. All values come from your own deployment.",
+        "data": {
+          "backend_url": "Backend URL",
+          "api_key": "API Key",
+          "control_key": "Vehicle Control Key (optional)",
+          "station_id": "Swap Station ID (leave empty = auto nearest station to vehicle)",
+          "scan_interval": "Refresh interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the backend, check URL and API Key",
+      "detail": "Detail"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NIO Power options",
+        "data": {
+          "station_id": "Swap Station ID (optional)",
+          "scan_interval": "Refresh interval (seconds)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "蔚来 NIO Power 后端",
+  "version": "1.2.0",
+  "slug": "nio_power_backend",
+  "description": "蔚来车辆状态、换电站、行程与车控的自建后端（内置 PostgreSQL），附带 HA 侧边栏 Web 前端，可配合 NIO Power 集成使用。",
+  "arch": [
+    "amd64"
+  ],
+  "startup": "services",
+  "boot": "auto",
+  "ports": {
+    "8080/tcp": 8080
+  },
+  "ports_description": {
+    "8080/tcp": "后端 API（供 NIO Power 集成在局域网内使用）"
+  },
+  "host_network": false,
+  "ingress": true,
+  "ingress_port": 8099,
+  "panel_icon": "mdi:car-electric",
+  "panel_title": "我的蔚来",
+  "panel_admin": false,
+  "options": {
+    "bearer_token": "",
+    "vehicle_id": "",
+    "device_id": "",
+    "account_id": "",
+    "app_version": "6.9.0",
+    "region": "cn",
+    "language": "zh-CN",
+    "swap_model_type": "ET5T",
+    "swap_model_type_year": "G1.2",
+    "target_battery_cap_level": 1,
+    "api_key": "",
+    "postgres_password": "",
+    "control_api_key": "",
+    "control_tls_cert": "",
+    "control_tls_key": "",
+    "control_ca": "",
+    "pin": ""
+  },
+  "schema": {
+    "bearer_token": "password",
+    "vehicle_id": "str",
+    "device_id": "str",
+    "account_id": "str?",
+    "app_version": "str",
+    "region": "str",
+    "language": "str",
+    "swap_model_type": "str",
+    "swap_model_type_year": "str",
+    "target_battery_cap_level": "list(1|2|8)",
+    "api_key": "password?",
+    "postgres_password": "password?",
+    "control_api_key": "password?",
+    "control_tls_cert": "str?",
+    "control_tls_key": "password?",
+    "control_ca": "str?",
+    "pin": "password?"
+  }
+}

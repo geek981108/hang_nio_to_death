@@ -82,6 +82,11 @@
   </tr>
 </table>
 
+# Home Assistant
+`homeassistant/` 下提供：
+- 本地加载项：在 HA 主机上运行后端（内置 PostgreSQL），并在 HA 侧边栏提供一个交互与 App 一致的 Web 前端（车辆、车控、轨迹、行程、充电曲线、换电记录、离车最近换电站、用车账本）
+- 集成 `nio_power`：把车辆状态、换电站和车控映射成 HA 实体，方便写自动化
+
 # 还有什么不足
 1. App 车控蓝牙协议还没有实现
 2. App 暂无 Android 版本

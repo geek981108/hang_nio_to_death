@@ -1,0 +1,11 @@
+{
+  "domain": "nio_power",
+  "name": "蔚来 NIO Power",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/geek981108/hang_nio_to_death/tree/main/homeassistant/custom_components/nio_power",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.0.0"
+}
