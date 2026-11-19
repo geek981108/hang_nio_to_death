@@ -14,7 +14,12 @@ from typing import Any
 import httpx
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 
@@ -80,17 +85,13 @@ class NioPowerConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry,
-    ) -> OptionsFlow:
-        return NioPowerOptionsFlow(config_entry)
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        # HA 在流程初始化后才提供 self.config_entry（只读），不在构造函数里传入。
+        return NioPowerOptionsFlow()
 
 
 class NioPowerOptionsFlow(OptionsFlow):
     """Options flow：改站点 ID 或刷新间隔，不重建 Key。"""
-
-    def __init__(self, config_entry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -98,7 +99,8 @@ class NioPowerOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        data = self.config_entry.data
+        # 与集成加载配置的顺序一致：options 覆盖 data，回填的是当前生效值。
+        data = {**self.config_entry.data, **self.config_entry.options}
         schema = vol.Schema(
             {
                 vol.Optional(
