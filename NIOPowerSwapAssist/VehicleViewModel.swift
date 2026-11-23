@@ -121,6 +121,60 @@ private enum VehicleRefreshResult: Sendable {
     case activeServiceOrders(VehicleRequestResult<ActiveServiceOrderPage>)
 }
 
+struct VehicleProfileCacheEntry: Codable, Equatable {
+    let schemaVersion: Int
+    let baseURLString: String
+    let profile: VehicleProfile
+}
+
+protocol VehicleProfileCaching: AnyObject {
+    func load(matching baseURL: URL) -> VehicleProfileCacheEntry?
+    func save(_ profile: VehicleProfile, baseURL: URL)
+    func clear()
+}
+
+final class UserDefaultsVehicleProfileCache: VehicleProfileCaching {
+    static let shared = UserDefaultsVehicleProfileCache()
+
+    private let defaults: UserDefaults
+    private let key: String
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(
+        defaults: UserDefaults = .standard,
+        key: String = "cachedVehicleProfile.v1"
+    ) {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    func load(matching baseURL: URL) -> VehicleProfileCacheEntry? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        guard let entry = try? decoder.decode(VehicleProfileCacheEntry.self, from: data) else {
+            defaults.removeObject(forKey: key)
+            return nil
+        }
+        guard entry.schemaVersion == 1,
+              entry.baseURLString == baseURL.absoluteString else { return nil }
+        return entry
+    }
+
+    func save(_ profile: VehicleProfile, baseURL: URL) {
+        let entry = VehicleProfileCacheEntry(
+            schemaVersion: 1,
+            baseURLString: baseURL.absoluteString,
+            profile: profile
+        )
+        guard let data = try? encoder.encode(entry) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    func clear() {
+        defaults.removeObject(forKey: key)
+    }
+}
+
 struct VehicleImageCacheEntry: Codable, Equatable {
     let schemaVersion: Int
     let baseURLString: String
@@ -130,6 +184,7 @@ struct VehicleImageCacheEntry: Codable, Equatable {
 }
 
 protocol VehicleImageCaching: AnyObject {
+    func load(matching baseURL: URL) -> VehicleImageCacheEntry?
     func load(matching baseURL: URL, vehicleID: String) -> VehicleImageCacheEntry?
     func save(data: Data, etag: String?, vehicleID: String, baseURL: URL)
     func clear()
@@ -153,11 +208,16 @@ final class FileVehicleImageCache: VehicleImageCaching {
         self.encoder = encoder
     }
 
-    func load(matching baseURL: URL, vehicleID: String) -> VehicleImageCacheEntry? {
+    func load(matching baseURL: URL) -> VehicleImageCacheEntry? {
         guard let data = try? Data(contentsOf: fileURL),
               let entry = try? decoder.decode(VehicleImageCacheEntry.self, from: data),
               entry.schemaVersion == 1,
-              entry.baseURLString == baseURL.absoluteString,
+              entry.baseURLString == baseURL.absoluteString else { return nil }
+        return entry
+    }
+
+    func load(matching baseURL: URL, vehicleID: String) -> VehicleImageCacheEntry? {
+        guard let entry = load(matching: baseURL),
               entry.vehicleID == vehicleID else { return nil }
         return entry
     }
@@ -372,6 +432,7 @@ final class VehicleViewModel: ObservableObject {
     private let settingsStore: BackendSettingsStore
     private let injectedSession: URLSession?
     private let dashboardCache: VehicleDashboardCaching?
+    private let vehicleProfileCache: VehicleProfileCaching?
     private let vehicleImageCache: VehicleImageCaching?
     private var vehicleImageETag: String?
     private var vehicleImageVehicleID: String?
@@ -419,6 +480,7 @@ final class VehicleViewModel: ObservableObject {
         settingsStore: BackendSettingsStore = .shared,
         session: URLSession? = nil,
         dashboardCache: VehicleDashboardCaching? = nil,
+        vehicleProfileCache: VehicleProfileCaching? = nil,
         vehicleImageCache: VehicleImageCaching? = nil
     ) {
         self.settingsStore = settingsStore
@@ -426,6 +488,10 @@ final class VehicleViewModel: ObservableObject {
         self.dashboardCache = dashboardCache
             ?? (settingsStore === BackendSettingsStore.shared
                 ? UserDefaultsVehicleDashboardCache.shared
+                : nil)
+        self.vehicleProfileCache = vehicleProfileCache
+            ?? (settingsStore === BackendSettingsStore.shared
+                ? UserDefaultsVehicleProfileCache.shared
                 : nil)
         self.vehicleImageCache = vehicleImageCache
             ?? (settingsStore === BackendSettingsStore.shared
@@ -435,8 +501,8 @@ final class VehicleViewModel: ObservableObject {
     }
 
     /// Runs after SwiftUI installs the root view. Keychain access stays out of
-    /// StateObject initialization, while a saved dashboard can still appear
-    /// before the first network response.
+    /// StateObject initialization, while a saved dashboard, profile, and artwork
+    /// can appear immediately before the first network response.
     func prepareForInitialDisplay() {
         guard !hasPreparedInitialDisplay else { return }
         hasPreparedInitialDisplay = true
@@ -453,8 +519,23 @@ final class VehicleViewModel: ObservableObject {
             lastDashboardRefreshAt = entry.savedAt
             isShowingCachedDashboard = true
         }
-        // The same backend URL may later represent a different vehicle. Wait
-        // for the profile before accepting a cached image for display.
+        if let profileEntry = vehicleProfileCache?.load(matching: configuration.baseURL),
+           dashboard == nil || profileEntry.profile.vehicleID == dashboard?.vehicleID {
+            vehicleProfile = profileEntry.profile
+        }
+        // Optimistically assume the vehicle and its artwork have not changed
+        // before the API responds. If the backend later reports a different
+        // vehicleID, updateVehiclePresentation/updateDashboardIfNeeded clears
+        // the stale profile and artwork.
+        if let imageEntry = vehicleImageCache?.load(matching: configuration.baseURL),
+           UIImage(data: imageEntry.data) != nil {
+            let expectedVehicleID = vehicleProfile?.vehicleID ?? dashboard?.vehicleID
+            if expectedVehicleID == nil || imageEntry.vehicleID == expectedVehicleID {
+                vehicleImageData = imageEntry.data
+                vehicleImageETag = imageEntry.etag
+                vehicleImageVehicleID = imageEntry.vehicleID
+            }
+        }
     }
 
     var baseURLString: String { settingsStore.baseURLString }
@@ -507,6 +588,7 @@ final class VehicleViewModel: ObservableObject {
             lastArchiveRefreshAt = nil
             isLoading = false
             dashboardCache?.clear()
+            vehicleProfileCache?.clear()
             vehicleImageCache?.clear()
             activeBaseURL = try? settingsStore.configuration().baseURL
             dashboard = nil
@@ -794,6 +876,9 @@ final class VehicleViewModel: ObservableObject {
         if vehicleProfile != presentation.profile {
             vehicleProfile = presentation.profile
         }
+        if let activeBaseURL {
+            vehicleProfileCache?.save(presentation.profile, baseURL: activeBaseURL)
+        }
         if vehicleImageData == nil,
            let activeBaseURL,
            let entry = vehicleImageCache?.load(
@@ -840,6 +925,17 @@ final class VehicleViewModel: ObservableObject {
     private func updateDashboardIfNeeded(_ newDashboard: VehicleDashboard) {
         isShowingCachedDashboard = false
         lastDashboardRefreshAt = newDashboard.updatedAt
+        let cachedIdentityMismatched = [vehicleProfile?.vehicleID, vehicleImageVehicleID]
+            .compactMap { $0 }
+            .contains { $0 != newDashboard.vehicleID }
+        if cachedIdentityMismatched {
+            vehicleProfile = nil
+            vehicleImageData = nil
+            vehicleImageETag = nil
+            vehicleImageVehicleID = nil
+            vehicleProfileCache?.clear()
+            vehicleImageCache?.clear()
+        }
         if let activeBaseURL {
             dashboardCache?.save(
                 newDashboard,

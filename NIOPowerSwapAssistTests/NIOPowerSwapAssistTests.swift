@@ -535,10 +535,41 @@ struct NIOPowerSwapAssistTests {
         let loaded = try #require(cache.load(matching: firstURL, vehicleID: "vehicle-1"))
         #expect(loaded.data == image)
         #expect(loaded.etag == "\"abc123\"")
+        let optimistic = try #require(cache.load(matching: firstURL))
+        #expect(optimistic.vehicleID == "vehicle-1")
+        #expect(optimistic.data == image)
+        #expect(cache.load(matching: secondURL) == nil)
         #expect(cache.load(matching: firstURL, vehicleID: "vehicle-2") == nil)
         #expect(cache.load(matching: secondURL, vehicleID: "vehicle-1") == nil)
         cache.clear()
+        #expect(cache.load(matching: firstURL) == nil)
         #expect(cache.load(matching: firstURL, vehicleID: "vehicle-1") == nil)
+    }
+
+    @Test func vehicleProfileCacheIsScopedByBackendAndCanBeCleared() throws {
+        let suite = "nio-profile-cache-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cache = UserDefaultsVehicleProfileCache(defaults: defaults)
+        let firstURL = try #require(URL(string: "https://vehicle.example.com/t/alice/"))
+        let secondURL = try #require(URL(string: "https://vehicle.example.com/t/bob/"))
+        let profile = VehicleProfile(
+            vehicleID: "vehicle-1",
+            displayName: "我的ET5T",
+            modelType: "ET5T",
+            color: "tech_grey",
+            imageURL: "https://cdn.example.com/car.png",
+            imageAvailable: true,
+            imageSHA256: "abc123",
+            imageFetchedAt: "2026-11-13T08:00:00Z"
+        )
+
+        cache.save(profile, baseURL: firstURL)
+        let loaded = try #require(cache.load(matching: firstURL))
+        #expect(loaded.profile == profile)
+        #expect(cache.load(matching: secondURL) == nil)
+        cache.clear()
+        #expect(cache.load(matching: firstURL) == nil)
     }
 
     @Test func vehicleActionRequestKeepsControlKeySeparateAndUsesExactConfirmation() throws {
@@ -1397,6 +1428,75 @@ struct NIOPowerSwapAssistTests {
         #expect(fixture.cache.load(matching: fixture.baseURL, vehicleID: "vehicle-a") == nil)
     }
 
+    @Test @MainActor func initialDisplayOptimisticallyLoadsCachedProfileAndImageBeforeAPI() async throws {
+        let firstImage = fixtureImageData(seed: 1)
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(firstImage, etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+
+        let firstSessionModel = fixture.model()
+        await firstSessionModel.refresh()
+        #expect(firstSessionModel.vehicleImageData == firstImage)
+
+        // Simulate cold relaunch with 304 Not Modified on refresh.
+        fixture.scenario.update(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .notModified
+        )
+        let relaunchedModel = fixture.model()
+        #expect(relaunchedModel.vehicleImageData == nil)
+        #expect(relaunchedModel.vehicleProfile == nil)
+
+        relaunchedModel.prepareForInitialDisplay()
+
+        // Cached profile and image are available immediately before any API call.
+        #expect(relaunchedModel.vehicleProfile?.vehicleID == "vehicle-a")
+        #expect(relaunchedModel.vehicleTitle == "车辆 A")
+        #expect(relaunchedModel.vehicleColorLabel == "星灰")
+        #expect(relaunchedModel.vehicleImageData == firstImage)
+
+        await relaunchedModel.refresh()
+
+        #expect(fixture.scenario.lastImageConditionalETag() == "\"a1\"")
+        #expect(relaunchedModel.vehicleImageData == firstImage)
+    }
+
+    @Test @MainActor func optimisticCachedImageClearsIfVehicleChangedAfterRelaunch() async throws {
+        let firstImage = fixtureImageData(seed: 1)
+        let fixture = try VehicleIdentityFixture(
+            vehicleID: "vehicle-a",
+            displayName: "车辆 A",
+            imageReply: .success(firstImage, etag: "\"a1\"")
+        )
+        defer { fixture.cleanUp() }
+
+        let firstSessionModel = fixture.model()
+        await firstSessionModel.refresh()
+
+        fixture.scenario.update(
+            vehicleID: "vehicle-b",
+            displayName: "车辆 B",
+            imageReply: .httpFailure
+        )
+        let relaunchedModel = fixture.model()
+        relaunchedModel.prepareForInitialDisplay()
+        #expect(relaunchedModel.vehicleProfile?.vehicleID == "vehicle-a")
+        #expect(relaunchedModel.vehicleImageData == firstImage)
+
+        await relaunchedModel.refresh()
+
+        #expect(fixture.scenario.lastImageConditionalETag() == nil)
+        #expect(relaunchedModel.vehicleProfile?.vehicleID == "vehicle-b")
+        #expect(relaunchedModel.vehicleTitle == "车辆 B")
+        #expect(relaunchedModel.vehicleImageData == nil)
+        #expect(fixture.cache.load(matching: fixture.baseURL) == nil)
+        #expect(fixture.profileCache.load(matching: fixture.baseURL)?.profile.vehicleID == "vehicle-b")
+    }
+
     @Test @MainActor func analyticsAndCouponsRefreshWithoutJoiningForegroundPolling() async throws {
         let fixture = try RefreshTestFixture()
         defer { fixture.cleanUp() }
@@ -1602,6 +1702,7 @@ private func fixtureImageData(seed: Int) -> Data {
 
 private enum VehicleImageReply: Sendable {
     case success(Data, etag: String)
+    case notModified
     case httpFailure
     case invalidImage
 }
@@ -1615,6 +1716,7 @@ private final class VehicleIdentityFixture {
     let scenario: VehicleIdentityScenario
     let settings: BackendSettingsStore
     let session: URLSession
+    let profileCache: UserDefaultsVehicleProfileCache
     let cache: FileVehicleImageCache
     private let cacheRoot: URL
 
@@ -1624,11 +1726,13 @@ private final class VehicleIdentityFixture {
             displayName: displayName,
             imageReply: imageReply
         )
+        let defaults = UserDefaults(suiteName: suite)!
         settings = BackendSettingsStore(
-            defaults: UserDefaults(suiteName: suite)!,
+            defaults: defaults,
             keychainService: service
         )
         try settings.save(baseURLString: baseURL.absoluteString, apiKey: key, controlKey: "")
+        profileCache = UserDefaultsVehicleProfileCache(defaults: defaults)
         cacheRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         cache = FileVehicleImageCache(
@@ -1644,6 +1748,7 @@ private final class VehicleIdentityFixture {
         VehicleViewModel(
             settingsStore: settings,
             session: session,
+            vehicleProfileCache: profileCache,
             vehicleImageCache: cache
         )
     }
@@ -1696,6 +1801,8 @@ private final class VehicleIdentityScenario: @unchecked Sendable {
             switch imageReply {
             case .success(let data, let etag):
                 return (data, 200, ["Content-Type": "image/png", "ETag": etag])
+            case .notModified:
+                return (Data(), 304, [:])
             case .httpFailure:
                 return (Data("upstream failure".utf8), 502, ["Content-Type": "text/plain"])
             case .invalidImage:
