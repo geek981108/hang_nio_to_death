@@ -63,7 +63,7 @@ struct VehicleDashboard: Codable, Equatable, Sendable {
     let updatedAt: Date
 }
 
-struct VehicleProfile: Decodable, Equatable, Sendable {
+struct VehicleProfile: Codable, Equatable, Sendable {
     let vehicleID: String
     let displayName: String?
     let modelType: String?
