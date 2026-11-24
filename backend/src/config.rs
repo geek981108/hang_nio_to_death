@@ -123,7 +123,7 @@ pub struct VehicleLoginSeed {
 }
 
 impl VehicleLoginSeed {
-    pub fn into_vehicle_config(&self, bearer_token: impl Into<SharedBearerToken>) -> VehicleConfig {
+    pub fn to_vehicle_config(&self, bearer_token: impl Into<SharedBearerToken>) -> VehicleConfig {
         VehicleConfig {
             bearer_token: bearer_token.into(),
             account_id: self.account_id.clone(),
@@ -348,8 +348,7 @@ impl Config {
                         app_version: non_empty("NIO_APP_VERSION")
                             .unwrap_or_else(|| "6.9.0".to_owned()),
                         region: non_empty("NIO_REGION").unwrap_or_else(|| "cn".to_owned()),
-                        language: non_empty("NIO_LANGUAGE")
-                            .unwrap_or_else(|| "zh-CN".to_owned()),
+                        language: non_empty("NIO_LANGUAGE").unwrap_or_else(|| "zh-CN".to_owned()),
                         vin_code: non_empty("NIO_VEHICLE_VIN"),
                     }),
                 )
@@ -367,8 +366,7 @@ impl Config {
                         app_version: non_empty("NIO_APP_VERSION")
                             .unwrap_or_else(|| "6.9.0".to_owned()),
                         region: non_empty("NIO_REGION").unwrap_or_else(|| "cn".to_owned()),
-                        language: non_empty("NIO_LANGUAGE")
-                            .unwrap_or_else(|| "zh-CN".to_owned()),
+                        language: non_empty("NIO_LANGUAGE").unwrap_or_else(|| "zh-CN".to_owned()),
                         vin_code: non_empty("NIO_VEHICLE_VIN"),
                     }),
                     None,
@@ -651,7 +649,7 @@ mod tests {
         assert_eq!(seed.vehicle_id, "veh-123");
         assert_eq!(seed.device_id, device_id);
 
-        let vehicle = seed.into_vehicle_config("Bearer fresh-login-token");
+        let vehicle = seed.to_vehicle_config("Bearer fresh-login-token");
         let client_a = crate::vehicle::NioVehicleClient::new(vehicle.clone()).unwrap();
         let client_b = client_a.clone();
         assert_eq!(vehicle.vehicle_id, "veh-123");
