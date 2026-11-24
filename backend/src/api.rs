@@ -127,7 +127,7 @@ impl AppState {
             tracing::info!("hot-reloaded NIO bearer token for running vehicle clients");
             return true;
         }
-        let config = seed.into_vehicle_config(normalized);
+        let config = seed.to_vehicle_config(normalized);
         let Ok(vehicle) = NioVehicleClient::new(config.clone()) else {
             tracing::warn!("failed to construct NioVehicleClient during login hot-reload");
             return false;
@@ -1096,9 +1096,7 @@ async fn search_stations(
     if !local.is_empty() {
         return Ok(web::Json(local_station_search_result(name, local)));
     }
-    let client = state
-        .station_search()
-        .ok_or_else(vehicle_not_configured)?;
+    let client = state.station_search().ok_or_else(vehicle_not_configured)?;
     let result = client.search(&name).await.map_err(station_search_error)?;
     for station in &result.stations {
         if let (Some(latitude), Some(longitude)) = (station.latitude, station.longitude) {
@@ -1164,9 +1162,7 @@ async fn nearby_stations(
             "valid latitude and longitude are required",
         ));
     }
-    let client = state
-        .nearby_stations()
-        .ok_or_else(vehicle_not_configured)?;
+    let client = state.nearby_stations().ok_or_else(vehicle_not_configured)?;
     Ok(web::Json(
         client
             .search(input.latitude, input.longitude)
@@ -1243,9 +1239,7 @@ async fn nearest_station_live(
     };
     let (latitude, longitude) =
         current_vehicle_position(&status).ok_or_else(position_unavailable)?;
-    let nearby_client = state
-        .nearby_stations()
-        .ok_or_else(vehicle_not_configured)?;
+    let nearby_client = state.nearby_stations().ok_or_else(vehicle_not_configured)?;
     let nearby = nearby_client
         .search(latitude, longitude)
         .await
@@ -2308,7 +2302,7 @@ mod tests {
             language: "zh".to_owned(),
             vin_code: None,
         };
-        let initial_config = seed.into_vehicle_config("old-token");
+        let initial_config = seed.to_vehicle_config("old-token");
         let existing_client = NioVehicleClient::new(initial_config.clone()).unwrap();
         let cloned_background_client = existing_client.clone();
 
