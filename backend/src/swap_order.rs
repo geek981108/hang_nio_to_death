@@ -234,11 +234,12 @@ impl SwapOrderClient {
         form: &[(String, String)],
     ) -> Result<Envelope, SwapOrderError> {
         let query = common_query(&self.profile, Utc::now().timestamp());
-        let url = signed_url(path, "POST", query, form, &self.profile.bearer_token)?;
+        let bearer_token = self.profile.current_bearer_token();
+        let url = signed_url(path, "POST", query, form, &bearer_token)?;
         let response = self
             .http
             .post(url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .header("accept", "application/json,text/json,text/plain")
             .header("accept-language", "zh-CN,zh-Hans;q=0.9")
             .header(
@@ -445,7 +446,7 @@ mod tests {
 
     fn profile() -> VehicleConfig {
         VehicleConfig {
-            bearer_token: "test-token".to_owned(),
+            bearer_token: "test-token".into(),
             account_id: None,
             vehicle_id: "vehicle-1".to_owned(),
             device_id: "0123456789abcdef0123456789abcdef".to_owned(),

@@ -6,39 +6,59 @@ struct FeeInfoView: View {
     @State private var showingDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("当前费率", systemImage: "yensign.circle.fill")
-                    .font(.headline)
-                Spacer()
-                if !feeInfo.periods.isEmpty {
-                    Button("详情", systemImage: "chart.bar.xaxis") {
-                        showingDetails = true
-                    }
-                    .font(.subheadline.weight(.semibold))
-                }
-            }
-            if let total = feeInfo.total {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(feeInfo.totalCurrency)\(total, specifier: "%.2f")")
-                        .font(.system(size: 30, weight: .medium, design: .rounded).monospacedDigit())
-                        .foregroundStyle(AppPalette.amber)
-                    if !feeInfo.totalUnit.isEmpty {
-                        Text("/\(feeInfo.totalUnit)").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            ForEach(feeInfo.componentFees) { item in
+        let hasDetails = !feeInfo.periods.isEmpty
+        Button {
+            guard hasDetails else { return }
+            showingDetails = true
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text(item.name).foregroundStyle(.secondary)
+                    Label("当前费率", systemImage: "yensign.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
                     Spacer()
-                    Text("\(item.currency)\(item.fee)/\(item.unit)").fontWeight(.semibold)
+                    if hasDetails {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.bar.xaxis")
+                            Text("分时趋势")
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.amber)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AppPalette.amber.opacity(0.11), in: Capsule())
+                    }
                 }
-                .font(.subheadline)
+                if let total = feeInfo.total {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(feeInfo.totalCurrency)\(total, specifier: "%.2f")")
+                            .font(.system(size: 32, weight: .medium, design: .rounded).monospacedDigit())
+                            .foregroundStyle(AppPalette.amber)
+                        if !feeInfo.totalUnit.isEmpty {
+                            Text("/\(feeInfo.totalUnit)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if !feeInfo.componentFees.isEmpty {
+                    Divider().opacity(0.5)
+                    ForEach(feeInfo.componentFees) { item in
+                        HStack {
+                            Text(item.name).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(item.currency)\(item.fee)/\(item.unit)")
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundStyle(.primary)
+                        }
+                        .font(.subheadline)
+                    }
+                }
             }
+            .nioCard(cornerRadius: 22, padding: 20)
         }
-        .padding(22)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.985))
+        .disabled(!hasDetails)
         .sheet(isPresented: $showingDetails) {
             FeeDetailView(feeInfo: feeInfo)
         }
@@ -67,6 +87,7 @@ private struct FeeDetailView: View {
                     }
                     .padding(16)
                 }
+                .background(AppPalette.canvas)
             }
             .navigationTitle("分时费率详情")
             .navigationBarTitleDisplayMode(.inline)
@@ -109,16 +130,21 @@ private struct FeeDetailView: View {
             Text("全天费用趋势")
                 .font(.headline)
 
-            Chart(feeInfo.periods) { period in
-                if let start = period.startMinute, let end = period.endMinute, let total = period.total {
-                    BarMark(
-                        xStart: .value("开始", Double(start) / 60),
-                        xEnd: .value("结束", Double(end) / 60),
-                        y: .value("总费用", total)
-                    )
-                    .foregroundStyle(color(for: period, current: current, next: next))
-                    .cornerRadius(4)
+            Chart {
+                ForEach(feeInfo.periods) { period in
+                    if let start = period.startMinute, let end = period.endMinute, let total = period.total {
+                        BarMark(
+                            xStart: .value("开始", Double(start) / 60),
+                            xEnd: .value("结束", Double(end) / 60),
+                            y: .value("总费用", total)
+                        )
+                        .foregroundStyle(color(for: period, current: current, next: next))
+                        .cornerRadius(4)
+                    }
                 }
+                RuleMark(x: .value("现在", Double(minute) / 60))
+                    .foregroundStyle(AppPalette.amber)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
             }
             .chartXScale(domain: 0...24)
             .chartXAxis {
@@ -146,8 +172,7 @@ private struct FeeDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .nioCard(cornerRadius: 20, padding: 16)
     }
 
     private func feeTable(current: FeePeriod?, next: FeePeriod?) -> some View {
@@ -177,8 +202,7 @@ private struct FeeDetailView: View {
                 if period.id != feeInfo.periods.last?.id { Divider() }
             }
         }
-        .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .nioCard(cornerRadius: 20, padding: 16)
     }
 
     private var notices: some View {

@@ -61,6 +61,11 @@ struct VehicleDashboard: Codable, Equatable, Sendable {
     let insideTemperature: Double?
     let outsideTemperature: Double?
     let updatedAt: Date
+
+    /// Vehicle is actively driving when stateCode == 1 and not in a battery swap.
+    var isDriving: Bool {
+        !isSwapping && stateCode == 1
+    }
 }
 
 struct VehicleProfile: Codable, Equatable, Sendable {
@@ -491,6 +496,14 @@ enum BackendClientError: LocalizedError, Equatable {
     case vehicleControlFailed(String)
     case swapOrderUnauthorized
     case swapOrderFailed(String)
+    case invalidLoginInput(String)
+
+    var isVehicleNotConfigured: Bool {
+        if case .serverFailure(let code, _, _) = self, code == "vehicle_not_configured" {
+            return true
+        }
+        return false
+    }
 
     var errorDescription: String? {
         switch self {
@@ -502,6 +515,9 @@ enum BackendClientError: LocalizedError, Equatable {
         case .serverFailure(let code, let message, let status):
             switch code {
             case "vehicle_not_configured": return "服务端尚未配置车辆信息。"
+            case "login_not_configured": return "服务端尚未启用短信登录（需配置 API_KEY 与 NIO_DEVICE_ID）。"
+            case "nio_login_rejected": return "蔚来登录被拒绝：\(message)"
+            case "nio_login_upstream_error": return "蔚来登录上游请求失败，请稍后重试。"
             case "station_template_not_configured": return "服务端尚未配置换电站查询模板。"
             case "station_not_configured": return "服务端尚未配置换电站轮询。"
             case "database_error": return "后端数据库暂时不可用，请稍后重试。"
@@ -519,7 +535,70 @@ enum BackendClientError: LocalizedError, Equatable {
         case .vehicleControlFailed(let message): return message
         case .swapOrderUnauthorized: return "车控 Key 不正确，无法创建换电订单。"
         case .swapOrderFailed(let message): return message
+        case .invalidLoginInput(let message): return message
         }
+    }
+}
+
+struct BackendServiceStatus: Decodable, Equatable, Sendable {
+    let stationConfigured: Bool
+    let vehicleConfigured: Bool
+    let serviceOrderConfigured: Bool
+    let stationTemplateConfigured: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case stationConfigured = "station_configured"
+        case vehicleConfigured = "vehicle_configured"
+        case serviceOrderConfigured = "service_order_configured"
+        case stationTemplateConfigured = "station_template_configured"
+    }
+}
+
+struct NIOLoginSMSRequest: Encodable, Sendable {
+    let mobile: String
+}
+
+struct NIOLoginSMSChallenge: Decodable, Equatable, Sendable {
+    let challengeID: String
+    let expiresInSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case challengeID = "challenge_id"
+        case expiresInSeconds = "expires_in_seconds"
+    }
+}
+
+struct NIOLoginSubmitRequest: Encodable, Sendable {
+    let challengeID: String
+    let verificationCode: String
+
+    enum CodingKeys: String, CodingKey {
+        case challengeID = "challenge_id"
+        case verificationCode = "verification_code"
+    }
+}
+
+struct NIOLoginOutcome: Decodable, Equatable, Sendable {
+    struct Metadata: Decodable, Equatable, Sendable {
+        let tokenType: String?
+        let expiresIn: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case tokenType = "token_type"
+            case expiresIn = "expires_in"
+        }
+    }
+
+    let resultCode: String
+    let backendConfigSaved: Bool?
+    let vehicleClientReloaded: Bool?
+    let data: Metadata?
+
+    enum CodingKeys: String, CodingKey {
+        case resultCode = "result_code"
+        case backendConfigSaved = "backend_config_saved"
+        case vehicleClientReloaded = "vehicle_client_reloaded"
+        case data
     }
 }
 
@@ -877,6 +956,74 @@ struct BackendClient: Sendable {
         async let status = fetchVehicleStatus()
         async let widget = fetchWidgetInfo()
         return try await makeDashboard(status: status, widget: widget)
+    }
+
+    func fetchServiceStatus() async throws -> BackendServiceStatus {
+        try await fetch(path: "api/v1/status")
+    }
+
+    func makeSendNIOLoginSMSRequest(mobile: String) throws -> URLRequest {
+        let trimmed = mobile.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isValidMainlandMobile(trimmed) else {
+            throw BackendClientError.invalidLoginInput("请输入有效的 11 位中国大陆手机号。")
+        }
+        var request = makeRequest(path: "api/v1/auth/sms")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(NIOLoginSMSRequest(mobile: trimmed))
+        return request
+    }
+
+    func sendNIOLoginSMS(mobile: String) async throws -> NIOLoginSMSChallenge {
+        let request = try makeSendNIOLoginSMSRequest(mobile: mobile)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeSubmitNIOLoginRequest(
+        challengeID: String,
+        verificationCode: String
+    ) throws -> URLRequest {
+        let trimmedChallenge = challengeID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCode = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedChallenge.isEmpty else {
+            throw BackendClientError.invalidLoginInput("请先获取短信验证码。")
+        }
+        guard trimmedCode.count == 6, trimmedCode.allSatisfy(\.isASCII), trimmedCode.allSatisfy(\.isNumber) else {
+            throw BackendClientError.invalidLoginInput("请输入 6 位数字短信验证码。")
+        }
+        var request = makeRequest(path: "api/v1/auth/login")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            NIOLoginSubmitRequest(
+                challengeID: trimmedChallenge,
+                verificationCode: trimmedCode
+            )
+        )
+        return request
+    }
+
+    func submitNIOLogin(
+        challengeID: String,
+        verificationCode: String
+    ) async throws -> NIOLoginOutcome {
+        let request = try makeSubmitNIOLoginRequest(
+            challengeID: challengeID,
+            verificationCode: verificationCode
+        )
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    private static func isValidMainlandMobile(_ mobile: String) -> Bool {
+        let bytes = Array(mobile.utf8)
+        guard bytes.count == 11,
+              bytes[0] == UInt8(ascii: "1"),
+              (UInt8(ascii: "3")...UInt8(ascii: "9")).contains(bytes[1]) else {
+            return false
+        }
+        return bytes.allSatisfy { (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }
     }
 
     func fetchVehicleProfile() async throws -> VehicleProfile {

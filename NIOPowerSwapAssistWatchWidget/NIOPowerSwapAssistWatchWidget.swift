@@ -67,23 +67,32 @@ private struct WatchWidgetView: View {
     }
 
     private var rectangularView: some View {
-        HStack(spacing: 7) {
-            Image(systemName: statusSymbol)
-                .font(.title3)
-                .foregroundStyle(statusColor)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(socText)
-                        .font(.headline.monospacedDigit())
-                    Text(rangeText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Text(queueOrStatusText)
-                    .font(.caption2)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: statusSymbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                Text(socText)
+                    .font(.system(.headline, design: .rounded, weight: .bold).monospacedDigit())
+                Text(rangeText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(statusColor.opacity(0.24))
+                    Capsule()
+                        .fill(statusColor)
+                        .frame(width: max(4, proxy.size.width * normalizedSOC))
+                }
+            }
+            .frame(height: 4.5)
+            Text(queueOrStatusText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
     }
@@ -128,7 +137,11 @@ private struct WatchWidgetView: View {
         guard let snapshot = entry.snapshot else { return .secondary }
         if snapshot.isSwapping { return .cyan }
         if snapshot.isCharging { return .green }
-        return snapshot.isConnected ? .blue : .secondary
+        if let soc = snapshot.stateOfCharge {
+            if soc < 20 { return .red }
+            if soc < 50 { return .orange }
+        }
+        return snapshot.isConnected ? .green : .secondary
     }
 }
 

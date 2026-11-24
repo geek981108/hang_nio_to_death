@@ -6,6 +6,29 @@ struct WatchDashboard: Equatable, Sendable {
     let remainingRange: Double?
     let isCharging: Bool
     let isSwapping: Bool
+    let isDriving: Bool
+    let lockStatusCode: Int?
+    let insideTemperature: Double?
+
+    init(
+        isConnected: Bool,
+        stateOfCharge: Double?,
+        remainingRange: Double?,
+        isCharging: Bool,
+        isSwapping: Bool,
+        isDriving: Bool = false,
+        lockStatusCode: Int? = nil,
+        insideTemperature: Double? = nil
+    ) {
+        self.isConnected = isConnected
+        self.stateOfCharge = stateOfCharge
+        self.remainingRange = remainingRange
+        self.isCharging = isCharging
+        self.isSwapping = isSwapping
+        self.isDriving = isDriving
+        self.lockStatusCode = lockStatusCode
+        self.insideTemperature = insideTemperature
+    }
 }
 
 struct WatchActiveOrder: Decodable, Equatable, Sendable, Identifiable {
@@ -33,13 +56,25 @@ struct WatchActiveOrder: Decodable, Equatable, Sendable, Identifiable {
 }
 
 enum WatchVehicleAction: String, Sendable {
+    case lock
     case unlockDoors = "unlock-doors"
+    case unlockStart = "unlock-start"
+    case acOn = "ac-on"
+    case acOff = "ac-off"
+    case guardOn = "guard-on"
+    case guardOff = "guard-off"
     case find
     case findStop = "find-stop"
 
     var confirmation: String {
         switch self {
+        case .lock: return "LOCK VEHICLE"
         case .unlockDoors: return "UNLOCK DOORS"
+        case .unlockStart: return "UNLOCK AND START"
+        case .acOn: return "START AC"
+        case .acOff: return "STOP AC"
+        case .guardOn: return "ENABLE GUARD MODE"
+        case .guardOff: return "DISABLE GUARD MODE"
         case .find: return "FIND VEHICLE"
         case .findStop: return "STOP FINDING"
         }
@@ -72,7 +107,13 @@ enum WatchBackendError: LocalizedError {
 
 struct WatchBackendClient: Sendable {
     let configuration: WatchBackendConfiguration
-    var session: URLSession = .shared
+    let session: URLSession
+
+    init(configuration: WatchBackendConfiguration, session: URLSession? = nil) {
+        self.configuration = configuration
+        self.session = session
+            ?? TemporaryBackendTLS.session(allowingUntrustedHost: configuration.baseURL.host)
+    }
 
     func fetchDashboard() async throws -> WatchDashboard {
         async let status: VehicleStatusEnvelope = fetch(path: "api/v1/vehicle/status")
@@ -86,6 +127,11 @@ struct WatchBackendClient: Sendable {
             throw WatchBackendError.vehicleMismatch
         }
         let soc = vehicleStatus.data.socStatus ?? fallback.socStatus
+        let isSwapping = (vehicleStatus.data.specialStatus?.swapping
+            ?? fallback.specialStatus?.swapping
+            ?? 0) != 0
+        let vehicleState = vehicleStatus.data.exteriorStatus?.vehicleState
+            ?? fallback.exteriorStatus?.vehicleState
         return WatchDashboard(
             isConnected: vehicleStatus.data.connectionStatus?.connected
                 ?? fallback.connectionStatus?.connected
@@ -93,9 +139,12 @@ struct WatchBackendClient: Sendable {
             stateOfCharge: soc?.soc,
             remainingRange: soc?.remainingActualRange ?? soc?.remainingRange,
             isCharging: soc?.chargeState == 1,
-            isSwapping: (vehicleStatus.data.specialStatus?.swapping
-                ?? fallback.specialStatus?.swapping
-                ?? 0) != 0
+            isSwapping: isSwapping,
+            isDriving: !isSwapping && vehicleState == 1,
+            lockStatusCode: fallback.doorStatus?.vehicleLockStatus
+                ?? vehicleStatus.data.doorStatus?.vehicleLockStatus,
+            insideTemperature: vehicleStatus.data.hvacStatus?.temperature
+                ?? fallback.hvacStatus?.temperature
         )
     }
 
@@ -104,12 +153,24 @@ struct WatchBackendClient: Sendable {
         return page.items
     }
 
-    func performVehicleAction(_ action: WatchVehicleAction) async throws {
-        let body = try JSONSerialization.data(withJSONObject: [
+    func performVehicleAction(
+        _ action: WatchVehicleAction,
+        temperature: Double? = nil,
+        expandMirrors: Bool = false
+    ) async throws {
+        let shouldExpandMirrors = action == .guardOn && expandMirrors
+        var payload: [String: Any] = [
             "action": action.rawValue,
             "confirmation": action.confirmation,
-            "expand_mirrors": false
-        ])
+            "expand_mirrors": shouldExpandMirrors
+        ]
+        if shouldExpandMirrors {
+            payload["mirror_confirmation"] = "EXPAND MIRRORS"
+        }
+        if let temperature {
+            payload["temperature"] = temperature
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         _ = try await send(
             path: "api/v1/vehicle/action",
             body: body,
@@ -210,6 +271,21 @@ private struct WidgetInfoEnvelope: Decodable {
 private struct VehiclePayload: Decodable {
     struct ConnectionStatus: Decodable { let connected: Bool? }
     struct SpecialStatus: Decodable { let swapping: Int? }
+    struct ExteriorStatus: Decodable {
+        let vehicleState: Int?
+        enum CodingKeys: String, CodingKey {
+            case vehicleState = "vehicle_state"
+        }
+    }
+    struct DoorStatus: Decodable {
+        let vehicleLockStatus: Int?
+        enum CodingKeys: String, CodingKey {
+            case vehicleLockStatus = "vehicle_lock_status"
+        }
+    }
+    struct HVACStatus: Decodable {
+        let temperature: Double?
+    }
     struct SOCStatus: Decodable {
         let soc: Double?
         let remainingRange: Double?
@@ -226,12 +302,18 @@ private struct VehiclePayload: Decodable {
 
     let vehicleID: String
     let connectionStatus: ConnectionStatus?
+    let exteriorStatus: ExteriorStatus?
+    let doorStatus: DoorStatus?
+    let hvacStatus: HVACStatus?
     let specialStatus: SpecialStatus?
     let socStatus: SOCStatus?
 
     enum CodingKeys: String, CodingKey {
         case vehicleID = "vehicle_id"
         case connectionStatus = "connection_status"
+        case exteriorStatus = "exterior_status"
+        case doorStatus = "door_status"
+        case hvacStatus = "hvac_status"
         case specialStatus = "special_status"
         case socStatus = "soc_status"
     }

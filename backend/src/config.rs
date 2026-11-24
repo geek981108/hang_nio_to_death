@@ -1,6 +1,61 @@
-use std::{collections::HashMap, env, net::SocketAddr, time::Duration};
+use std::{
+    collections::HashMap,
+    env,
+    net::SocketAddr,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use thiserror::Error;
+
+/// Shared, thread-safe NIO Bearer Token holder so a successful SMS login can
+/// hot-update all running clients and background tasks without restarting.
+#[derive(Clone)]
+pub struct SharedBearerToken(Arc<RwLock<String>>);
+
+impl SharedBearerToken {
+    pub fn normalize(token: &str) -> String {
+        let trimmed = token.trim();
+        trimmed
+            .strip_prefix("Bearer ")
+            .or_else(|| trimmed.strip_prefix("bearer "))
+            .unwrap_or(trimmed)
+            .trim()
+            .to_owned()
+    }
+
+    pub fn new(token: impl Into<String>) -> Self {
+        let raw = token.into();
+        Self(Arc::new(RwLock::new(Self::normalize(&raw))))
+    }
+
+    pub fn current(&self) -> String {
+        self.0
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub fn replace(&self, token: impl Into<String>) {
+        let raw = token.into();
+        *self
+            .0
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Self::normalize(&raw);
+    }
+}
+
+impl From<String> for SharedBearerToken {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&str> for SharedBearerToken {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
 
 #[derive(Clone)]
 pub struct Config {
@@ -19,6 +74,7 @@ pub struct Config {
     pub station: Option<StationConfig>,
     pub station_template: Option<StationTemplateConfig>,
     pub vehicle: Option<VehicleConfig>,
+    pub vehicle_login_seed: Option<VehicleLoginSeed>,
     pub login_profile: Option<crate::nio_login::LoginProfile>,
     pub service_orders: Option<ServiceOrderConfig>,
 }
@@ -33,7 +89,7 @@ pub struct StationConfig {
 
 #[derive(Clone)]
 pub struct VehicleConfig {
-    pub bearer_token: String,
+    pub bearer_token: SharedBearerToken,
     pub account_id: Option<String>,
     pub vehicle_id: String,
     pub device_id: String,
@@ -42,6 +98,44 @@ pub struct VehicleConfig {
     pub region: String,
     pub language: String,
     pub vin_code: Option<String>,
+}
+
+impl VehicleConfig {
+    pub fn current_bearer_token(&self) -> String {
+        self.bearer_token.current()
+    }
+
+    pub fn update_bearer_token(&self, token: impl Into<String>) {
+        self.bearer_token.replace(token);
+    }
+}
+
+#[derive(Clone)]
+pub struct VehicleLoginSeed {
+    pub account_id: Option<String>,
+    pub vehicle_id: String,
+    pub device_id: String,
+    pub app_id: String,
+    pub app_version: String,
+    pub region: String,
+    pub language: String,
+    pub vin_code: Option<String>,
+}
+
+impl VehicleLoginSeed {
+    pub fn into_vehicle_config(&self, bearer_token: impl Into<SharedBearerToken>) -> VehicleConfig {
+        VehicleConfig {
+            bearer_token: bearer_token.into(),
+            account_id: self.account_id.clone(),
+            vehicle_id: self.vehicle_id.clone(),
+            device_id: self.device_id.clone(),
+            app_id: self.app_id.clone(),
+            app_version: self.app_version.clone(),
+            region: self.region.clone(),
+            language: self.language.clone(),
+            vin_code: self.vin_code.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -235,27 +329,50 @@ impl Config {
                 message: "login device ID must contain 32 hexadecimal characters".to_owned(),
             });
         }
-        let vehicle = match (
+        let (vehicle, vehicle_login_seed) = match (
             non_empty("NIO_BEARER_TOKEN"),
             non_empty("NIO_VEHICLE_ID"),
             non_empty("NIO_DEVICE_ID"),
         ) {
-            (None, None, None) => None,
-            (None, None, Some(_)) => None,
+            (None, None, None) | (None, None, Some(_)) => (None, None),
+            (None, Some(vehicle_id), Some(device_id)) => {
+                validate_identifier("NIO_VEHICLE_ID", &vehicle_id)?;
+                validate_identifier("NIO_DEVICE_ID", &device_id)?;
+                (
+                    None,
+                    Some(VehicleLoginSeed {
+                        account_id: non_empty("NIO_ACCOUNT_ID"),
+                        vehicle_id,
+                        device_id,
+                        app_id: non_empty("NIO_APP_ID").unwrap_or_else(|| "10002".to_owned()),
+                        app_version: non_empty("NIO_APP_VERSION")
+                            .unwrap_or_else(|| "6.9.0".to_owned()),
+                        region: non_empty("NIO_REGION").unwrap_or_else(|| "cn".to_owned()),
+                        language: non_empty("NIO_LANGUAGE")
+                            .unwrap_or_else(|| "zh-CN".to_owned()),
+                        vin_code: non_empty("NIO_VEHICLE_VIN"),
+                    }),
+                )
+            }
             (Some(bearer_token), Some(vehicle_id), Some(device_id)) => {
                 validate_identifier("NIO_VEHICLE_ID", &vehicle_id)?;
                 validate_identifier("NIO_DEVICE_ID", &device_id)?;
-                Some(VehicleConfig {
-                    bearer_token,
-                    account_id: non_empty("NIO_ACCOUNT_ID"),
-                    vehicle_id,
-                    device_id,
-                    app_id: non_empty("NIO_APP_ID").unwrap_or_else(|| "10002".to_owned()),
-                    app_version: non_empty("NIO_APP_VERSION").unwrap_or_else(|| "6.9.0".to_owned()),
-                    region: non_empty("NIO_REGION").unwrap_or_else(|| "cn".to_owned()),
-                    language: non_empty("NIO_LANGUAGE").unwrap_or_else(|| "zh-CN".to_owned()),
-                    vin_code: non_empty("NIO_VEHICLE_VIN"),
-                })
+                (
+                    Some(VehicleConfig {
+                        bearer_token: SharedBearerToken::new(bearer_token),
+                        account_id: non_empty("NIO_ACCOUNT_ID"),
+                        vehicle_id,
+                        device_id,
+                        app_id: non_empty("NIO_APP_ID").unwrap_or_else(|| "10002".to_owned()),
+                        app_version: non_empty("NIO_APP_VERSION")
+                            .unwrap_or_else(|| "6.9.0".to_owned()),
+                        region: non_empty("NIO_REGION").unwrap_or_else(|| "cn".to_owned()),
+                        language: non_empty("NIO_LANGUAGE")
+                            .unwrap_or_else(|| "zh-CN".to_owned()),
+                        vin_code: non_empty("NIO_VEHICLE_VIN"),
+                    }),
+                    None,
+                )
             }
             _ => return Err(ConfigError::PartialVehicle),
         };
@@ -344,6 +461,7 @@ impl Config {
             station,
             station_template,
             vehicle,
+            vehicle_login_seed,
             login_profile,
             service_orders,
         })
@@ -503,5 +621,48 @@ mod tests {
         assert!(parse("sometimes").is_err());
         assert!(flag_from_env("NIO_DAILY_CHECKIN_ENABLED", None, true).unwrap());
         assert!(!flag_from_env("NIO_DAILY_CHECKIN_ENABLED", None, false).unwrap());
+    }
+
+    #[test]
+    fn shared_bearer_token_updates_all_clones_and_strips_prefix() {
+        let token = SharedBearerToken::new("Bearer initial-token");
+        let clone = token.clone();
+        assert_eq!(token.current(), "initial-token");
+        assert_eq!(clone.current(), "initial-token");
+
+        token.replace("bearer rotated-token");
+        assert_eq!(token.current(), "rotated-token");
+        assert_eq!(clone.current(), "rotated-token");
+    }
+
+    #[test]
+    fn vehicle_login_seed_builds_vehicle_config_and_shares_hot_reloaded_token() {
+        let device_id = "0123456789abcdef0123456789abcdef";
+        let mut overrides = HashMap::new();
+        overrides.insert("NIO_VEHICLE_ID".to_owned(), "veh-123".to_owned());
+        overrides.insert("NIO_DEVICE_ID".to_owned(), device_id.to_owned());
+        overrides.insert("NIO_VEHICLE_VIN".to_owned(), "VIN0001".to_owned());
+
+        let config = Config::from_overrides(&overrides, false).unwrap();
+        assert!(config.vehicle.is_none());
+        let seed = config
+            .vehicle_login_seed
+            .expect("vehicle_login_seed should be present without NIO_BEARER_TOKEN");
+        assert_eq!(seed.vehicle_id, "veh-123");
+        assert_eq!(seed.device_id, device_id);
+
+        let vehicle = seed.into_vehicle_config("Bearer fresh-login-token");
+        let client_a = crate::vehicle::NioVehicleClient::new(vehicle.clone()).unwrap();
+        let client_b = client_a.clone();
+        assert_eq!(vehicle.vehicle_id, "veh-123");
+        assert_eq!(vehicle.device_id, device_id);
+        assert_eq!(vehicle.vin_code.as_deref(), Some("VIN0001"));
+        assert_eq!(client_a.current_bearer_token(), "fresh-login-token");
+        assert_eq!(client_b.current_bearer_token(), "fresh-login-token");
+
+        client_a.update_bearer_token("rotated-after-login");
+        assert_eq!(client_a.current_bearer_token(), "rotated-after-login");
+        assert_eq!(client_b.current_bearer_token(), "rotated-after-login");
+        assert_eq!(vehicle.current_bearer_token(), "rotated-after-login");
     }
 }

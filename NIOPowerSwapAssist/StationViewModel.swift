@@ -53,6 +53,35 @@ final class StationViewModel: ObservableObject {
 
     var preferredBatteryType: String { Self.preferredBatteryTypeSetting }
 
+    func setPreferredBatteryType(_ type: String) {
+        guard Self.preferredBatteryTypeSetting != type else { return }
+        Self.preferredBatteryTypeSetting = type
+        objectWillChange.send()
+    }
+
+    private static let batteryGroupPriority: [String: Int] = [
+        "75 kWh": 0,
+        "70 kWh": 1,
+        "70/75 kWh": 2,
+        "100 kWh": 3,
+        "102 kWh": 4,
+        "150 kWh": 5
+    ]
+
+    var availableBatteryFilterOptions: [String] {
+        var names = Set(batteries.map(\.groupName))
+        let current = preferredBatteryType
+        if !current.isEmpty, current != Self.allBatteryTypes {
+            names.insert(current)
+        }
+        let sortedNames = names.sorted { lhsName, rhsName in
+            let lhs = Self.batteryGroupPriority[lhsName] ?? 99
+            let rhs = Self.batteryGroupPriority[rhsName] ?? 99
+            return lhs == rhs ? lhsName < rhsName : lhs < rhs
+        }
+        return [Self.allBatteryTypes] + sortedNames
+    }
+
     /// Batteries of the preferred tier; every battery when the filter is "全部".
     var visibleBatteries: [BatteryModel] {
         let preferred = preferredBatteryType

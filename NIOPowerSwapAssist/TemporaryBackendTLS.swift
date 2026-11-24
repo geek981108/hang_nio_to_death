@@ -5,11 +5,21 @@ import Foundation
 /// chain has been repaired. Other hosts continue to use normal system trust.
 enum TemporaryBackendTLS {
     static let isEnabled = true
+    private static let lock = NSLock()
+    private static var sessions: [String: URLSession] = [:]
 
     static func session(allowingUntrustedHost host: String?) -> URLSession {
         guard isEnabled, let host, !host.isEmpty else { return .shared }
-        let delegate = BackendTrustDelegate(allowedHost: host)
-        return URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let normalizedHost = host.lowercased()
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = sessions[normalizedHost] {
+            return existing
+        }
+        let delegate = BackendTrustDelegate(allowedHost: normalizedHost)
+        let created = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        sessions[normalizedHost] = created
+        return created
     }
 }
 

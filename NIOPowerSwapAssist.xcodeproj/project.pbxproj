@@ -61,6 +61,8 @@
 		C38B0E100000000000000001 /* BackendEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000002 /* BackendEventStream.swift */; };
 		C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000004 /* DebugDiagnosticsView.swift */; };
 		C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
+		C38B0E100000000000000007 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
+		C38B0E100000000000000008 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -757,6 +759,7 @@
 			files = (
 				A17C0DE72F7A000200000001 /* NIOPowerSwapAssistWidget.swift in Sources */,
 				A17C0DE72F7A000400000003 /* VehicleWidgetPresentation.swift in Sources */,
+				C38B0E100000000000000007 /* TemporaryBackendTLS.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -826,6 +829,7 @@
 				B27A0C100000000000000007 /* WatchCredentialStore.swift in Sources */,
 				B27A0C100000000000000008 /* WatchConnectivityCoordinator.swift in Sources */,
 				B27A0C100000000000000009 /* WatchSnapshot.swift in Sources */,
+				C38B0E100000000000000008 /* TemporaryBackendTLS.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -105,10 +105,11 @@ impl NioRewardsClient {
         offset: u32,
     ) -> Result<AvailableCouponsPage, RewardsError> {
         let url = coupon_url(limit, offset, &self.profile.app_version)?;
+        let bearer_token = self.profile.current_bearer_token();
         let response = self
             .http
             .get(url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .send()
             .await
             .map_err(|error| RewardsError::Request(error.without_url()))?;
@@ -123,11 +124,12 @@ impl NioRewardsClient {
 
     /// One explicit upstream POST per call. Do not retry on ambiguous failures.
     pub async fn check_in(&self) -> Result<CheckInOutcome, RewardsError> {
-        let url = checkin_url(&self.profile, Utc::now().timestamp())?;
+        let bearer_token = self.profile.current_bearer_token();
+        let url = checkin_url(&self.profile, &bearer_token, Utc::now().timestamp())?;
         let response = self
             .http
             .post(url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .header("content-type", "application/x-www-form-urlencoded")
             .body("event=checkin")
             .send()
@@ -258,7 +260,11 @@ fn coupon_url(limit: u32, offset: u32, app_version: &str) -> Result<Url, Rewards
     Ok(url)
 }
 
-fn checkin_url(profile: &VehicleConfig, timestamp: i64) -> Result<Url, RewardsError> {
+fn checkin_url(
+    profile: &VehicleConfig,
+    bearer_token: &str,
+    timestamp: i64,
+) -> Result<Url, RewardsError> {
     let mut url = Url::parse(CHECKIN_ORIGIN).map_err(|_| RewardsError::InvalidUrl)?;
     url.set_path(CHECKIN_PATH);
     let mut pairs = vec![
@@ -281,10 +287,7 @@ fn checkin_url(profile: &VehicleConfig, timestamp: i64) -> Result<Url, RewardsEr
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>()
         .join("&");
-    let material = format!(
-        "POST{CHECKIN_PATH}?{canonical}{SIGNING_SALT}Bearer {}",
-        profile.bearer_token
-    );
+    let material = format!("POST{CHECKIN_PATH}?{canonical}{SIGNING_SALT}Bearer {bearer_token}");
     let sign = format!("{:x}", Sha256::digest(material.as_bytes()));
     pairs.push(("sign", sign));
     url.query_pairs_mut().extend_pairs(pairs);
@@ -336,7 +339,7 @@ mod tests {
     #[test]
     fn checkin_signs_form_field_with_sha256() {
         let profile = VehicleConfig {
-            bearer_token: "example-token".to_owned(),
+            bearer_token: "example-token".into(),
             account_id: None,
             vehicle_id: "vehicle".to_owned(),
             device_id: "device".to_owned(),
@@ -346,7 +349,7 @@ mod tests {
             language: "zh-CN".to_owned(),
             vin_code: None,
         };
-        let url = checkin_url(&profile, 1_793_344_197).unwrap();
+        let url = checkin_url(&profile, &profile.current_bearer_token(), 1_793_344_197).unwrap();
         let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
         assert_eq!(url.path(), CHECKIN_PATH);
         assert_eq!(query.get("hash_type"), Some(&"sha256".to_owned()));

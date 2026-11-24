@@ -454,11 +454,13 @@ impl ControlClient {
         form: Option<&[(String, String)]>,
         headers: &[(&str, &str)],
     ) -> Result<Value, ControlError> {
-        let url = signed_url(
+        let bearer_token = self.profile.current_bearer_token();
+        let url = signed_url_with_token(
             origin,
             method.as_str(),
             path,
             &self.profile,
+            &bearer_token,
             chrono::Utc::now().timestamp(),
             extra_query,
             form,
@@ -470,7 +472,7 @@ impl ControlClient {
         };
         let mut request = client
             .request(method, url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .header("Accept", "application/json,text/json,text/plain")
             .header("Accept-Language", "zh-CN,zh-Hans;q=0.9");
         for (name, value) in headers {
@@ -1110,6 +1112,30 @@ pub fn signed_url(
     extra_query: &[(String, String)],
     form: Option<&[(String, String)]>,
 ) -> Result<Url, ControlError> {
+    let bearer_token = config.current_bearer_token();
+    signed_url_with_token(
+        origin,
+        method,
+        path,
+        config,
+        &bearer_token,
+        timestamp,
+        extra_query,
+        form,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn signed_url_with_token(
+    origin: &str,
+    method: &str,
+    path: &str,
+    config: &VehicleConfig,
+    bearer_token: &str,
+    timestamp: i64,
+    extra_query: &[(String, String)],
+    form: Option<&[(String, String)]>,
+) -> Result<Url, ControlError> {
     if !path.starts_with('/') || path.contains(['?', '#']) {
         return Err(ControlError::InvalidUrl);
     }
@@ -1142,7 +1168,7 @@ pub fn signed_url(
         path,
         canonical.join("&"),
         SIGNING_SALT,
-        config.bearer_token
+        bearer_token
     );
     let sign = format!("{:x}", Md5::digest(material.as_bytes()));
     let mut url = Url::parse(&format!("{origin}{path}")).map_err(|_| ControlError::InvalidUrl)?;

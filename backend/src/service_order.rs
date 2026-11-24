@@ -240,10 +240,11 @@ impl ServiceOrderProvider {
             .append_pair("device_id", &config.device_id)
             .append_pair("lang", &config.language)
             .append_pair("region", &config.region);
-        let url = sign_url(url, &config.bearer_token, Utc::now().timestamp());
+        let bearer_token = config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
         let response = client
             .get(url)
-            .bearer_auth(&config.bearer_token)
+            .bearer_auth(&bearer_token)
             .header(
                 reqwest::header::ACCEPT,
                 "application/json,text/json,text/plain",

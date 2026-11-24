@@ -134,11 +134,12 @@ impl NioStationSearchClient {
             ("keywords".to_owned(), name.clone()),
             ("biz_type".to_owned(), "front_page".to_owned()),
         ];
-        let url = signed_url(query, &self.profile.bearer_token)?;
+        let bearer_token = self.profile.current_bearer_token();
+        let url = signed_url(query, &bearer_token)?;
         let response = self
             .http
             .get(url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .header("accept", "application/json,text/json,text/plain")
             .send()
             .await

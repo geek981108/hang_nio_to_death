@@ -13,6 +13,7 @@ struct DesignPreviewMode {
     let screen: Screen
     let dark: Bool
     let accessibility: Bool
+    let driving: Bool
     let controlAction: VehicleAction
     let expandMirrors: Bool
 
@@ -27,6 +28,7 @@ struct DesignPreviewMode {
             screen: screen,
             dark: args.contains("--design-dark"),
             accessibility: args.contains("--design-accessibility"),
+            driving: args.contains("--design-driving"),
             controlAction: controlAction,
             expandMirrors: args.contains("--design-expand-mirrors")
         )
@@ -93,14 +95,17 @@ struct DesignPreviewRoot: View {
 }
 
 enum DesignPreviewFixtures {
-    static let dashboard = VehicleDashboard(
-        vehicleID: "preview-vehicle", isConnected: true, stateCode: 2, mileage: 94973,
-        isSwapping: false, stateOfCharge: 84, remainingRange: 398, remainingActualRange: 356,
-        chargeStateCode: 0, chargingCurrent: nil, chargingPower: nil, chargingVoltage: nil,
-        chargeLimitPercent: 100, batterySampledAt: .now, lockStatusCode: 1,
-        location: VehicleCoordinate(latitude: 31.2304, longitude: 121.4737), locationSampledAt: .now,
-        insideTemperature: 24.5, outsideTemperature: 21, updatedAt: .now
-    )
+    static var dashboard: VehicleDashboard {
+        let isDriving = DesignPreviewMode.current?.driving == true
+        return VehicleDashboard(
+            vehicleID: "preview-vehicle", isConnected: true, stateCode: isDriving ? 1 : 2, mileage: 94973,
+            isSwapping: false, stateOfCharge: 84, remainingRange: 398, remainingActualRange: 356,
+            chargeStateCode: 0, chargingCurrent: nil, chargingPower: nil, chargingVoltage: nil,
+            chargeLimitPercent: 100, batterySampledAt: .now, lockStatusCode: isDriving ? 0 : 1,
+            location: VehicleCoordinate(latitude: 31.2304, longitude: 121.4737), locationSampledAt: .now,
+            insideTemperature: 24.5, outsideTemperature: 21, updatedAt: .now
+        )
+    }
     static let history: [VehicleSnapshot] = {
         let base = Date.now.addingTimeInterval(-75 * 60)
         let samples: [(Int, Double, Double)] = [

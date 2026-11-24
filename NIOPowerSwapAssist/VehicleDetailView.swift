@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -6,12 +7,15 @@ struct VehicleDetailView: View {
     let openSettings: () -> Void
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedDay: Date?
     @State private var hiddenPathSegmentIDs: Set<String> = []
     @State private var showsAllPathSegments = false
     @State private var showingStandardRange = false
     @State private var batteryPulseID: UUID?
     @State private var batteryTapCount = 0
+    @State private var quickControlHapticCount = 0
     @State private var vehicleControlPresentation: VehicleControlPresentation?
     @State private var queuedVehicleAction: PendingVehicleAction?
     @State private var queuedVehicleExecution: PendingVehicleAction?
@@ -58,11 +62,46 @@ struct VehicleDetailView: View {
                     .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
                 }
 
+                if viewModel.isConfigured && viewModel.needsBackendLogin && viewModel.dashboard != nil {
+                    HStack(spacing: 12) {
+                        Label("后端配置不完整，需登录蔚来账号", systemImage: "person.crop.circle.badge.exclamationmark")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.orange)
+                        Spacer(minLength: 8)
+                        Button("去登录") {
+                            viewModel.presentLoginSheet()
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                }
+
                 if let dashboard = viewModel.dashboard {
                     statusHero(dashboard)
+                    if let activeOrder = viewModel.activeServiceOrders.first {
+                        activeOrderHomeCard(activeOrder)
+                    }
                     metricsGrid(dashboard)
                     batterySection(dashboard)
                     locationSection(dashboard)
+                } else if viewModel.isConfigured && viewModel.needsBackendLogin {
+                    ContentUnavailableView {
+                        Label("需要登录蔚来账号", systemImage: "person.crop.circle.badge.exclamationmark")
+                    } description: {
+                        Text("当前后端配置不完整（缺少蔚来车辆凭证），请先通过短信验证码登录以完成配置。")
+                    } actions: {
+                        Button("短信验证码登录") {
+                            viewModel.presentLoginSheet()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("后端设置", action: openSettings)
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(.top, 80)
                 } else if viewModel.isConfigured {
                     ContentUnavailableView(
                         "暂无车辆状态",
@@ -88,12 +127,25 @@ struct VehicleDetailView: View {
                 }
 
                 if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(AppPalette.red)
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("重试") {
+                            Task { await viewModel.refresh() }
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppPalette.red)
+                    }
+                    .padding(14)
+                    .background(AppPalette.red.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AppPalette.red.opacity(0.20), lineWidth: 1)
+                    }
                 }
             }
             .padding(16)
@@ -162,15 +214,24 @@ struct VehicleDetailView: View {
                 VehicleControlPanel(
                     dashboard: viewModel.dashboard,
                     scope: scope,
-                    vehicleTitle: viewModel.vehicleTitle
-                ) { action, temperature, expandMirrors in
-                    queuedVehicleAction = PendingVehicleAction(
-                        action: action,
-                        temperature: temperature,
-                        expandMirrors: expandMirrors
-                    )
-                    vehicleControlPresentation = nil
-                }
+                    vehicleTitle: viewModel.vehicleTitle,
+                    onSelect: { action, temperature, expandMirrors in
+                        queuedVehicleAction = PendingVehicleAction(
+                            action: action,
+                            temperature: temperature,
+                            expandMirrors: expandMirrors
+                        )
+                        vehicleControlPresentation = nil
+                    },
+                    onDirectExecute: { action, temperature, expandMirrors in
+                        queuedVehicleExecution = PendingVehicleAction(
+                            action: action,
+                            temperature: temperature,
+                            expandMirrors: expandMirrors
+                        )
+                        vehicleControlPresentation = nil
+                    }
+                )
             case .confirmation(let pending):
                 VehicleActionConfirmation(
                     pending: pending,
@@ -195,16 +256,27 @@ struct VehicleDetailView: View {
     private func statusHero(_ dashboard: VehicleDashboard) -> some View {
         let vehicleTitle = viewModel.vehicleTitle
         let vehicleColor = viewModel.vehicleColorLabel
+        let isActiveState = dashboard.isDriving || dashboard.isSwapping || dashboard.chargeStateCode == 1
+        let statusDotColor: Color = {
+            if dashboard.isSwapping { return .cyan }
+            if dashboard.chargeStateCode == 1 { return AppPalette.green }
+            if dashboard.isDriving { return AppPalette.blue }
+            return dashboard.isConnected ? AppPalette.green : .secondary
+        }()
+        let canToggleLock = viewModel.isVehicleControlConfigured
+            && !viewModel.isPerformingVehicleAction
+            && (dashboard.lockStatusCode == 0 || dashboard.lockStatusCode == 1)
+
         return VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(vehicleTitle)
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    HStack(spacing: 7) {
-                        Circle()
-                            .fill(dashboard.isConnected ? Color.green : Color.secondary)
-                            .frame(width: 7, height: 7)
+                    HStack(spacing: 6) {
+                        LivePulseDot(color: statusDotColor, size: 7, isPulsing: isActiveState)
                         Text(vehicleStateLabel(dashboard))
+                            .fontWeight(isActiveState ? .semibold : .regular)
+                            .foregroundStyle(isActiveState ? statusDotColor : .secondary)
                         if let vehicleColor {
                             Text("· \(vehicleColor)")
                         }
@@ -213,59 +285,171 @@ struct VehicleDetailView: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label(lockStateLabel(dashboard.lockStatusCode), systemImage: dashboard.lockStatusCode == 1 ? "lock.fill" : "lock.open.fill")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(dashboard.lockStatusCode == 1 ? AppPalette.green : AppPalette.amber)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(.background.opacity(0.75), in: Capsule())
+                Button {
+                    guard canToggleLock else { return }
+                    quickControlHapticCount += 1
+                    if dashboard.lockStatusCode == 1 {
+                        vehicleControlPresentation = .panel(.unlock)
+                    } else {
+                        vehicleControlPresentation = .confirmation(PendingVehicleAction(action: .lock))
+                    }
+                } label: {
+                    Label(
+                        lockStateLabel(dashboard.lockStatusCode),
+                        systemImage: dashboard.lockStatusCode == 1 ? "lock.fill" : "lock.open.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(dashboard.lockStatusCode == 1 ? AppPalette.green : AppPalette.amber)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .background(AppPalette.surface.opacity(0.88), in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(
+                                (dashboard.lockStatusCode == 1 ? AppPalette.green : AppPalette.amber).opacity(0.24),
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                .disabled(!canToggleLock)
+                .accessibilityHint(canToggleLock ? "轻点执行门锁控制" : "")
             }
             .padding(.horizontal, 22)
             .padding(.top, 24)
 
             VehicleHeroArtwork(
                 imageData: viewModel.vehicleImageData,
-                fallbackAssetName: viewModel.vehicleProfile?.bundledArtworkAssetName
+                fallbackAssetName: viewModel.vehicleProfile?.bundledArtworkAssetName,
+                isDriving: dashboard.isDriving,
+                isSceneActive: scenePhase == .active
             )
-                .padding(.horizontal, 4)
-                .padding(.top, 22)
-                .padding(.bottom, 18)
+                .padding(.horizontal, dashboard.isDriving ? 0 : 4)
+                .padding(.top, dashboard.isDriving ? 8 : 20)
+                .padding(.bottom, dashboard.isDriving ? -10 : 16)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 5) {
                     showingDebugDiagnostics = true
                 }
                 .accessibilityLabel(
-                    vehicleColor.map { "\($0) \(vehicleTitle)" } ?? vehicleTitle
+                    heroAccessibilityLabel(
+                        vehicleTitle: vehicleTitle,
+                        vehicleColor: vehicleColor,
+                        isDriving: dashboard.isDriving
+                    )
                 )
                 .accessibilityHint("连续点击五次打开诊断页面")
 
-            VStack(spacing: 20) {
-            HStack(alignment: .firstTextBaseline) {
-                rangeReadout(dashboard)
-                Spacer()
-                batteryReadout(dashboard)
-            }
-            HStack {
-                if dashboard.remainingRange != nil && dashboard.remainingActualRange != nil {
-                    Text(usesStandardRange(dashboard)
-                         ? "预计可行驶 \(formatKilometers(dashboard.remainingActualRange))"
-                         : "标准续航 \(formatKilometers(dashboard.remainingRange))")
+            VStack(spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    rangeReadout(dashboard)
+                    Spacer()
+                    batteryReadout(dashboard)
                 }
-                Spacer(minLength: 8)
-                Text("总里程 \(formatKilometers(dashboard.mileage))")
-            }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
-            Divider().opacity(0.65)
-            quickControls(dashboard)
+                HStack {
+                    if dashboard.remainingRange != nil && dashboard.remainingActualRange != nil {
+                        Text(usesStandardRange(dashboard)
+                             ? "预计可行驶 \(formatKilometers(dashboard.remainingActualRange))"
+                             : "标准续航 \(formatKilometers(dashboard.remainingRange))")
+                    }
+                    Spacer(minLength: 8)
+                    Text("总里程 \(formatKilometers(dashboard.mileage))")
+                        .contentTransition(.numericText())
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                Divider().opacity(0.55)
+                quickControls(dashboard)
             }
             .padding(22)
-            .background(.background, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(AppPalette.hairline, lineWidth: 1)
+            }
+            .zIndex(1)
         }
-        .background(
-            LinearGradient(colors: [AppPalette.blue.opacity(0.09), AppPalette.canvas, AppPalette.canvas], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
-        )
+        .background(heroCardBackground(isDriving: dashboard.isDriving, statusDotColor: statusDotColor))
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .strokeBorder(AppPalette.hairline, lineWidth: 1)
+        }
+        .shadow(color: AppPalette.cardShadow, radius: 12, x: 0, y: 5)
+    }
+
+    @ViewBuilder
+    private func heroCardBackground(isDriving: Bool, statusDotColor: Color) -> some View {
+        if isDriving && colorScheme == .light {
+            // Exact tone match to the light driving GIF's studio sky/road backdrop.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.922, green: 0.942, blue: 0.966), location: 0.0),
+                    .init(color: Color(red: 0.948, green: 0.954, blue: 0.960), location: 0.34),
+                    .init(color: Color(red: 0.958, green: 0.960, blue: 0.957), location: 0.62),
+                    .init(color: AppPalette.canvas, location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else if isDriving && colorScheme == .dark {
+            // Exact tone match to the dark driving GIF's midnight studio backdrop.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.084, green: 0.104, blue: 0.144), location: 0.0),
+                    .init(color: Color(red: 0.074, green: 0.089, blue: 0.118), location: 0.36),
+                    .init(color: Color(red: 0.065, green: 0.076, blue: 0.100), location: 0.64),
+                    .init(color: AppPalette.canvas, location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            LinearGradient(
+                colors: [statusDotColor.opacity(0.11), AppPalette.blue.opacity(0.05), AppPalette.canvas],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private func activeOrderHomeCard(_ order: ActiveServiceOrder) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                LivePulseDot(color: AppPalette.amber, size: 7, isPulsing: true)
+                Text("换电排队进行中")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.amber)
+                Spacer()
+                NavigationLink {
+                    SwapRecordsListView(viewModel: viewModel)
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("查看订单")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.amber)
+                }
+            }
+            ActiveServiceOrderRow(
+                order: order,
+                notificationsEnabled: viewModel.queueNotificationsEnabled
+            ) {
+                quickControlHapticCount += 1
+                Task {
+                    await viewModel.setQueueNotificationsEnabled(!viewModel.queueNotificationsEnabled)
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AppPalette.amber.opacity(0.32), lineWidth: 1.2)
+        }
+        .shadow(color: AppPalette.cardShadow, radius: 10, x: 0, y: 4)
     }
 
 
@@ -303,7 +487,8 @@ struct VehicleDetailView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.96))
+        .sensoryFeedback(.selection, trigger: showingStandardRange)
         .accessibilityLabel("\(standard ? "标准续航" : "预计可行驶") \(formatKilometers(value))")
         .accessibilityHint(canSwitch ? "轻点切换续航类型" : "当前只有一种续航数据")
     }
@@ -368,8 +553,12 @@ struct VehicleDetailView: View {
                 quickControlButton(
                     title: dashboard.lockStatusCode == 1 ? "解锁" : "落锁",
                     icon: dashboard.lockStatusCode == 1 ? "lock.open.fill" : "lock.fill",
-                    color: AppPalette.graphite,
-                    enabled: dashboard.lockStatusCode == 0 || dashboard.lockStatusCode == 1
+                    color: dashboard.lockStatusCode == 1 ? AppPalette.red : AppPalette.green,
+                    enabled: dashboard.lockStatusCode == 0 || dashboard.lockStatusCode == 1,
+                    directAction: VehicleControlQuickDefaults.lockToggleAction(
+                        lockStatusCode: dashboard.lockStatusCode
+                    ).map { PendingVehicleAction(action: $0.action, expandMirrors: $0.expandMirrors) },
+                    directActionLabel: dashboard.lockStatusCode == 1 ? "直接解锁并启动" : "直接落锁"
                 ) {
                     if dashboard.lockStatusCode == 1 {
                         vehicleControlPresentation = .panel(.unlock)
@@ -377,16 +566,31 @@ struct VehicleDetailView: View {
                         vehicleControlPresentation = .confirmation(PendingVehicleAction(action: .lock))
                     }
                 }
-                quickControlButton(title: "守卫", icon: "shield.lefthalf.filled", color: AppPalette.violet) {
+                quickControlButton(
+                    title: "守卫",
+                    icon: "shield.lefthalf.filled",
+                    color: AppPalette.violet,
+                    directAction: PendingVehicleAction(
+                        action: VehicleControlQuickDefaults.guardModeAction.action,
+                        expandMirrors: VehicleControlQuickDefaults.guardModeAction.expandMirrors
+                    ),
+                    directActionLabel: "直接开启守卫并展开后视镜"
+                ) {
                     vehicleControlPresentation = .panel(.guardMode)
                 }
-                quickControlButton(title: "寻车", icon: "horn.blast.fill", color: AppPalette.amber) {
+                quickControlButton(
+                    title: "寻车",
+                    icon: "horn.blast.fill",
+                    color: AppPalette.amber,
+                    directAction: PendingVehicleAction(action: VehicleControlQuickDefaults.findAction),
+                    directActionLabel: "直接开始寻车"
+                ) {
                     vehicleControlPresentation = .panel(.finding)
                 }
                 quickControlButton(
                     title: "位置",
                     icon: "location.fill",
-                    color: AppPalette.violet,
+                    color: AppPalette.blue,
                     enabled: currentCoordinate != nil,
                     requiresControlKey: false
                 ) {
@@ -397,6 +601,12 @@ struct VehicleDetailView: View {
                 }
             }
 
+            if viewModel.isVehicleControlConfigured && !viewModel.isPerformingVehicleAction {
+                Text("轻点选择 · 长按图标直接执行（解锁默认启动 / 守卫展开后视镜）")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 
@@ -406,58 +616,154 @@ struct VehicleDetailView: View {
         color: Color,
         enabled: Bool = true,
         requiresControlKey: Bool = true,
+        directAction: PendingVehicleAction? = nil,
+        directActionLabel: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         let canUse = enabled
             && !viewModel.isPerformingVehicleAction
             && (!requiresControlKey || viewModel.isVehicleControlConfigured)
-        return Button(action: action) {
+        return HoldToExecuteButton(
+            isHoldEnabled: canUse && directAction != nil,
+            onTap: {
+                quickControlHapticCount += 1
+                action()
+            },
+            onLongPress: {
+                guard let directAction, canUse else { return }
+                executeVehicleAction(directAction)
+            }
+        ) { progress, isHolding, didComplete in
             VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 56, height: 56)
-                    .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                Text(title).font(.caption.weight(.medium))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(color.opacity(0.11 + 0.16 * progress))
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(color.opacity(isHolding ? 0.08 : 0.14), lineWidth: 1)
+                    IconHoldProgressRing(
+                        progress: progress,
+                        isVisible: isHolding || didComplete,
+                        color: color,
+                        lineWidth: 3.5,
+                        shape: .roundedRect(cornerRadius: 20)
+                    )
+                    Image(systemName: didComplete ? "checkmark" : icon)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(color)
+                        .scaleEffect(didComplete ? 1.12 : 1)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(width: 56, height: 56)
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(isHolding ? color : .primary)
             }
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: quickControlHapticCount)
         .disabled(!canUse)
         .opacity(canUse ? 1 : 0.42)
+        .accessibilityHint(directActionLabel.map { "轻点打开选项，长按\($0)" } ?? "")
+        .accessibilityAction(named: Text(directActionLabel ?? "")) {
+            guard let directAction, canUse else { return }
+            executeVehicleAction(directAction)
+        }
     }
 
     private func metricsGrid(_ dashboard: VehicleDashboard) -> some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("座舱温度", systemImage: "sun.max")
-                        .font(.subheadline.weight(.medium)).foregroundStyle(AppPalette.amber)
-                    Text(formatTemperature(dashboard.insideTemperature))
-                        .font(.system(size: 32, weight: .medium, design: .rounded).monospacedDigit())
-                    Text("车外 \(formatTemperature(dashboard.outsideTemperature))")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "fan")
-                    .font(.system(size: 56, weight: .ultraLight))
-                    .foregroundStyle(AppPalette.amber.opacity(0.55))
-                if viewModel.isVehicleControlConfigured {
-                    Button {
-                        vehicleControlPresentation = .panel(.climate)
-                    } label: {
-                        Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
-                            .frame(width: 32, height: 44)
+        let canControlClimate = viewModel.isVehicleControlConfigured && !viewModel.isPerformingVehicleAction
+        let quickClimate = VehicleControlQuickDefaults.climateAction
+        return HoldToExecuteButton(
+            isHoldEnabled: canControlClimate,
+            onTap: {
+                guard canControlClimate else { return }
+                quickControlHapticCount += 1
+                vehicleControlPresentation = .panel(.climate)
+            },
+            onLongPress: {
+                guard canControlClimate else { return }
+                executeVehicleAction(
+                    PendingVehicleAction(
+                        action: quickClimate.action,
+                        temperature: quickClimate.temperature
+                    )
+                )
+            }
+        ) { progress, isHolding, didComplete in
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 8) {
+                    Label("座舱温度", systemImage: "thermometer.medium")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppPalette.amber)
+                    Spacer(minLength: 8)
+                    if viewModel.isVehicleControlConfigured {
+                        HStack(spacing: 4) {
+                            Text(isHolding ? "松手取消 · 直开 \(Int(quickClimate.temperature))℃" : "调温 · 长按直开")
+                                .lineLimit(1)
+                            if !isHolding {
+                                Image(systemName: "chevron.right")
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.amber)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AppPalette.amber.opacity(0.13), in: Capsule())
+                        .fixedSize(horizontal: true, vertical: false)
                     }
-                    .tint(AppPalette.amber)
-                    .disabled(viewModel.isPerformingVehicleAction)
-                    .accessibilityLabel("空调控制")
+                }
+
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(formatTemperature(dashboard.insideTemperature))
+                            .font(.system(size: 34, weight: .medium, design: .rounded).monospacedDigit())
+                            .contentTransition(.numericText())
+                            .foregroundStyle(.primary)
+                        Text("车外 \(formatTemperature(dashboard.outsideTemperature))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    ZStack {
+                        Circle()
+                            .fill(AppPalette.amber.opacity(0.08 + 0.14 * progress))
+                        Circle()
+                            .stroke(AppPalette.amber.opacity(isHolding ? 0.08 : 0.16), lineWidth: 2)
+                        IconHoldProgressRing(
+                            progress: progress,
+                            isVisible: isHolding || didComplete,
+                            color: AppPalette.amber,
+                            lineWidth: 3.8,
+                            shape: .circle
+                        )
+                        Image(systemName: didComplete ? "checkmark" : "fan")
+                            .font(.system(size: didComplete ? 26 : 34, weight: didComplete ? .semibold : .light))
+                            .foregroundStyle(AppPalette.amber.opacity(isHolding || didComplete ? 0.95 : 0.65))
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .frame(width: 64, height: 64)
                 }
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppPalette.climate, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(
+                LinearGradient(
+                    colors: [AppPalette.climate, AppPalette.climate.opacity(0.86)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(AppPalette.amber.opacity(isHolding ? 0.42 : 0.18), lineWidth: 1)
+            }
+            .shadow(color: AppPalette.cardShadow, radius: 10, x: 0, y: 4)
         }
+        .disabled(!canControlClimate)
+        .accessibilityLabel("座舱温度 \(formatTemperature(dashboard.insideTemperature))，车外 \(formatTemperature(dashboard.outsideTemperature))")
+        .accessibilityHint(canControlClimate ? "轻点打开空调控制，长按直接开启 22 度空调" : "")
     }
 
     private func locationSection(_ dashboard: VehicleDashboard) -> some View {
@@ -500,8 +806,7 @@ struct VehicleDetailView: View {
                 .frame(maxWidth: .infinity, minHeight: 150)
             }
         }
-        .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .nioCard(cornerRadius: 24, padding: 18)
     }
 
     private func batterySection(_ dashboard: VehicleDashboard) -> some View {
@@ -510,11 +815,15 @@ struct VehicleDetailView: View {
         } label: {
             batteryCard(dashboard)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.985))
     }
 
     private func batteryCard(_ dashboard: VehicleDashboard) -> some View {
         let isCharging = dashboard.chargeStateCode == 1
+        let barColor = isCharging ? AppPalette.green : BatteryIndicator.tint(stateOfCharge: dashboard.stateOfCharge)
+        let limitIndex: Int? = dashboard.chargeLimitPercent.map {
+            min(19, max(0, Int(($0 / 5.0).rounded()) - 1))
+        }
         return VStack(alignment: .leading, spacing: 18) {
             HStack {
                 Label(
@@ -526,29 +835,43 @@ struct VehicleDetailView: View {
                     .font(.headline)
                     .foregroundStyle(isCharging ? AppPalette.green : .primary)
                 Spacer()
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Text("充换电记录")
                     Image(systemName: "chevron.right")
                 }
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppPalette.green)
+                .foregroundStyle(barColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(barColor.opacity(0.11), in: Capsule())
             }
 
             HStack(alignment: .firstTextBaseline) {
                 Text(dashboard.stateOfCharge.map { "\(Int($0.rounded()))%" } ?? "--")
-                    .font(.system(size: 30, weight: .medium, design: .rounded).monospacedDigit())
+                    .font(.system(size: 32, weight: .medium, design: .rounded).monospacedDigit())
+                    .contentTransition(.numericText())
+                    .foregroundStyle(barColor)
                 Spacer()
                 Text("充电上限 \(dashboard.chargeLimitPercent.map { "\(Int($0.rounded()))%" } ?? "--")")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
             HStack(spacing: 4) {
-                ForEach(0..<20) { index in
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Double(index) * 5 < (dashboard.stateOfCharge ?? 0)
-                              ? AppPalette.green : AppPalette.green.opacity(0.12))
-                        .frame(height: 18)
+                ForEach(0..<20, id: \.self) { index in
+                    let isFilled = Double(index) * 5 < (dashboard.stateOfCharge ?? 0)
+                    let isLimitMarker = limitIndex == index
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .fill(isFilled ? barColor : barColor.opacity(0.13))
+                        .frame(height: 19)
+                        .overlay {
+                            if isLimitMarker {
+                                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.45), lineWidth: 1.5)
+                            }
+                        }
                 }
             }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: dashboard.stateOfCharge)
             .accessibilityHidden(true)
             if isCharging {
                 HStack {
@@ -558,20 +881,27 @@ struct VehicleDetailView: View {
                     Spacer()
                     chargingValue("电流", formatMeasurement(dashboard.chargingCurrent, unit: "A"))
                 }
+                .padding(12)
+                .background(AppPalette.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             HStack {
-                Text(chargeStateLabel(dashboard.chargeStateCode))
-                    .font(.caption)
-                    .foregroundStyle(isCharging ? AppPalette.green : .secondary)
+                HStack(spacing: 6) {
+                    if isCharging {
+                        LivePulseDot(color: AppPalette.green, size: 6, isPulsing: true)
+                    }
+                    Text(chargeStateLabel(dashboard.chargeStateCode))
+                        .font(.caption.weight(isCharging ? .semibold : .regular))
+                        .foregroundStyle(isCharging ? AppPalette.green : .secondary)
+                }
                 Spacer()
                 if let sampledAt = dashboard.batterySampledAt {
                     Text("更新于 \(formatDateTime(sampledAt))")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
-        .padding(22)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .nioCard(cornerRadius: 24, padding: 22)
     }
 
     private var energyRecordsPage: some View {
@@ -656,8 +986,7 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .nioCard(cornerRadius: 22, padding: 18)
     }
 
     private var swapRecordsSection: some View {
@@ -721,8 +1050,7 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .nioCard(cornerRadius: 22, padding: 18)
     }
 
     private var tripsSection: some View {
@@ -888,8 +1216,7 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .nioCard(cornerRadius: 24, padding: 20)
     }
 
     #if DEBUG
@@ -1001,6 +1328,15 @@ struct VehicleDetailView: View {
         case 4: return "换电中"
         default: return dashboard.isConnected ? "车辆在线" : "车辆离线"
         }
+    }
+
+    private func heroAccessibilityLabel(
+        vehicleTitle: String,
+        vehicleColor: String?,
+        isDriving: Bool
+    ) -> String {
+        let base = vehicleColor.map { "\($0) \(vehicleTitle)" } ?? vehicleTitle
+        return isDriving ? "\(base)，行驶中" : base
     }
 
     private func lockStateLabel(_ code: Int?) -> String {
@@ -1142,9 +1478,137 @@ private struct BatteryPulseRing: View {
     }
 }
 
+final class AnimatedGIFSequence {
+    static let drivingRearViewAssetName = "CarDrivingRearView"
+    static let drivingRearViewDarkAssetName = "CarDrivingRearViewDark"
+    private static let cache = NSCache<NSString, AnimatedGIFSequence>()
+
+    let frames: [UIImage]
+    let duration: TimeInterval
+
+    init(frames: [UIImage], duration: TimeInterval) {
+        self.frames = frames
+        self.duration = duration
+    }
+
+    static func cached(assetName: String, bundle: Bundle = .main) -> AnimatedGIFSequence? {
+        let key = "\(bundle.bundleIdentifier ?? "main"):\(assetName)" as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        guard let asset = NSDataAsset(name: assetName, bundle: bundle),
+              let decoded = decode(data: asset.data) else {
+            return nil
+        }
+        cache.setObject(decoded, forKey: key)
+        return decoded
+    }
+
+    static func decode(data: Data) -> AnimatedGIFSequence? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+        let count = CGImageSourceGetCount(source)
+        guard count > 0 else { return nil }
+
+        var frames: [UIImage] = []
+        frames.reserveCapacity(count)
+        var totalDuration: TimeInterval = 0
+
+        for index in 0..<count {
+            guard let cgImage = CGImageSourceCreateImageAtIndex(source, index, nil) else {
+                continue
+            }
+            frames.append(UIImage(cgImage: cgImage))
+            totalDuration += frameDelay(at: index, in: source)
+        }
+        guard !frames.isEmpty else { return nil }
+        let safeDuration = totalDuration > 0 ? totalDuration : Double(frames.count) / 24.0
+        return AnimatedGIFSequence(frames: frames, duration: safeDuration)
+    }
+
+    private static func frameDelay(at index: Int, in source: CGImageSource) -> TimeInterval {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let gifInfo = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
+            return 1.0 / 24.0
+        }
+        let rawDelay = (gifInfo[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+            ?? (gifInfo[kCGImagePropertyGIFDelayTime] as? Double)
+            ?? (1.0 / 24.0)
+        // Standard browser/ImageIO minimum floor avoids zero-delay tight loops.
+        return rawDelay < 0.02 ? (1.0 / 24.0) : rawDelay
+    }
+}
+
+private struct AnimatedGIFView: UIViewRepresentable {
+    let sequence: AnimatedGIFSequence
+    let isAnimating: Bool
+
+    final class Coordinator {
+        weak var appliedSequence: AnimatedGIFSequence?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIImageView {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFit
+        imageView.clipsToBounds = true
+        imageView.backgroundColor = .clear
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        applyAnimationState(to: imageView, coordinator: context.coordinator)
+        return imageView
+    }
+
+    func updateUIView(_ imageView: UIImageView, context: Context) {
+        applyAnimationState(to: imageView, coordinator: context.coordinator)
+    }
+
+    static func dismantleUIView(_ imageView: UIImageView, coordinator: Coordinator) {
+        imageView.stopAnimating()
+        imageView.animationImages = nil
+        imageView.image = nil
+        coordinator.appliedSequence = nil
+    }
+
+    private func applyAnimationState(to imageView: UIImageView, coordinator: Coordinator) {
+        if isAnimating && sequence.frames.count > 1 {
+            if coordinator.appliedSequence !== sequence || imageView.animationImages == nil {
+                imageView.animationImages = sequence.frames
+                imageView.animationDuration = sequence.duration
+                imageView.animationRepeatCount = 0
+                coordinator.appliedSequence = sequence
+            }
+            if imageView.image == nil {
+                imageView.image = sequence.frames.first
+            }
+            if !imageView.isAnimating {
+                imageView.startAnimating()
+            }
+        } else {
+            if imageView.isAnimating {
+                imageView.stopAnimating()
+            }
+            if imageView.animationImages != nil {
+                imageView.animationImages = nil
+            }
+            coordinator.appliedSequence = nil
+            imageView.image = sequence.frames.first
+        }
+    }
+}
+
 private struct VehicleHeroArtwork: View {
     let imageData: Data?
     let fallbackAssetName: String?
+    let isDriving: Bool
+    let isSceneActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     // Frame the car and its original ground shadow, excluding the large
     // transparent margins of the official 1080 × 675 asset.
@@ -1153,11 +1617,26 @@ private struct VehicleHeroArtwork: View {
 
     var body: some View {
         Group {
-            if let imageData,
+            if isDriving,
+               let drivingSequence = AnimatedGIFSequence.cached(
+                   assetName: colorScheme == .dark
+                       ? AnimatedGIFSequence.drivingRearViewDarkAssetName
+                       : AnimatedGIFSequence.drivingRearViewAssetName
+               ) ?? AnimatedGIFSequence.cached(
+                   assetName: AnimatedGIFSequence.drivingRearViewAssetName
+               ) {
+                AnimatedGIFView(
+                    sequence: drivingSequence,
+                    isAnimating: isSceneActive && !reduceMotion
+                )
+                .scaleEffect(1.03)
+                .transition(.opacity)
+            } else if let imageData,
                let image = VehicleArtworkCropper.heroImage(from: imageData) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
+                    .transition(.opacity)
             } else if let fallbackAssetName {
                 GeometryReader { geometry in
                     let scale = geometry.size.width / visibleWidth
@@ -1166,6 +1645,7 @@ private struct VehicleHeroArtwork: View {
                         .frame(width: 1080 * scale, height: 675 * scale)
                         .offset(x: -75 * scale, y: -205 * scale)
                 }
+                .transition(.opacity)
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "car.side.fill")
@@ -1176,6 +1656,7 @@ private struct VehicleHeroArtwork: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity)
             }
         }
         .aspectRatio(visibleWidth / visibleHeight, contentMode: .fit)
@@ -1183,11 +1664,25 @@ private struct VehicleHeroArtwork: View {
         .mask {
             LinearGradient(stops: [
                 .init(color: .clear, location: 0),
-                .init(color: .black, location: 0.03),
-                .init(color: .black, location: 0.97),
+                .init(color: .black, location: isDriving ? 0.08 : 0.03),
+                .init(color: .black, location: isDriving ? 0.92 : 0.97),
                 .init(color: .clear, location: 1)
             ], startPoint: .leading, endPoint: .trailing)
         }
+        .compositingGroup()
+        .mask {
+            if isDriving {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.24),
+                    .init(color: .black, location: 0.86),
+                    .init(color: .clear, location: 1)
+                ], startPoint: .top, endPoint: .bottom)
+            } else {
+                Rectangle()
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: isDriving)
         .accessibilityElement(children: .ignore)
     }
 }
@@ -1495,11 +1990,26 @@ private enum VehicleControlScope: String {
     var initialHeight: CGFloat {
         switch self {
         case .all: 700
-        case .unlock, .climate: 470
+        case .unlock: 470
+        case .climate: 560
         case .finding: 390
         case .guardMode: 500
         }
     }
+}
+
+enum VehicleControlQuickDefaults {
+    static func lockToggleAction(lockStatusCode: Int?) -> (action: VehicleAction, expandMirrors: Bool)? {
+        switch lockStatusCode {
+        case 1: return (.unlockStart, false)
+        case 0: return (.lock, false)
+        default: return nil
+        }
+    }
+
+    static let guardModeAction: (action: VehicleAction, expandMirrors: Bool) = (.guardOn, true)
+    static let findAction: VehicleAction = .find
+    static let climateAction: (action: VehicleAction, temperature: Double) = (.acOn, 22)
 }
 
 private struct VehicleControlPanel: View {
@@ -1507,6 +2017,7 @@ private struct VehicleControlPanel: View {
     let scope: VehicleControlScope
     let vehicleTitle: String
     let onSelect: (VehicleAction, Double?, Bool) -> Void
+    let onDirectExecute: (VehicleAction, Double?, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var temperature = 22.0
 
@@ -1540,9 +2051,9 @@ private struct VehicleControlPanel: View {
                 VStack(spacing: 16) {
                     if scope == .all || scope == .unlock {
                     VStack(alignment: .leading, spacing: 14) {
-                        sectionHeading("门锁与启动", subtitle: "两种解锁权限不同，请按实际用途选择")
-                        actionButton(.unlockDoors, icon: "lock.open", color: AppPalette.graphite)
+                        sectionHeading("门锁与启动", subtitle: "轻点进入确认 · 长按直接执行")
                         actionButton(.unlockStart, icon: "car.side", color: .red)
+                        actionButton(.unlockDoors, icon: "lock.open", color: AppPalette.graphite)
                         if scope == .all {
                             actionButton(.lock, icon: "lock", color: AppPalette.green)
                         }
@@ -1552,29 +2063,14 @@ private struct VehicleControlPanel: View {
                     }
 
                     if scope == .all || scope == .climate {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(alignment: .center) {
-                            sectionHeading("空调", subtitle: "开启时使用下方设定温度")
-                            Spacer(minLength: 8)
-                            Text("\(Int(temperature))°")
-                                .font(.system(size: 34, weight: .medium, design: .rounded))
-                                .monospacedDigit().foregroundStyle(AppPalette.blue)
-                                .accessibilityLabel("设定温度 \(Int(temperature)) 摄氏度")
-                        }
-                        HStack(spacing: 12) {
-                            Text("16°").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            Slider(value: $temperature, in: 16...30, step: 1)
-                                .tint(AppPalette.blue)
-                                .accessibilityLabel("空调设定温度")
-                            Text("30°").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        }
-                        HStack(spacing: 10) {
-                            actionButton(.acOn, icon: "fan", color: AppPalette.blue, temperature: temperature)
-                            actionButton(.acOff, icon: "fan.slash", color: AppPalette.graphite)
-                        }
-                    }
-                    .controlCard()
-                    .id(scope == .climate ? "first" : "climate")
+                        ClimateThermostatCard(
+                            temperature: $temperature,
+                            insideTemperature: dashboard?.insideTemperature,
+                            outsideTemperature: dashboard?.outsideTemperature,
+                            onSelect: onSelect,
+                            onDirectExecute: onDirectExecute
+                        )
+                        .id(scope == .climate ? "first" : "climate")
                     }
 
                     if scope == .all || scope == .finding {
@@ -1591,13 +2087,7 @@ private struct VehicleControlPanel: View {
 
                     if scope == .all || scope == .guardMode {
                     VStack(alignment: .leading, spacing: 14) {
-                        sectionHeading("守卫模式", subtitle: "开启时明确选择后视镜状态")
-                        actionButton(
-                            .guardOn,
-                            icon: "shield.lefthalf.filled",
-                            color: AppPalette.violet,
-                            title: "开启守卫 · 不展开后视镜"
-                        )
+                        sectionHeading("守卫模式", subtitle: "轻点进入确认 · 长按直接执行")
                         actionButton(
                             .guardOn,
                             icon: "arrow.up.left.and.arrow.down.right",
@@ -1605,13 +2095,19 @@ private struct VehicleControlPanel: View {
                             title: "开启守卫 · 展开后视镜",
                             expandMirrors: true
                         )
+                        actionButton(
+                            .guardOn,
+                            icon: "shield.lefthalf.filled",
+                            color: AppPalette.violet,
+                            title: "开启守卫 · 不展开后视镜"
+                        )
                         actionButton(.guardOff, icon: "shield.slash", color: AppPalette.graphite)
                     }
                     .controlCard()
                     .id(scope == .guardMode ? "first" : "guard-mode")
                     }
 
-                    Label("选择操作后还需确认。每项指令均不自动重试。", systemImage: "checkmark.shield")
+                    Label("轻点操作将进入二次确认，长按可直接执行。每项指令均不自动重试。", systemImage: "checkmark.shield")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1659,30 +2155,433 @@ private struct VehicleControlPanel: View {
         title: String? = nil,
         expandMirrors: Bool = false
     ) -> some View {
-        Button {
-            onSelect(action, temperature, expandMirrors)
-        } label: {
-            HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(color)
-                Text(title ?? action.title).font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
+        HoldToExecuteButton(
+            onTap: {
+                onSelect(action, temperature, expandMirrors)
+            },
+            onLongPress: {
+                onDirectExecute(action, temperature, expandMirrors)
+            }
+        ) { progress, isHolding, didComplete in
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.12 + 0.16 * progress))
+                    IconHoldProgressRing(
+                        progress: progress,
+                        isVisible: isHolding || didComplete,
+                        color: color,
+                        lineWidth: 3,
+                        shape: .circle
+                    )
+                    Image(systemName: didComplete ? "checkmark" : icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(color)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(width: 34, height: 34)
+                Text(title ?? action.title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isHolding ? color : .primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, minHeight: 54)
-            .padding(.horizontal, 8)
-            .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, 10)
+            .background(color.opacity(0.08 + 0.08 * progress), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(color.opacity(isHolding ? 0.36 : 0.16), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+    }
+}
+
+private struct ClimateThermostatCard: View {
+    @Binding var temperature: Double
+    let insideTemperature: Double?
+    let outsideTemperature: Double?
+    let onSelect: (VehicleAction, Double?, Bool) -> Void
+    let onDirectExecute: (VehicleAction, Double?, Bool) -> Void
+
+    private let minTemp: Double = 16
+    private let maxTemp: Double = 30
+
+    private var thermalColor: Color {
+        switch temperature {
+        case ..<20.5:
+            return Color(red: 0.18, green: 0.56, blue: 0.92)
+        case ..<24.5:
+            return AppPalette.green
+        default:
+            return Color(red: 0.88, green: 0.44, blue: 0.16)
+        }
+    }
+
+    private var thermalFillColor: Color {
+        switch temperature {
+        case ..<20.5:
+            return Color(red: 0.14, green: 0.48, blue: 0.84)
+        case ..<24.5:
+            return Color(red: 0.14, green: 0.54, blue: 0.38)
+        default:
+            return Color(red: 0.82, green: 0.38, blue: 0.14)
+        }
+    }
+
+    private var thermalModeLabel: String {
+        switch temperature {
+        case ..<19: return "极速制冷"
+        case ..<21: return "清爽制冷"
+        case ..<24.5: return "舒适恒温"
+        case ..<27: return "温暖制热"
+        default: return "强力暖风"
+        }
+    }
+
+    private var thermalModeIcon: String {
+        switch temperature {
+        case ..<21: return "snowflake"
+        case ..<24.5: return "wind"
+        default: return "sun.max.fill"
+        }
+    }
+
+    private let presets: [(temp: Double, label: String, icon: String)] = [
+        (18, "制冷", "snowflake"),
+        (22, "舒适", "sparkles"),
+        (24, "微暖", "sun.haze.fill"),
+        (26, "暖风", "flame.fill")
+    ]
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Header row with live inside/outside context
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("座舱空调")
+                        .font(.headline)
+                    if let inside = insideTemperature {
+                        let outText = outsideTemperature.map { String(format: " · 车外 %.1f℃", $0) } ?? ""
+                        Text(String(format: "车内 %.1f℃%@", inside, outText))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("轻点确认 · 长按图标直接执行")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Label(thermalModeLabel, systemImage: thermalModeIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(thermalColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(thermalColor.opacity(0.12), in: Capsule())
+                    .animation(.easeInOut(duration: 0.25), value: thermalModeLabel)
+            }
+
+            // Hero Center Temperature Display + Flanking Steppers
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [thermalColor.opacity(0.18), thermalColor.opacity(0.0)],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: 56
+                        )
+                    )
+                    .frame(width: 112, height: 112)
+                    .animation(.easeInOut(duration: 0.3), value: Int(temperature))
+                    .accessibilityHidden(true)
+
+                HStack(spacing: 24) {
+                    stepperButton(systemImage: "minus", enabled: temperature > minTemp) {
+                        adjust(by: -1)
+                    }
+                    .accessibilityLabel("降低 1 度")
+
+                    HStack(alignment: .top, spacing: 2) {
+                        Text("\(Int(temperature))")
+                            .font(.system(size: 64, weight: .light, design: .rounded).monospacedDigit())
+                            .contentTransition(.numericText(value: temperature))
+                            .foregroundStyle(.primary)
+                        Text("℃")
+                            .font(.system(size: 20, weight: .medium, design: .rounded))
+                            .foregroundStyle(thermalColor)
+                            .padding(.top, 10)
+                    }
+                    .frame(minWidth: 108)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("设定温度 \(Int(temperature)) 摄氏度")
+
+                    stepperButton(systemImage: "plus", enabled: temperature < maxTemp) {
+                        adjust(by: 1)
+                    }
+                    .accessibilityLabel("升高 1 度")
+                }
+            }
+            .sensoryFeedback(.selection, trigger: Int(temperature))
+
+            // Custom Thermal Spectrum Scrub Bar
+            ThermalSpectrumSlider(
+                value: $temperature,
+                range: minTemp...maxTemp,
+                accentColor: thermalColor
+            )
+
+            // Semantic Quick Preset Chips
+            HStack(spacing: 8) {
+                ForEach(presets, id: \.temp) { preset in
+                    let isSelected = Int(temperature) == Int(preset.temp)
+                    Button {
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
+                            temperature = preset.temp
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: preset.icon)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("\(Int(preset.temp))°")
+                                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                            }
+                            Text(preset.label)
+                                .font(.system(size: 10, weight: .medium))
+                                .opacity(isSelected ? 0.92 : 0.72)
+                        }
+                        .foregroundStyle(isSelected ? .white : .primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(
+                            isSelected ? thermalFillColor : AppPalette.surfaceSecondary,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? Color.clear : AppPalette.hairline,
+                                    lineWidth: 1
+                                )
+                        }
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                }
+            }
+
+            // Action Buttons (Hold to execute directly with clockwise icon ring, Tap to confirm)
+            HStack(spacing: 10) {
+                climateActionButton(
+                    action: .acOn,
+                    title: "开启 \(Int(temperature))℃",
+                    icon: "fan.fill",
+                    color: thermalFillColor,
+                    isPrimary: true
+                )
+                climateActionButton(
+                    action: .acOff,
+                    title: "关闭空调",
+                    icon: "fan.slash",
+                    color: AppPalette.graphite,
+                    isPrimary: false
+                )
+            }
+        }
+        .nioCard(cornerRadius: 24, padding: 18)
+    }
+
+    private func adjust(by delta: Double) {
+        let next = min(max(temperature + delta, minTemp), maxTemp)
+        guard next != temperature else { return }
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            temperature = next
+        }
+    }
+
+    private func stepperButton(
+        systemImage: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(enabled ? .primary : .tertiary)
+                .frame(width: 44, height: 44)
+                .background(AppPalette.surfaceSecondary, in: Circle())
+                .overlay {
+                    Circle().strokeBorder(AppPalette.hairline, lineWidth: 1)
+                }
+        }
+        .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.90))
+        .disabled(!enabled)
+    }
+
+    private func climateActionButton(
+        action: VehicleAction,
+        title: String,
+        icon: String,
+        color: Color,
+        isPrimary: Bool
+    ) -> some View {
+        let tempArg: Double? = action == .acOn ? temperature : nil
+        return HoldToExecuteButton(
+            onTap: { onSelect(action, tempArg, false) },
+            onLongPress: { onDirectExecute(action, tempArg, false) }
+        ) { progress, isHolding, didComplete in
+            HStack(spacing: 9) {
+                ZStack {
+                    Circle()
+                        .fill(isPrimary ? Color.white.opacity(0.20 + 0.16 * progress) : color.opacity(0.12 + 0.16 * progress))
+                    IconHoldProgressRing(
+                        progress: progress,
+                        isVisible: isHolding || didComplete,
+                        color: isPrimary ? .white : color,
+                        lineWidth: 2.8,
+                        shape: .circle
+                    )
+                    Image(systemName: didComplete ? "checkmark" : icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(isPrimary ? .white : color)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(width: 32, height: 32)
+
+                Text(title)
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(isPrimary ? .white : (isHolding ? color : .primary))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .padding(.horizontal, 10)
+            .background(
+                isPrimary
+                    ? color.opacity(isHolding ? 0.92 : 1.0)
+                    : AppPalette.surfaceSecondary,
+                in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+            )
+            .overlay {
+                if !isPrimary {
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .strokeBorder(isHolding ? color.opacity(0.4) : AppPalette.hairline, lineWidth: 1)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+        }
+    }
+}
+
+private struct ThermalSpectrumSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let accentColor: Color
+
+    @State private var isDragging = false
+
+    private let trackHeight: CGFloat = 14
+    private let thumbSize: CGFloat = 28
+    private let tickMarks: [Int] = [16, 20, 23, 26, 30]
+
+    private var normalized: CGFloat {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return CGFloat(min(max((value - range.lowerBound) / span, 0), 1))
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { proxy in
+                let usableWidth = max(proxy.size.width - thumbSize, 1)
+                let thumbCenterX = thumbSize / 2 + usableWidth * normalized
+
+                ZStack(alignment: .leading) {
+                    // Full thermal spectrum track
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color(red: 0.16, green: 0.56, blue: 0.94), location: 0.0),
+                                    .init(color: Color(red: 0.24, green: 0.72, blue: 0.68), location: 0.42),
+                                    .init(color: Color(red: 0.94, green: 0.68, blue: 0.26), location: 0.72),
+                                    .init(color: Color(red: 0.90, green: 0.36, blue: 0.22), location: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: trackHeight)
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.75)
+                        }
+
+                    // Tactile floating thumb
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: thumbSize, height: thumbSize)
+                        .overlay {
+                            Circle()
+                                .fill(accentColor)
+                                .frame(width: 10, height: 10)
+                        }
+                        .shadow(color: accentColor.opacity(0.32), radius: isDragging ? 8 : 4, x: 0, y: 2)
+                        .shadow(color: .black.opacity(0.16), radius: 3, x: 0, y: 1)
+                        .scaleEffect(isDragging ? 1.12 : 1.0)
+                        .position(x: thumbCenterX, y: thumbSize / 2)
+                        .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isDragging)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            if !isDragging { isDragging = true }
+                            let fraction = min(max((gesture.location.x - thumbSize / 2) / usableWidth, 0), 1)
+                            let raw = range.lowerBound + Double(fraction) * (range.upperBound - range.lowerBound)
+                            let stepped = raw.rounded()
+                            if stepped != value {
+                                value = stepped
+                            }
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                        }
+                )
+            }
+            .frame(height: thumbSize)
+
+            GeometryReader { proxy in
+                let usableWidth = max(proxy.size.width - thumbSize, 1)
+                let span = max(range.upperBound - range.lowerBound, 1)
+                ZStack {
+                    ForEach(tickMarks, id: \.self) { degree in
+                        let fraction = CGFloat((Double(degree) - range.lowerBound) / span)
+                        Text("\(degree)°")
+                            .font(.system(size: 10, weight: Int(value) == degree ? .semibold : .regular).monospacedDigit())
+                            .foregroundStyle(Int(value) == degree ? accentColor : .secondary)
+                            .position(x: thumbSize / 2 + usableWidth * fraction, y: 7)
+                    }
+                }
+            }
+            .frame(height: 14)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("空调设定温度")
+        .accessibilityValue("\(Int(value)) 摄氏度")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: value = min(value + 1, range.upperBound)
+            case .decrement: value = max(value - 1, range.lowerBound)
+            @unknown default: break
+            }
+        }
     }
 }
 
 private extension View {
     func controlCard() -> some View {
-        self.padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        self.nioCard(cornerRadius: 22, padding: 16)
     }
 }
