@@ -328,9 +328,10 @@ impl IssuerHttp {
         } else {
             &self.app
         };
+        let bearer_token = self.profile.current_bearer_token();
         let mut request = client
             .request(method, url)
-            .bearer_auth(&self.profile.bearer_token)
+            .bearer_auth(&bearer_token)
             .header("Accept", "application/json,text/json,text/plain")
             .header("Accept-Language", "zh-CN,zh-Hans;q=0.9");
         for (name, value) in headers {

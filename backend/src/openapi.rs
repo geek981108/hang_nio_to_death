@@ -75,7 +75,7 @@ pub fn document() -> Value {
     let mut login = operation(
         "loginWithNioSms",
         "提交 NIO 短信验证码",
-        "挑战在发送上游请求前即消费；请求结果不明时也不重试。成功响应含敏感 token，Cache-Control: no-store。租户模式加密回写 PostgreSQL，需重启后供现有业务客户端使用。",
+        "挑战在发送上游请求前即消费；请求结果不明时也不重试。成功响应含敏感 token，Cache-Control: no-store。租户模式加密回写 PostgreSQL；同时热更新当前进程中运行中的车辆客户端 token（或由待登录配置热初始化客户端），无需重启服务。",
         "账户",
         "NioLoginResult",
         true,
@@ -905,6 +905,13 @@ fn schemas() -> Value {
                     opt(
                         boolean("租户模式下，新 token 是否已加密写入 PostgreSQL。"),
                         "原有单租户模式不返回此字段。",
+                    ),
+                ),
+                (
+                    "vehicle_client_reloaded",
+                    opt(
+                        boolean("当前进程中的车辆业务客户端是否已热更新为新 token。"),
+                        "已配置车辆客户端或待登录车辆标识时为 true。",
                     ),
                 ),
             ],

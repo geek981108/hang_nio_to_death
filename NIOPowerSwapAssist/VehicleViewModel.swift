@@ -107,11 +107,13 @@ private final class SwapQueueNotificationManager {
 
 private enum VehicleRequestResult<Value: Sendable>: Sendable {
     case success(Value)
+    case vehicleNotConfigured
     case failure(String)
     case cancelled
 }
 
 private enum VehicleRefreshResult: Sendable {
+    case serviceStatus(VehicleRequestResult<BackendServiceStatus>)
     case dashboard(VehicleRequestResult<VehicleDashboard>)
     case presentation(VehicleRequestResult<VehiclePresentation>)
     case history(VehicleRequestResult<VehicleHistoryRefresh>)
@@ -254,6 +256,8 @@ private func captureVehicleRequest<Value: Sendable>(
         return .cancelled
     } catch let error as URLError where error.code == .cancelled {
         return .cancelled
+    } catch let error as BackendClientError where error.isVehicleNotConfigured {
+        return .vehicleNotConfigured
     } catch {
         return .failure(
             (error as? LocalizedError)?.errorDescription
@@ -407,6 +411,9 @@ final class VehicleViewModel: ObservableObject {
     @Published private(set) var queueNotificationsEnabled = false
     @Published private(set) var isConfigured = false
     @Published private(set) var isVehicleControlConfigured = false
+    @Published private(set) var backendServiceStatus: BackendServiceStatus?
+    @Published private(set) var needsBackendLogin = false
+    @Published var isShowingLoginSheet = false
     @Published private(set) var isShowingCachedDashboard = false
     @Published private(set) var lastDashboardRefreshAt: Date?
     @Published private(set) var failureNotice: APIErrorNotice?
@@ -442,6 +449,7 @@ final class VehicleViewModel: ObservableObject {
     private var lastArchiveRefreshAt: Date?
     private var activeBaseURL: URL?
     private var hasPreparedInitialDisplay = false
+    private var hasAutoPresentedLoginForRevision = false
     private var nextCouponOffset = 0
     private var pendingEventRefreshTask: Task<Void, Never>?
     private var pendingEventRefreshScope: EventRefreshScope = []
@@ -572,6 +580,9 @@ final class VehicleViewModel: ObservableObject {
         if previous != (try? settingsStore.configuration()) {
             settingsRevision = UUID()
             monitorConfigurationRevision = UUID()
+            hasAutoPresentedLoginForRevision = false
+            backendServiceStatus = nil
+            needsBackendLogin = false
             pendingEventRefreshTask?.cancel()
             pendingEventRefreshTask = nil
             pendingEventRefreshScope = []
@@ -630,6 +641,49 @@ final class VehicleViewModel: ObservableObject {
 
     private func client(for configuration: BackendConfiguration) -> BackendClient {
         BackendClient(configuration: configuration, session: injectedSession)
+    }
+
+    func presentLoginSheet() {
+        isShowingLoginSheet = true
+    }
+
+    func sendNIOLoginSMS(mobile: String) async throws -> NIOLoginSMSChallenge {
+        #if DEBUG
+        if isDesignPreview {
+            throw BackendClientError.invalidLoginInput("设计预览不会发送短信验证码。")
+        }
+        #endif
+        let configuration = try settingsStore.configuration()
+        let revision = settingsRevision
+        let challenge = try await client(for: configuration).sendNIOLoginSMS(mobile: mobile)
+        guard revision == settingsRevision else {
+            throw BackendClientError.configurationChanged
+        }
+        return challenge
+    }
+
+    func submitNIOLogin(
+        challengeID: String,
+        verificationCode: String
+    ) async throws -> NIOLoginOutcome {
+        #if DEBUG
+        if isDesignPreview {
+            throw BackendClientError.invalidLoginInput("设计预览不会提交登录请求。")
+        }
+        #endif
+        let configuration = try settingsStore.configuration()
+        let revision = settingsRevision
+        let outcome = try await client(for: configuration).submitNIOLogin(
+            challengeID: challengeID,
+            verificationCode: verificationCode
+        )
+        guard revision == settingsRevision else {
+            throw BackendClientError.configurationChanged
+        }
+        if (outcome.vehicleClientReloaded == true || outcome.backendConfigSaved == true), !Task.isCancelled {
+            await refresh()
+        }
+        return outcome
     }
 
     func performVehicleAction(
@@ -714,7 +768,12 @@ final class VehicleViewModel: ObservableObject {
         let result = await captureVehicleRequest { try await client.fetchDashboard() }
         guard revision == settingsRevision, !Task.isCancelled else { return }
         switch result {
-        case .success(let dashboard): updateDashboardIfNeeded(dashboard)
+        case .success(let dashboard):
+            needsBackendLogin = false
+            updateDashboardIfNeeded(dashboard)
+        case .vehicleNotConfigured:
+            errorMessage = nil
+            markNeedsBackendLogin()
         case .failure(let message): errorMessage = message
         case .cancelled: break
         }
@@ -771,6 +830,9 @@ final class VehicleViewModel: ObservableObject {
         let cachedVehicleID = vehicleImageVehicleID
         await withTaskGroup(of: VehicleRefreshResult.self) { group in
             group.addTask {
+                .serviceStatus(await captureVehicleRequest { try await client.fetchServiceStatus() })
+            }
+            group.addTask {
                 .dashboard(await captureVehicleRequest { try await client.fetchDashboard() })
             }
             group.addTask {
@@ -819,37 +881,71 @@ final class VehicleViewModel: ObservableObject {
         }
     }
 
+    private func markNeedsBackendLogin() {
+        needsBackendLogin = true
+        if !hasAutoPresentedLoginForRevision {
+            hasAutoPresentedLoginForRevision = true
+            isShowingLoginSheet = true
+        }
+    }
+
     private func apply(_ result: VehicleRefreshResult) {
         switch result {
+        case .serviceStatus(.success(let status)):
+            backendServiceStatus = status
+            if !status.vehicleConfigured {
+                markNeedsBackendLogin()
+            } else {
+                needsBackendLogin = false
+            }
+        case .serviceStatus(.vehicleNotConfigured):
+            markNeedsBackendLogin()
+        case .serviceStatus(.failure), .serviceStatus(.cancelled):
+            break
         case .dashboard(.success(let dashboard)):
+            needsBackendLogin = false
             updateDashboardIfNeeded(dashboard)
+        case .dashboard(.vehicleNotConfigured):
+            errorMessage = nil
+            markNeedsBackendLogin()
         case .dashboard(.failure(let message)):
             errorMessage = message
         case .presentation(.success(let presentation)):
             updateVehiclePresentation(presentation)
-        case .presentation(.failure):
+        case .presentation(.failure), .presentation(.vehicleNotConfigured):
             // Vehicle identity/artwork is optional. Keep the last valid local
             // image and do not turn a cosmetic refresh failure into a page error.
             break
         case .history(.success(let result)):
             if history != result.history { history = result.history }
             if dailyPaths != result.paths { dailyPaths = result.paths }
+        case .history(.vehicleNotConfigured):
+            markNeedsBackendLogin()
         case .history(.failure(let message)):
             historyErrorMessage = message
         case .trips(.success(let page)):
             if trips != page.items { trips = page.items }
+        case .trips(.vehicleNotConfigured):
+            tripsErrorMessage = nil
+            markNeedsBackendLogin()
         case .trips(.failure(let message)):
             tripsErrorMessage = message
         case .chargingSessions(.success(let page)):
             updateChargingSessions(page.items)
+        case .chargingSessions(.vehicleNotConfigured):
+            markNeedsBackendLogin()
         case .chargingSessions(.failure(let message)):
             chargingSessionsErrorMessage = message
         case .swapEvents(.success(let page)):
             if swapEvents != page.items { swapEvents = page.items }
+        case .swapEvents(.vehicleNotConfigured):
+            markNeedsBackendLogin()
         case .swapEvents(.failure(let message)):
             swapEventsErrorMessage = message
         case .activeServiceOrders(.success(let page)):
             updateActiveServiceOrdersIfNeeded(page.items)
+        case .activeServiceOrders(.vehicleNotConfigured):
+            markNeedsBackendLogin()
         case .activeServiceOrders(.failure(let message)):
             activeServiceOrdersErrorMessage = message
         case .dashboard(.cancelled),
@@ -1209,6 +1305,8 @@ final class VehicleViewModel: ObservableObject {
         switch result {
         case .success(let page):
             updateActiveServiceOrdersIfNeeded(page.items)
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message):
             activeServiceOrdersErrorMessage = message
         case .cancelled:
@@ -1238,6 +1336,8 @@ final class VehicleViewModel: ObservableObject {
         case .success(let page):
             if chargingSamples != page.items { chargingSamples = page.items }
             currentChargingEnergyKWh = page.energyKWh
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message): chargingErrorMessage = message
         case .cancelled: break
         }
@@ -1256,6 +1356,8 @@ final class VehicleViewModel: ObservableObject {
         switch result {
         case .success(let page):
             updateChargingSessions(page.items)
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message): chargingSessionsErrorMessage = message
         case .cancelled: break
         }
@@ -1317,11 +1419,15 @@ final class VehicleViewModel: ObservableObject {
         switch swapEventsResult {
         case .success(let page):
             if swapEvents != page.items { swapEvents = page.items }
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message): swapEventsErrorMessage = message
         case .cancelled: break
         }
         switch activeOrdersResult {
         case .success(let page): updateActiveServiceOrdersIfNeeded(page.items)
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message): activeServiceOrdersErrorMessage = message
         case .cancelled: break
         }
@@ -1402,6 +1508,8 @@ final class VehicleViewModel: ObservableObject {
         switch result {
         case .success(let stats):
             energyStats = stats
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message):
             energyStatsErrorMessage = message
         case .cancelled:
@@ -1446,6 +1554,8 @@ final class VehicleViewModel: ObservableObject {
             totalCouponQuantity = page.totalCouponCount
             couponsHaveMore = page.hasMore
             nextCouponOffset = page.offset + page.coupons.count
+        case .vehicleNotConfigured:
+            markNeedsBackendLogin()
         case .failure(let message):
             couponsErrorMessage = message
         case .cancelled:

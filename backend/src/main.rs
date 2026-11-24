@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )];
     }
     for (slug, state) in &states {
-        let Some(vehicle) = state.vehicle.clone() else {
+        let Some(vehicle) = state.vehicle() else {
             continue;
         };
         let store = state.store.clone();
@@ -372,7 +372,8 @@ async fn build_state(
         tenant_mode,
         poll_interval: config.poll_interval,
         match_window: config.match_window,
-        vehicle,
+        vehicle: Arc::new(std::sync::RwLock::new(vehicle)),
+        vehicle_login_seed: config.vehicle_login_seed,
         nio_login: config
             .login_profile
             .map(nio_login::NioLogin::new)
@@ -382,9 +383,9 @@ async fn build_state(
         trip_sync,
         control,
         swap_order,
-        station_search,
-        nearby_stations,
-        rewards,
+        station_search: Arc::new(std::sync::RwLock::new(station_search)),
+        nearby_stations: Arc::new(std::sync::RwLock::new(nearby_stations)),
+        rewards: Arc::new(std::sync::RwLock::new(rewards)),
         service_order_configured: config.service_orders.is_some(),
         station_template_configured,
         station_template,

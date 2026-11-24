@@ -49,15 +49,16 @@ pub struct AppState {
     pub tenant_mode: bool,
     pub poll_interval: Duration,
     pub match_window: Duration,
-    pub vehicle: Option<NioVehicleClient>,
+    pub vehicle: Arc<std::sync::RwLock<Option<NioVehicleClient>>>,
+    pub vehicle_login_seed: Option<crate::config::VehicleLoginSeed>,
     pub nio_login: Option<Arc<NioLogin>>,
     pub tenant_persistence: Option<Arc<crate::tenant_config::TenantPersistence>>,
     pub trip_sync: Option<tokio::sync::mpsc::Sender<()>>,
     pub control: Option<ControlRuntime>,
     pub swap_order: Option<SwapOrderRuntime>,
-    pub station_search: Option<NioStationSearchClient>,
-    pub nearby_stations: Option<NioNearbyStationClient>,
-    pub rewards: Option<NioRewardsClient>,
+    pub station_search: Arc<std::sync::RwLock<Option<NioStationSearchClient>>>,
+    pub nearby_stations: Arc<std::sync::RwLock<Option<NioNearbyStationClient>>>,
+    pub rewards: Arc<std::sync::RwLock<Option<NioRewardsClient>>>,
     pub service_order_configured: bool,
     pub station_template_configured: bool,
     pub station_template: Option<StationTemplateConfig>,
@@ -66,6 +67,97 @@ pub struct AppState {
     pub mcp_client: reqwest::Client,
     pub mcp_origin: String,
     pub mcp_oauth: Option<mcp_oauth::OAuthServer>,
+}
+
+impl AppState {
+    pub fn vehicle(&self) -> Option<NioVehicleClient> {
+        self.vehicle
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub fn station_search(&self) -> Option<NioStationSearchClient> {
+        self.station_search
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub fn nearby_stations(&self) -> Option<NioNearbyStationClient> {
+        self.nearby_stations
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub fn rewards(&self) -> Option<NioRewardsClient> {
+        self.rewards
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Hot-reload the in-memory NIO Bearer Token for all running clients
+    /// without restarting the process. If the server booted with a pending
+    /// `vehicle_login_seed` (no initial token), initializes the vehicle and
+    /// companion clients in-place.
+    pub fn hot_reload_vehicle_token(&self, access_token: &str) -> bool {
+        let normalized = crate::config::SharedBearerToken::normalize(access_token);
+        if normalized.is_empty()
+            || normalized.len() > 4096
+            || normalized.chars().any(char::is_whitespace)
+        {
+            return false;
+        }
+        if let Some(existing) = self.vehicle() {
+            existing.update_bearer_token(&normalized);
+            tracing::info!("hot-reloaded NIO bearer token for running vehicle clients");
+            return true;
+        }
+        let Some(seed) = &self.vehicle_login_seed else {
+            return false;
+        };
+        let mut vehicle_guard = self
+            .vehicle
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(existing) = vehicle_guard.as_ref() {
+            existing.update_bearer_token(&normalized);
+            tracing::info!("hot-reloaded NIO bearer token for running vehicle clients");
+            return true;
+        }
+        let config = seed.into_vehicle_config(normalized);
+        let Ok(vehicle) = NioVehicleClient::new(config.clone()) else {
+            tracing::warn!("failed to construct NioVehicleClient during login hot-reload");
+            return false;
+        };
+        let station_search = NioStationSearchClient::new(config.clone()).ok();
+        let nearby_stations = NioNearbyStationClient::new(config.clone()).ok();
+        let rewards = NioRewardsClient::new(config).ok();
+        *vehicle_guard = Some(vehicle.clone());
+        *self
+            .station_search
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = station_search;
+        *self
+            .nearby_stations
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = nearby_stations;
+        *self
+            .rewards
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = rewards;
+        drop(vehicle_guard);
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let store = self.store.clone();
+            handle.spawn(async move {
+                crate::vehicle_profile::run_startup(store, vehicle).await;
+            });
+        }
+        tracing::info!("hot-initialized NIO vehicle clients from SMS login");
+        true
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -418,19 +510,21 @@ async fn login_with_sms(
         .login(input.into_inner())
         .await
         .map_err(login_api_error)?;
+    let data = outcome
+        .get("data")
+        .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?;
+    let access = data
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?
+        .to_owned();
+    let refresh = data
+        .get("refresh_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?
+        .to_owned();
     if let Some(persistence) = &state.tenant_persistence {
-        let data = outcome
-            .get("data")
-            .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?;
-        let access = data
-            .get("access_token")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?;
-        let refresh = data
-            .get("refresh_token")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| login_api_error(LoginError::InvalidResponse))?;
-        let saved = match persistence.save_login(access, refresh).await {
+        let saved = match persistence.save_login(&access, &refresh).await {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(%error, "NIO login succeeded but tenant token was not saved");
@@ -439,6 +533,8 @@ async fn login_with_sms(
         };
         outcome["backend_config_saved"] = serde_json::json!(saved);
     }
+    let reloaded = state.hot_reload_vehicle_token(&access);
+    outcome["vehicle_client_reloaded"] = serde_json::json!(reloaded);
     Ok(HttpResponse::Ok()
         .insert_header(("Cache-Control", "no-store"))
         .json(outcome))
@@ -455,7 +551,7 @@ async fn status(
         state.store.counts().await?;
     Ok(web::Json(ServiceStatus {
         station_configured: state.poller.configured(),
-        vehicle_configured: state.vehicle.is_some(),
+        vehicle_configured: state.vehicle().is_some(),
         service_order_configured: state.service_order_configured,
         station_template_configured: state.station_template_configured,
         poll_interval_seconds: state.poll_interval.as_secs(),
@@ -532,7 +628,7 @@ async fn vehicle_status(
     request: HttpRequest,
 ) -> Result<web::Json<serde_json::Value>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let payload = vehicle.status().await?;
     if let Some(snapshot) = snapshot_from_status(&payload)
         && let Err(error) = state.store.insert_vehicle_snapshot(&snapshot).await
@@ -602,7 +698,7 @@ async fn vehicle_trips(
     query: web::Query<VehicleTripQuery>,
 ) -> Result<web::Json<VehicleTripPage>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let page = state
         .store
         .vehicle_trips(vehicle.vehicle_id(), query.count, query.query_time)
@@ -621,13 +717,13 @@ async fn vehicle_profile(
     request: HttpRequest,
 ) -> Result<web::Json<VehicleProfileResponse>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let vehicle_id = vehicle.vehicle_id();
     if let Some(profile) = state.store.vehicle_profile(vehicle_id).await? {
         return Ok(web::Json(profile.into()));
     }
     // Startup refresh may still be retrying; fill it in once on demand.
-    if let Err(error) = crate::vehicle_profile::refresh(&state.store, vehicle).await {
+    if let Err(error) = crate::vehicle_profile::refresh(&state.store, &vehicle).await {
         tracing::warn!(%error, "on-demand vehicle profile refresh failed");
     }
     state
@@ -648,7 +744,7 @@ async fn vehicle_image(
     request: HttpRequest,
 ) -> Result<HttpResponse, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let image = state
         .store
         .vehicle_profile_image(vehicle.vehicle_id())
@@ -700,7 +796,7 @@ async fn vehicle_trip_track(
     journey_id: web::Path<String>,
 ) -> Result<web::Json<VehicleTripTrack>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let journey_id = journey_id.into_inner();
     if !valid_journey_id(&journey_id) {
         return Err(ApiError {
@@ -729,7 +825,7 @@ async fn vehicle_widget_info(
     request: HttpRequest,
 ) -> Result<web::Json<serde_json::Value>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     Ok(web::Json(vehicle.widget_info().await?))
 }
 
@@ -821,7 +917,7 @@ async fn available_coupons(
     if !(1..=100).contains(&query.limit) {
         return Err(ApiError::bad_request("limit must be between 1 and 100"));
     }
-    let rewards = state.rewards.as_ref().ok_or_else(rewards_not_configured)?;
+    let rewards = state.rewards().ok_or_else(rewards_not_configured)?;
     Ok(web::Json(
         rewards.available_coupons(query.limit, query.offset).await?,
     ))
@@ -832,9 +928,9 @@ async fn check_in(
     request: HttpRequest,
 ) -> Result<web::Json<CheckInOutcome>, ApiError> {
     authorize(&state, &request)?;
-    let rewards = state.rewards.as_ref().ok_or_else(rewards_not_configured)?;
+    let rewards = state.rewards().ok_or_else(rewards_not_configured)?;
     let day = daily_checkin::china_day(Utc::now());
-    match daily_checkin::perform_once(&state.store, rewards, day).await {
+    match daily_checkin::perform_once(&state.store, &rewards, day).await {
         Ok(outcome) => Ok(web::Json(outcome)),
         Err(DailyCheckInError::AlreadyAttempted | DailyCheckInError::DateElapsed) => {
             Err(ApiError {
@@ -1001,8 +1097,7 @@ async fn search_stations(
         return Ok(web::Json(local_station_search_result(name, local)));
     }
     let client = state
-        .station_search
-        .as_ref()
+        .station_search()
         .ok_or_else(vehicle_not_configured)?;
     let result = client.search(&name).await.map_err(station_search_error)?;
     for station in &result.stations {
@@ -1070,8 +1165,7 @@ async fn nearby_stations(
         ));
     }
     let client = state
-        .nearby_stations
-        .as_ref()
+        .nearby_stations()
         .ok_or_else(vehicle_not_configured)?;
     Ok(web::Json(
         client
@@ -1140,7 +1234,7 @@ async fn nearest_station_live(
     request: HttpRequest,
 ) -> Result<web::Json<NearestStationLive>, ApiError> {
     authorize(&state, &request)?;
-    let vehicle = state.vehicle.as_ref().ok_or_else(vehicle_not_configured)?;
+    let vehicle = state.vehicle().ok_or_else(vehicle_not_configured)?;
     let status = vehicle.status().await?;
     let position_unavailable = || ApiError {
         status: StatusCode::SERVICE_UNAVAILABLE,
@@ -1150,8 +1244,7 @@ async fn nearest_station_live(
     let (latitude, longitude) =
         current_vehicle_position(&status).ok_or_else(position_unavailable)?;
     let nearby_client = state
-        .nearby_stations
-        .as_ref()
+        .nearby_stations()
         .ok_or_else(vehicle_not_configured)?;
     let nearby = nearby_client
         .search(latitude, longitude)
@@ -1546,15 +1639,16 @@ mod tests {
             tenant_mode: true,
             poll_interval: Duration::from_secs(60),
             match_window: Duration::from_secs(1800),
-            vehicle: None,
+            vehicle: Arc::new(std::sync::RwLock::new(None)),
+            vehicle_login_seed: None,
             nio_login: None,
             tenant_persistence: None,
             trip_sync: None,
             control: None,
             swap_order: None,
-            station_search: None,
-            nearby_stations: None,
-            rewards: None,
+            station_search: Arc::new(std::sync::RwLock::new(None)),
+            nearby_stations: Arc::new(std::sync::RwLock::new(None)),
+            rewards: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,
@@ -1687,15 +1781,16 @@ mod tests {
             tenant_mode: false,
             poll_interval: Duration::from_secs(60),
             match_window: Duration::from_secs(1_800),
-            vehicle: Some(vehicle),
+            vehicle: Arc::new(std::sync::RwLock::new(Some(vehicle))),
+            vehicle_login_seed: None,
             nio_login: None,
             tenant_persistence: None,
             trip_sync: Some(trigger),
             control: None,
             swap_order: None,
-            station_search: None,
-            nearby_stations: None,
-            rewards: None,
+            station_search: Arc::new(std::sync::RwLock::new(None)),
+            nearby_stations: Arc::new(std::sync::RwLock::new(None)),
+            rewards: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,
@@ -1771,15 +1866,16 @@ mod tests {
             tenant_mode: false,
             poll_interval: Duration::from_secs(60),
             match_window: Duration::from_secs(1_800),
-            vehicle: None,
+            vehicle: Arc::new(std::sync::RwLock::new(None)),
+            vehicle_login_seed: None,
             nio_login: None,
             tenant_persistence: None,
             trip_sync: None,
             control: None,
             swap_order: None,
-            station_search: None,
-            nearby_stations: None,
-            rewards: None,
+            station_search: Arc::new(std::sync::RwLock::new(None)),
+            nearby_stations: Arc::new(std::sync::RwLock::new(None)),
+            rewards: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,
@@ -2191,5 +2287,99 @@ mod tests {
         assert_eq!(list_response.status(), StatusCode::OK);
         let list_body: serde_json::Value = test::read_body_json(list_response).await;
         assert_eq!(list_body["items"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[actix_web::test]
+    async fn hot_reload_vehicle_token_updates_existing_clients_and_initializes_from_seed() {
+        let store = match Store::in_memory().await {
+            Ok(store) => store,
+            Err(_) if std::env::var_os("NIO_TEST_POSTGRES_URL").is_none() => return,
+            Err(error) => panic!("PostgreSQL test setup failed: {error}"),
+        };
+
+        // Case 1: Existing vehicle client shares token with clones; hot-reload updates in place.
+        let seed = crate::config::VehicleLoginSeed {
+            account_id: None,
+            vehicle_id: "veh-hot".to_owned(),
+            device_id: "dev-hot".to_owned(),
+            app_id: "10001".to_owned(),
+            app_version: "6.4.0".to_owned(),
+            region: "cn".to_owned(),
+            language: "zh".to_owned(),
+            vin_code: None,
+        };
+        let initial_config = seed.into_vehicle_config("old-token");
+        let existing_client = NioVehicleClient::new(initial_config.clone()).unwrap();
+        let cloned_background_client = existing_client.clone();
+
+        let mut warm_state = tenant_test_state(store.clone(), "warm-key");
+        warm_state.vehicle = Arc::new(std::sync::RwLock::new(Some(existing_client)));
+        assert!(!warm_state.hot_reload_vehicle_token(""));
+        assert!(!warm_state.hot_reload_vehicle_token("bad token with space"));
+        assert_eq!(cloned_background_client.current_bearer_token(), "old-token");
+
+        assert!(warm_state.hot_reload_vehicle_token("new-rotated-token"));
+        assert_eq!(
+            warm_state.vehicle().unwrap().current_bearer_token(),
+            "new-rotated-token"
+        );
+        assert_eq!(
+            cloned_background_client.current_bearer_token(),
+            "new-rotated-token"
+        );
+        assert_eq!(initial_config.current_bearer_token(), "new-rotated-token");
+
+        // Case 2: Cold start with neither vehicle nor seed cannot hot-reload.
+        let empty_state = tenant_test_state(store.clone(), "empty-key");
+        assert!(!empty_state.hot_reload_vehicle_token("some-token"));
+        assert!(empty_state.vehicle().is_none());
+
+        // Case 3: Cold start with vehicle_login_seed hot-initializes clients and flips /api/v1/status.
+        let mut cold_state = tenant_test_state(store, "cold-key");
+        cold_state.vehicle_login_seed = Some(seed);
+        let shared_cold_state = web::Data::new(cold_state);
+        let app = test::init_service(
+            App::new()
+                .app_data(shared_cold_state.clone())
+                .configure(configure),
+        )
+        .await;
+
+        let before = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api/v1/status")
+                .insert_header((AUTHORIZATION, "Bearer cold-key"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(before.status(), StatusCode::OK);
+        let before_body: serde_json::Value = test::read_body_json(before).await;
+        assert_eq!(before_body["vehicle_configured"], false);
+
+        assert!(shared_cold_state.hot_reload_vehicle_token("first-login-token"));
+        let first_vehicle = shared_cold_state
+            .vehicle()
+            .expect("vehicle client should be initialized");
+        assert_eq!(first_vehicle.current_bearer_token(), "first-login-token");
+        assert!(shared_cold_state.station_search().is_some());
+        assert!(shared_cold_state.nearby_stations().is_some());
+        assert!(shared_cold_state.rewards().is_some());
+
+        let after = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api/v1/status")
+                .insert_header((AUTHORIZATION, "Bearer cold-key"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(after.status(), StatusCode::OK);
+        let after_body: serde_json::Value = test::read_body_json(after).await;
+        assert_eq!(after_body["vehicle_configured"], true);
+
+        // Subsequent token refresh updates the same shared token without splitting clones.
+        assert!(shared_cold_state.hot_reload_vehicle_token("second-login-token"));
+        assert_eq!(first_vehicle.current_bearer_token(), "second-login-token");
     }
 }

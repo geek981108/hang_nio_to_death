@@ -35,6 +35,8 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .vehicle
     @State private var didInitialLoad = false
     @State private var failureToast: APIErrorNotice?
+    @State private var dismissedSwapOrderID: String?
+    @State private var stationFeedbackTick = 0
     /// Follow the station closest to the vehicle instead of a saved station.
     @AppStorage("stationUsesNearest") private var usesNearestStation = false
     @State private var nearestStationID: String?
@@ -171,6 +173,18 @@ struct ContentView: View {
                 viewModel: vehicleViewModel
             )
         }
+        .sheet(isPresented: $vehicleViewModel.isShowingLoginSheet) {
+            NIOLoginView(
+                isPresented: $vehicleViewModel.isShowingLoginSheet,
+                viewModel: vehicleViewModel,
+                openSettings: {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        showingBackendSettings = true
+                    }
+                }
+            )
+        }
         .alert("创建真实换电订单", isPresented: $showingSwapOrderConfirmation) {
             Button("取消", role: .cancel) {}
             Button("确认下单", role: .destructive) {
@@ -206,11 +220,26 @@ struct ContentView: View {
                 LazyVStack(spacing: 22) {
                     stationHeader
 
-                    if let outcome = vehicleViewModel.lastSwapOrderOutcome {
+                    if let outcome = vehicleViewModel.lastSwapOrderOutcome,
+                       outcome.orderID != dismissedSwapOrderID {
                         VStack(alignment: .leading, spacing: 6) {
-                            Label("换电订单已创建", systemImage: "checkmark.circle.fill")
-                                .font(.headline)
-                                .foregroundStyle(.green)
+                            HStack {
+                                Label("换电订单已创建", systemImage: "checkmark.circle.fill")
+                                    .font(.headline)
+                                    .foregroundStyle(AppPalette.green)
+                                Spacer()
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        dismissedSwapOrderID = outcome.orderID
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(6)
+                                }
+                                .accessibilityLabel("关闭订单提示")
+                            }
                             Text("订单号：\(outcome.orderID)")
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
@@ -218,9 +247,11 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                        .nioCard(cornerRadius: 20, padding: 16)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .strokeBorder(AppPalette.green.opacity(0.28), lineWidth: 1)
+                        }
                     }
 
                     if let error = viewModel.errorMessage {
@@ -233,6 +264,9 @@ struct ContentView: View {
 
                     if !viewModel.batteries.isEmpty {
                         summaryGrid
+                        if viewModel.availableBatteryFilterOptions.count > 2 {
+                            batteryFilterBar
+                        }
                         if let feeInfo = viewModel.feeInfo {
                             FeeInfoView(feeInfo: feeInfo)
                         }
@@ -289,16 +323,43 @@ struct ContentView: View {
     }
 
     private var stationHeader: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("换电站实况")
-                        .font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.6))
-                    Text(viewModel.currentRequestName ?? "选择你的换电站")
-                        .font(.title3.weight(.semibold)).lineLimit(2)
+                    HStack(spacing: 6) {
+                        LivePulseDot(
+                            color: viewModel.allowsSwap ? Color(red: 0.56, green: 0.89, blue: 0.68) : .orange,
+                            size: 6,
+                            isPulsing: viewModel.allowsSwap && !viewModel.batteries.isEmpty
+                        )
+                        Text(usesNearestStation ? "自动追踪 · 最近换电站" : "换电站实况")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.70))
+                    }
+                    Button {
+                        stationFeedbackTick += 1
+                        if items.isEmpty && vehicleViewModel.isConfigured {
+                            showingBackendStations = true
+                        } else {
+                            showingSavedRequests = true
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(viewModel.currentRequestName ?? "选择你的换电站")
+                                .font(.title3.weight(.semibold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Image(systemName: "chevron.down.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.65))
+                        }
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.97))
+                    .accessibilityHint("轻点切换换电站")
                 }
                 Spacer(minLength: 0)
                 Button {
+                    stationFeedbackTick += 1
                     Task { await refreshWithCurrentRequest(updateWidgetConfiguration: false) }
                 } label: {
                     Group {
@@ -306,35 +367,82 @@ struct ContentView: View {
                         else { Image(systemName: "arrow.clockwise").font(.subheadline.weight(.semibold)) }
                     }
                     .frame(width: 38, height: 38)
-                    .background(.white.opacity(0.10), in: Circle())
+                    .background(.white.opacity(0.12), in: Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1) }
                 }
+                .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.92))
                 .disabled(viewModel.isLoading || (selectedItem == nil && !usesNearestStation))
                 .accessibilityLabel("刷新换电站状态")
             }
+
+            HStack(spacing: 8) {
+                if vehicleViewModel.isConfigured {
+                    Button {
+                        stationFeedbackTick += 1
+                        usesNearestStation = true
+                        nearestStationID = nil
+                        Task { await refreshWithCurrentRequest() }
+                    } label: {
+                        Label("离车最近", systemImage: "location.viewfinder")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(
+                                usesNearestStation ? Color.cyan.opacity(0.28) : .white.opacity(0.10),
+                                in: Capsule()
+                            )
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    usesNearestStation ? Color.cyan.opacity(0.55) : .white.opacity(0.14),
+                                    lineWidth: 1
+                                )
+                            }
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                }
+
+                Button {
+                    stationFeedbackTick += 1
+                    showingBackendStations = true
+                } label: {
+                    Label("搜索站点", systemImage: "magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background(.white.opacity(0.10), in: Capsule())
+                        .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1) }
+                }
+                .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                Spacer(minLength: 0)
+            }
+
             if !viewModel.batteries.isEmpty {
                 HStack(alignment: .bottom) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("\(viewModel.readyCount)")
                             .font(.system(size: 56, weight: .medium, design: .rounded).monospacedDigit())
-                            .foregroundStyle(Color(red: 0.65, green: 0.87, blue: 0.72))
+                            .contentTransition(.numericText())
+                            .foregroundStyle(Color(red: 0.62, green: 0.89, blue: 0.72))
                         Text(viewModel.preferredBatteryType == StationViewModel.allBatteryTypes
                              ? "块电池可换"
                              : "块可换 · \(viewModel.preferredBatteryType)")
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.84))
                     }
                     Spacer()
                     Image(systemName: "bolt.car")
-                        .font(.system(size: 43, weight: .light))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .padding(.bottom, 7)
+                        .font(.system(size: 42, weight: .light))
+                        .foregroundStyle(.white.opacity(0.32))
+                        .padding(.bottom, 6)
                 }
             }
             if let lastUpdated = viewModel.lastUpdated {
                 Text("更新于 \(lastUpdated.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2).foregroundStyle(.white.opacity(0.55))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.58))
             } else {
                 Text("选择站点，查看电池与实时费率")
-                    .font(.caption).foregroundStyle(.white.opacity(0.6))
+                    .font(.caption).foregroundStyle(.white.opacity(0.62))
             }
             if let state = viewModel.stationServiceState, !state.allowsSwap {
                 VStack(alignment: .leading, spacing: 6) {
@@ -351,13 +459,14 @@ struct ContentView: View {
                 .background(.orange.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
             }
             Button {
+                stationFeedbackTick += 1
                 if vehicleViewModel.isVehicleControlConfigured {
                     showingSwapOrderConfirmation = true
                 } else {
                     showingBackendSettings = true
                 }
             } label: {
-                HStack {
+                HStack(spacing: 8) {
                     if vehicleViewModel.isCreatingSwapOrder {
                         ProgressView().tint(.white)
                     } else {
@@ -369,41 +478,96 @@ struct ContentView: View {
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, 13)
+                .background(
+                    Color(red: 0.16, green: 0.56, blue: 0.88),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color(red: 0.18, green: 0.58, blue: 0.86))
+            .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.97))
             .disabled(
                 selectedStationID == nil
                     || vehicleViewModel.isCreatingSwapOrder
                     || !vehicleViewModel.isConfigured
                     || !viewModel.allowsSwap
             )
+            .opacity(
+                (selectedStationID == nil
+                    || vehicleViewModel.isCreatingSwapOrder
+                    || !vehicleViewModel.isConfigured
+                    || !viewModel.allowsSwap) ? 0.5 : 1
+            )
         }
         .foregroundStyle(.white)
-        .padding(24)
+        .padding(22)
         .background(
-            LinearGradient(colors: [AppPalette.stationNight, Color(red: 0.12, green: 0.18, blue: 0.24)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            LinearGradient(
+                colors: [AppPalette.stationNight, Color(red: 0.09, green: 0.15, blue: 0.22)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.14), radius: 14, x: 0, y: 6)
+        .sensoryFeedback(.selection, trigger: stationFeedbackTick)
+    }
+
+    private var batteryFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.availableBatteryFilterOptions, id: \.self) { option in
+                    let isSelected = viewModel.preferredBatteryType == option
+                    Button {
+                        stationFeedbackTick += 1
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            viewModel.setPreferredBatteryType(option)
+                        }
+                    } label: {
+                        Text(option)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(isSelected ? .white : .primary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                isSelected ? AppPalette.stationNight : AppPalette.surface,
+                                in: Capsule()
+                            )
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    isSelected ? Color.clear : AppPalette.hairline,
+                                    lineWidth: 1
+                                )
+                            }
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                }
+            }
+            .padding(.vertical, 2)
+        }
     }
 
     private var summaryGrid: some View {
         HStack(spacing: 0) {
             stationMetric("充电中", viewModel.chargingCount, AppPalette.amber)
-            Divider().frame(height: 32)
+            Divider().frame(height: 30)
             stationMetric("使用中", viewModel.occupiedCount, AppPalette.blue)
-            Divider().frame(height: 32)
-            stationMetric("电池总数", viewModel.batteries.count, .secondary)
+            Divider().frame(height: 30)
+            stationMetric("当前筛选", viewModel.visibleBatteries.count, .secondary)
         }
-        .padding(.vertical, 4)
+        .nioCard(cornerRadius: 20, padding: 14)
     }
 
     private func stationMetric(_ title: String, _ value: Int, _ color: Color) -> some View {
-        VStack(spacing: 7) {
-            Text("\(value)").font(.system(size: 26, weight: .medium, design: .rounded).monospacedDigit())
+        VStack(spacing: 6) {
+            Text("\(value)")
+                .font(.system(size: 26, weight: .medium, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText())
             HStack(spacing: 5) {
-                Circle().fill(color).frame(width: 5, height: 5)
+                Circle().fill(color).frame(width: 6, height: 6)
                 Text(title).font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -730,6 +894,7 @@ private struct EnergyAndCouponsView: View {
                 ForEach(Period.allCases) { item in Text(item.rawValue).tag(item) }
             }
             .pickerStyle(.segmented)
+            .sensoryFeedback(.selection, trigger: period)
             .onChange(of: period) { _, _ in Task { await refreshStats() } }
 
             if period == .custom {
@@ -737,18 +902,23 @@ private struct EnergyAndCouponsView: View {
                 DatePicker("结束日期", selection: $customTo, in: customFrom...Date(), displayedComponents: .date)
             }
 
-            Text(rangeDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                Task { await refreshStats() }
-            } label: {
-                Label("更新统计", systemImage: "arrow.clockwise")
+            HStack {
+                Label(rangeDescription, systemImage: "calendar")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if period == .custom {
+                    Button {
+                        Task { await refreshStats() }
+                    } label: {
+                        Label("查询区间", systemImage: "arrow.clockwise")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(viewModel.isLoadingEnergyStats)
+                }
             }
-            .font(.caption.weight(.semibold))
-            .buttonStyle(.bordered)
-            .disabled(viewModel.isLoadingEnergyStats)
         }
         .dataCard()
     }
@@ -811,10 +981,42 @@ private struct EnergyAndCouponsView: View {
             if let swapShare = stats.swapEnergySharePercentOfKnown,
                let chargingShare = stats.chargingEnergySharePercentOfKnown {
                 Divider()
-                Text(stats.energyCoverageComplete ? "能量占比" : "已知部分占比")
-                    .font(.subheadline.weight(.semibold))
-                valueRow("换电", percent(swapShare))
-                valueRow("充电", percent(chargingShare))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(stats.energyCoverageComplete ? "能量占比" : "已知部分占比")
+                        .font(.subheadline.weight(.semibold))
+                    GeometryReader { proxy in
+                        let swapRatio = min(max(swapShare / 100.0, 0), 1)
+                        let width = max(proxy.size.width, 1)
+                        HStack(spacing: 3) {
+                            if swapRatio > 0.005 {
+                                Capsule()
+                                    .fill(AppPalette.blue)
+                                    .frame(width: max(8, width * swapRatio - (swapRatio < 0.995 ? 1.5 : 0)))
+                            }
+                            if swapRatio < 0.995 {
+                                Capsule()
+                                    .fill(AppPalette.green)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
+                    .frame(height: 10)
+                    .accessibilityHidden(true)
+                    HStack {
+                        HStack(spacing: 6) {
+                            Circle().fill(AppPalette.blue).frame(width: 7, height: 7)
+                            Text("换电 \(percent(swapShare))")
+                                .font(.caption.weight(.medium).monospacedDigit())
+                        }
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Circle().fill(AppPalette.green).frame(width: 7, height: 7)
+                            Text("充电 \(percent(chargingShare))")
+                                .font(.caption.weight(.medium).monospacedDigit())
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                }
             } else {
                 Text("当前没有足够的已知电量计算占比。")
                     .font(.caption)
@@ -958,13 +1160,24 @@ private struct EnergyAndCouponsView: View {
     }
 
     private func metricCard(_ title: String, _ value: String, _ icon: String, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon).font(.caption.weight(.medium)).foregroundStyle(color)
-            Text(value).font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.65)
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.title2.bold().monospacedDigit())
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .padding(16)
+        .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(color.opacity(0.18), lineWidth: 1)
+        }
+        .shadow(color: AppPalette.cardShadow, radius: 8, x: 0, y: 3)
     }
 
     private func sectionTitle(_ title: String, icon: String) -> some View {
@@ -1027,9 +1240,6 @@ private struct EnergyAndCouponsView: View {
 
 private extension View {
     func dataCard() -> some View {
-        padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.04), lineWidth: 1))
+        nioCard(cornerRadius: 22, padding: 18)
     }
 }

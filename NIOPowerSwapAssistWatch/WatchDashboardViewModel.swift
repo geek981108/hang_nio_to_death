@@ -1,41 +1,86 @@
 import Combine
 import Foundation
+import WatchKit
 import WidgetKit
 
 @MainActor
 final class WatchDashboardViewModel: ObservableObject {
-    enum PendingCommand: Identifiable {
+    enum PendingCommand: Identifiable, Equatable {
+        case lock
+        case unlockStart
+        case acOn
+        case acOff
+        case guardOn
+        case guardOff
         case find
         case stopFinding
-        case unlockDoors
         case createSwapOrder
 
         var id: String {
             switch self {
+            case .lock: return "lock"
+            case .unlockStart: return "unlock-start"
+            case .acOn: return "ac-on"
+            case .acOff: return "ac-off"
+            case .guardOn: return "guard-on"
+            case .guardOff: return "guard-off"
             case .find: return "find"
             case .stopFinding: return "stop-finding"
-            case .unlockDoors: return "unlock-doors"
             case .createSwapOrder: return "create-swap-order"
             }
         }
 
         var title: String {
             switch self {
+            case .lock: return "远程锁车？"
+            case .unlockStart: return "解锁并启动？"
+            case .acOn: return "开启空调？"
+            case .acOff: return "关闭空调？"
+            case .guardOn: return "开启守卫并展镜？"
+            case .guardOff: return "关闭守卫模式？"
             case .find: return "开始寻车？"
             case .stopFinding: return "停止寻车？"
-            case .unlockDoors: return "解锁车门？"
             case .createSwapOrder: return "发起换电？"
             }
         }
 
         var message: String {
             switch self {
-            case .find: return "将向车辆发送一次鸣笛闪灯指令。"
-            case .stopFinding: return "将发送一次停止寻车指令。"
-            case .unlockDoors: return "这是高风险操作，将立即解锁车辆。"
-            case .createSwapOrder: return "将为 iPhone 中当前选择的换电站创建一次真实订单。"
+            case .lock: return "将向车辆发送一次落锁指令。"
+            case .unlockStart: return "高风险操作，将解锁车辆并授予启动权限。"
+            case .acOn: return "将以 22℃ 开启车内空调。"
+            case .acOff: return "将关闭车内空调。"
+            case .guardOn: return "将开启守卫模式并展开后视镜。"
+            case .guardOff: return "将关闭守卫模式。"
+            case .find: return "将向车辆发送鸣笛闪灯指令。"
+            case .stopFinding: return "将发送停止寻车指令。"
+            case .createSwapOrder: return "将为 iPhone 当前换电站创建真实订单。"
             }
         }
+
+        var inProgressLabel: String {
+            switch self {
+            case .lock: return "正在锁车…"
+            case .unlockStart: return "正在解锁启动…"
+            case .acOn: return "正在开空调…"
+            case .acOff: return "正在关空调…"
+            case .guardOn: return "正在开守卫…"
+            case .guardOff: return "正在关守卫…"
+            case .find: return "正在寻车…"
+            case .stopFinding: return "正在停止…"
+            case .createSwapOrder: return "正在下单…"
+            }
+        }
+
+        var isDestructive: Bool {
+            self == .unlockStart || self == .createSwapOrder
+        }
+    }
+
+    struct ActionFeedback: Equatable {
+        let id = UUID()
+        let message: String
+        let isError: Bool
     }
 
     @Published private(set) var dashboard: WatchDashboard?
@@ -43,12 +88,38 @@ final class WatchDashboardViewModel: ObservableObject {
     @Published private(set) var stationName: String?
     @Published private(set) var hasStation = false
     @Published private(set) var hasControlKey = false
+    @Published private(set) var isConfigured = false
+    @Published private(set) var isShowingCachedData = false
     @Published private(set) var isLoading = false
     @Published private(set) var isPerformingCommand = false
+    @Published private(set) var activeCommandLabel: String?
     @Published private(set) var updatedAt: Date?
     @Published var errorMessage: String?
-    @Published var actionMessage: String?
+    @Published var feedback: ActionFeedback?
     @Published var pendingCommand: PendingCommand?
+
+    init() {
+        if let configuration = try? WatchCredentialStore.shared.load() {
+            isConfigured = true
+            stationName = configuration.stationName
+            hasStation = configuration.stationID?.isEmpty == false
+            hasControlKey = !configuration.controlKey.isEmpty
+        }
+        if let snapshot = WatchSnapshotStore.load() {
+            dashboard = WatchDashboard(
+                isConnected: snapshot.isConnected,
+                stateOfCharge: snapshot.stateOfCharge,
+                remainingRange: snapshot.remainingRange,
+                isCharging: snapshot.isCharging,
+                isSwapping: snapshot.isSwapping
+            )
+            if stationName == nil {
+                stationName = snapshot.stationName
+            }
+            updatedAt = snapshot.updatedAt
+            isShowingCachedData = true
+        }
+    }
 
     func refresh() async {
         guard !isLoading else { return }
@@ -56,6 +127,7 @@ final class WatchDashboardViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let configuration = try WatchCredentialStore.shared.load()
+            isConfigured = true
             stationName = configuration.stationName
             hasStation = configuration.stationID?.isEmpty == false
             hasControlKey = !configuration.controlKey.isEmpty
@@ -67,40 +139,78 @@ final class WatchDashboardViewModel: ObservableObject {
             dashboard = newDashboard
             activeOrder = orders.first
             updatedAt = Date()
+            isShowingCachedData = false
             errorMessage = nil
             cacheSnapshot(dashboard: newDashboard, activeOrder: orders.first)
         } catch {
+            if let configError = error as? WatchConfigurationError,
+               case .notConfigured = configError {
+                isConfigured = false
+            }
             errorMessage = Self.message(for: error)
         }
     }
 
     func confirmPendingCommand() async {
-        guard let command = pendingCommand, !isPerformingCommand else { return }
+        guard let command = pendingCommand else { return }
         pendingCommand = nil
+        await executeCommand(command)
+    }
+
+    func executeDirectly(_ command: PendingCommand) async {
+        pendingCommand = nil
+        await executeCommand(command)
+    }
+
+    private func executeCommand(_ command: PendingCommand) async {
+        guard !isPerformingCommand else { return }
         isPerformingCommand = true
-        actionMessage = nil
-        defer { isPerformingCommand = false }
+        activeCommandLabel = command.inProgressLabel
+        feedback = nil
+        defer {
+            isPerformingCommand = false
+            activeCommandLabel = nil
+        }
 
         do {
             let configuration = try WatchCredentialStore.shared.load()
             let client = WatchBackendClient(configuration: configuration)
+            let successMessage: String
             switch command {
+            case .lock:
+                try await client.performVehicleAction(.lock)
+                successMessage = "已发送锁车指令"
+            case .unlockStart:
+                try await client.performVehicleAction(.unlockStart)
+                successMessage = "已发送解锁并启动指令"
+            case .acOn:
+                try await client.performVehicleAction(.acOn, temperature: 22)
+                successMessage = "已开启 22℃ 空调"
+            case .acOff:
+                try await client.performVehicleAction(.acOff)
+                successMessage = "已关闭空调"
+            case .guardOn:
+                try await client.performVehicleAction(.guardOn, expandMirrors: true)
+                successMessage = "已开启守卫并展镜"
+            case .guardOff:
+                try await client.performVehicleAction(.guardOff)
+                successMessage = "已关闭守卫模式"
             case .find:
                 try await client.performVehicleAction(.find)
-                actionMessage = "寻车指令已发送。"
+                successMessage = "已发送寻车指令"
             case .stopFinding:
                 try await client.performVehicleAction(.findStop)
-                actionMessage = "停止寻车指令已发送。"
-            case .unlockDoors:
-                try await client.performVehicleAction(.unlockDoors)
-                actionMessage = "车门解锁指令已发送。"
+                successMessage = "已停止寻车"
             case .createSwapOrder:
                 try await client.createSwapOrder()
-                actionMessage = "换电订单已创建。"
+                successMessage = "换电订单已创建"
             }
+            WKInterfaceDevice.current().play(.success)
+            feedback = ActionFeedback(message: successMessage, isError: false)
             await refresh()
         } catch {
-            actionMessage = Self.message(for: error)
+            WKInterfaceDevice.current().play(.failure)
+            feedback = ActionFeedback(message: Self.message(for: error), isError: true)
         }
     }
 
@@ -121,6 +231,6 @@ final class WatchDashboardViewModel: ObservableObject {
     }
 
     private static func message(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? "请求失败，请稍后手动重试。"
+        (error as? LocalizedError)?.errorDescription ?? "请求失败，请稍后重试。"
     }
 }

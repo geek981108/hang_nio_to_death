@@ -601,7 +601,7 @@ fn pick_track(
 /// Attach `track` to each trip in a `nio_trips` result. A trip with neither
 /// source keeps no track field at all rather than an empty one.
 async fn attach_trip_tracks(state: &AppState, mut page: Value) -> Value {
-    let Some(vehicle) = state.vehicle.as_ref() else {
+    let Some(vehicle) = state.vehicle() else {
         return page;
     };
     let vehicle_id = vehicle.vehicle_id().to_owned();

@@ -227,6 +227,13 @@ private struct NIOStationLiveStatus: Decodable, Sendable {
 
 private struct WidgetBackendClient: Sendable {
   let configuration: WidgetBackendConfiguration
+  let session: URLSession
+
+  init(configuration: WidgetBackendConfiguration, session: URLSession? = nil) {
+    self.configuration = configuration
+    self.session = session
+      ?? TemporaryBackendTLS.session(allowingUntrustedHost: configuration.baseURL.host)
+  }
 
   func fetchSnapshot() async throws -> WidgetVehicleSnapshot {
     async let status: NIOVehicleStatusResponse = fetch(path: "api/v1/vehicle/status")
@@ -320,7 +327,7 @@ private struct WidgetBackendClient: Sendable {
     request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await session.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
       throw WidgetBackendError.invalidResponse
     }

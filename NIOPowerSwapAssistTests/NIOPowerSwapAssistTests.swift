@@ -572,6 +572,178 @@ struct NIOPowerSwapAssistTests {
         #expect(cache.load(matching: firstURL) == nil)
     }
 
+    @Test func vehicleDashboardIsDrivingMatchesActiveDrivingStateOnly() {
+        func makeDashboard(stateCode: Int?, isSwapping: Bool = false) -> VehicleDashboard {
+            VehicleDashboard(
+                vehicleID: "vehicle-1",
+                isConnected: true,
+                stateCode: stateCode,
+                mileage: 12_345,
+                isSwapping: isSwapping,
+                stateOfCharge: 80,
+                remainingRange: 400,
+                remainingActualRange: 360,
+                chargeStateCode: 0,
+                chargingCurrent: nil,
+                chargingPower: nil,
+                chargingVoltage: nil,
+                chargeLimitPercent: 100,
+                batterySampledAt: nil,
+                lockStatusCode: 0,
+                location: nil,
+                locationSampledAt: nil,
+                insideTemperature: nil,
+                outsideTemperature: nil,
+                updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        }
+
+        #expect(makeDashboard(stateCode: 1, isSwapping: false).isDriving)
+        #expect(!makeDashboard(stateCode: 1, isSwapping: true).isDriving)
+        #expect(!makeDashboard(stateCode: 2, isSwapping: false).isDriving)
+        #expect(!makeDashboard(stateCode: 3, isSwapping: false).isDriving)
+        #expect(!makeDashboard(stateCode: 4, isSwapping: false).isDriving)
+        #expect(!makeDashboard(stateCode: nil, isSwapping: false).isDriving)
+    }
+
+    @Test func drivingRearViewGIFAssetDecodesIntoMultiFrameLoop() throws {
+        let appBundle = Bundle(for: VehicleViewModel.self)
+        let sequence = try #require(
+            AnimatedGIFSequence.cached(
+                assetName: AnimatedGIFSequence.drivingRearViewAssetName,
+                bundle: appBundle
+            )
+        )
+        #expect(sequence.frames.count == 48)
+        #expect(sequence.duration > 1.5 && sequence.duration < 2.5)
+        let first = try #require(sequence.frames.first)
+        #expect(first.size.width == 740)
+        #expect(first.size.height == 340)
+
+        let darkSequence = try #require(
+            AnimatedGIFSequence.cached(
+                assetName: AnimatedGIFSequence.drivingRearViewDarkAssetName,
+                bundle: appBundle
+            )
+        )
+        #expect(darkSequence.frames.count == 48)
+        #expect(darkSequence.duration > 1.5 && darkSequence.duration < 2.5)
+        let darkFirst = try #require(darkSequence.frames.first)
+        #expect(darkFirst.size.width == 740)
+        #expect(darkFirst.size.height == 340)
+        #expect(AnimatedGIFSequence.decode(data: Data("not-a-gif".utf8)) == nil)
+    }
+
+    @Test func vehicleControlShortcutOptionsAndSpokenResultsMatchActionSemantics() {
+        #expect(GuardModeToggleOption.enable.vehicleAction == .guardOn)
+        #expect(GuardModeToggleOption.disable.vehicleAction == .guardOff)
+        #expect(FindVehicleActionOption.start.vehicleAction == .find)
+        #expect(FindVehicleActionOption.stop.vehicleAction == .findStop)
+
+        let verifiedLock = VehicleControlShortcutExecutor.spokenResult(
+            for: VehicleActionOutcome(action: .lock, status: "verified", verified: true, mirrors: nil)
+        )
+        #expect(verifiedLock == "锁定车辆已完成。")
+
+        let acceptedUnlock = VehicleControlShortcutExecutor.spokenResult(
+            for: VehicleActionOutcome(action: .unlockDoors, status: "accepted_unverified", verified: false, mirrors: nil)
+        )
+        #expect(acceptedUnlock.contains("仅解锁车门"))
+        #expect(acceptedUnlock.contains("现场确认"))
+
+        let acResult = VehicleControlShortcutExecutor.spokenResult(
+            for: VehicleActionOutcome(action: .acOn, status: "verified", verified: true, mirrors: nil),
+            requestedTemperature: 22
+        )
+        #expect(acResult == "开启空调（22℃）已完成。")
+
+        let guardMirrors = VehicleControlShortcutExecutor.spokenResult(
+            for: VehicleActionOutcome(
+                action: .guardOn,
+                status: "verified",
+                verified: true,
+                mirrors: "accepted_unverified"
+            )
+        )
+        #expect(guardMirrors.contains("开启守卫模式已完成"))
+        #expect(guardMirrors.contains("后视镜展开指令已接受"))
+    }
+
+    @Test func nioLoginRequestsValidateMobileAndCodeAndUseBearerAuth() throws {
+        let apiKey = String(repeating: "a", count: 64)
+        let configuration = try BackendConfiguration(
+            baseURLString: "https://vehicle.example.com/t/alice/",
+            apiKey: apiKey
+        )
+        let client = BackendClient(configuration: configuration)
+
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeSendNIOLoginSMSRequest(mobile: "12345")
+        }
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeSendNIOLoginSMSRequest(mobile: "12800138000")
+        }
+        let smsRequest = try client.makeSendNIOLoginSMSRequest(mobile: "13800138000")
+        #expect(smsRequest.httpMethod == "POST")
+        #expect(smsRequest.url?.absoluteString == "https://vehicle.example.com/t/alice/api/v1/auth/sms")
+        #expect(smsRequest.value(forHTTPHeaderField: "Authorization") == "Bearer \(apiKey)")
+        let smsBody = try #require(smsRequest.httpBody)
+        let smsJSON = try #require(try JSONSerialization.jsonObject(with: smsBody) as? [String: String])
+        #expect(smsJSON["mobile"] == "13800138000")
+
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeSubmitNIOLoginRequest(challengeID: "", verificationCode: "123456")
+        }
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeSubmitNIOLoginRequest(challengeID: "chal-1", verificationCode: "1234")
+        }
+        let loginRequest = try client.makeSubmitNIOLoginRequest(
+            challengeID: "chal-1",
+            verificationCode: "654321"
+        )
+        #expect(loginRequest.httpMethod == "POST")
+        #expect(loginRequest.url?.absoluteString == "https://vehicle.example.com/t/alice/api/v1/auth/login")
+        #expect(loginRequest.value(forHTTPHeaderField: "Authorization") == "Bearer \(apiKey)")
+        let loginBody = try #require(loginRequest.httpBody)
+        let loginJSON = try #require(try JSONSerialization.jsonObject(with: loginBody) as? [String: String])
+        #expect(loginJSON["challenge_id"] == "chal-1")
+        #expect(loginJSON["verification_code"] == "654321")
+    }
+
+    @Test @MainActor func incompleteBackendConfigurationTriggersLoginFlowOnceAndSupportsSMSLogin() async throws {
+        let fixture = try LoginFlowFixture()
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+
+        await model.refresh()
+
+        #expect(model.backendServiceStatus?.vehicleConfigured == false)
+        #expect(model.needsBackendLogin)
+        #expect(model.isShowingLoginSheet)
+        #expect(model.errorMessage == nil)
+
+        // Dismissing the login sheet does not endlessly re-pop it on refresh while config stays incomplete.
+        model.isShowingLoginSheet = false
+        await model.refresh()
+        #expect(model.needsBackendLogin)
+        #expect(!model.isShowingLoginSheet)
+
+        // Complete SMS login through the backend.
+        let challenge = try await model.sendNIOLoginSMS(mobile: "13800138000")
+        #expect(challenge.challengeID == "00000000-0000-4000-8000-000000000001")
+        #expect(challenge.expiresInSeconds == 600)
+
+        let outcome = try await model.submitNIOLogin(
+            challengeID: challenge.challengeID,
+            verificationCode: "123456"
+        )
+        #expect(outcome.resultCode == "success")
+        #expect(outcome.backendConfigSaved == true)
+        #expect(outcome.vehicleClientReloaded == true)
+        #expect(model.backendServiceStatus?.vehicleConfigured == true)
+        #expect(!model.needsBackendLogin)
+    }
+
     @Test func vehicleActionRequestKeepsControlKeySeparateAndUsesExactConfirmation() throws {
         let apiKey = String(repeating: "a", count: 64)
         let controlKey = String(repeating: "c", count: 64)
@@ -594,6 +766,29 @@ struct NIOPowerSwapAssistTests {
         #expect(json["action"] as? String == "unlock-doors")
         #expect(json["confirmation"] as? String == "UNLOCK DOORS")
         #expect(json["expand_mirrors"] as? Bool == false)
+    }
+
+    @Test func quickLongPressDefaultsUnlockWithStartAndGuardWithExpandedMirrors() throws {
+        let lockedDefault = try #require(VehicleControlQuickDefaults.lockToggleAction(lockStatusCode: 1))
+        #expect(lockedDefault.action == .unlockStart)
+        #expect(lockedDefault.expandMirrors == false)
+
+        let unlockedDefault = try #require(VehicleControlQuickDefaults.lockToggleAction(lockStatusCode: 0))
+        #expect(unlockedDefault.action == .lock)
+        #expect(unlockedDefault.expandMirrors == false)
+        #expect(VehicleControlQuickDefaults.lockToggleAction(lockStatusCode: nil) == nil)
+
+        let guardDefault = VehicleControlQuickDefaults.guardModeAction
+        #expect(guardDefault.action == .guardOn)
+        #expect(guardDefault.expandMirrors == true)
+
+        let guardInput = VehicleActionInput(action: guardDefault.action, expandMirrors: guardDefault.expandMirrors)
+        #expect(guardInput.expandMirrors == true)
+        #expect(guardInput.mirrorConfirmation == "EXPAND MIRRORS")
+
+        #expect(VehicleControlQuickDefaults.findAction == .find)
+        #expect(VehicleControlQuickDefaults.climateAction.action == .acOn)
+        #expect(VehicleControlQuickDefaults.climateAction.temperature == 22)
     }
 
     @Test func swapOrderRequestSendsOnlyStationAndExactConfirmation() throws {
@@ -1237,7 +1432,7 @@ struct NIOPowerSwapAssistTests {
         #expect(model.dashboard?.vehicleID == "new-vehicle")
         #expect(model.errorMessage == nil)
         #expect(!model.isLoading)
-        #expect(fixture.scenario.requestCount(host: "new.fixture.invalid") == 8)
+        #expect(fixture.scenario.requestCount(host: "new.fixture.invalid") == 9)
     }
 
     @Test @MainActor func cancelledRefreshCallerDoesNotCancelSharedWork() async throws {
@@ -1251,7 +1446,7 @@ struct NIOPowerSwapAssistTests {
         await firstCaller.value
 
         #expect(model.dashboard?.vehicleID == "old-vehicle")
-        #expect(fixture.scenario.requestCount(host: "old.fixture.invalid") == 8)
+        #expect(fixture.scenario.requestCount(host: "old.fixture.invalid") == 9)
         #expect(model.errorMessage == nil)
     }
 
@@ -1740,6 +1935,144 @@ private enum VehicleImageReply: Sendable {
     case notModified
     case httpFailure
     case invalidImage
+}
+
+@MainActor
+private final class LoginFlowFixture {
+    let key = "login-flow-\(UUID().uuidString)"
+    let service = "nio-login-flow-tests-\(UUID().uuidString)"
+    let suite = "nio-login-flow-defaults-\(UUID().uuidString)"
+    let baseURL = URL(string: "https://login.fixture.invalid")!
+    let scenario = LoginFlowScenario()
+    let settings: BackendSettingsStore
+    let session: URLSession
+
+    init() throws {
+        let defaults = UserDefaults(suiteName: suite)!
+        settings = BackendSettingsStore(defaults: defaults, keychainService: service)
+        try settings.save(baseURLString: baseURL.absoluteString, apiKey: key, controlKey: "")
+        LoginFlowURLProtocol.register(scenario, for: key)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [LoginFlowURLProtocol.self]
+        session = URLSession(configuration: configuration)
+    }
+
+    func model() -> VehicleViewModel {
+        VehicleViewModel(settingsStore: settings, session: session)
+    }
+
+    func cleanUp() {
+        session.invalidateAndCancel()
+        LoginFlowURLProtocol.unregister(key)
+        SecItemDelete([
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service
+        ] as CFDictionary)
+        UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    }
+}
+
+private final class LoginFlowScenario: @unchecked Sendable {
+    private let lock = NSLock()
+    private var vehicleConfigured = false
+
+    func reply(for request: URLRequest) -> (Data, Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        let path = request.url!.path
+        switch path {
+        case "/api/v1/status":
+            let body: [String: Any] = [
+                "station_configured": false,
+                "vehicle_configured": vehicleConfigured,
+                "service_order_configured": false,
+                "station_template_configured": false
+            ]
+            return (try! JSONSerialization.data(withJSONObject: body), 200)
+        case "/api/v1/auth/sms":
+            let body: [String: Any] = [
+                "challenge_id": "00000000-0000-4000-8000-000000000001",
+                "expires_in_seconds": 600
+            ]
+            return (try! JSONSerialization.data(withJSONObject: body), 200)
+        case "/api/v1/auth/login":
+            vehicleConfigured = true
+            let body: [String: Any] = [
+                "result_code": "success",
+                "backend_config_saved": true,
+                "vehicle_client_reloaded": true,
+                "data": [
+                    "token_type": "bearer",
+                    "expires_in": 86_400
+                ]
+            ]
+            return (try! JSONSerialization.data(withJSONObject: body), 200)
+        case "/api/v1/vehicle/status", "/api/v1/vehicle/widget-info":
+            if !vehicleConfigured {
+                let body: [String: Any] = [
+                    "error": "vehicle_not_configured",
+                    "message": "NIO vehicle credentials are not configured"
+                ]
+                return (try! JSONSerialization.data(withJSONObject: body), 503)
+            }
+            let vehicle: [String: Any] = [
+                "vehicle_id": "vehicle-1",
+                "connection_status": ["connected": true],
+                "exterior_status": ["vehicle_state": 2],
+                "soc_status": ["soc": 80]
+            ]
+            let body: [String: Any] = path.hasSuffix("widget-info")
+                ? ["result_code": "success", "data": ["status": vehicle]]
+                : ["result_code": "success", "data": vehicle]
+            return (try! JSONSerialization.data(withJSONObject: body), 200)
+        default:
+            let body: [String: Any] = ["items": [], "limit": 2000, "offset": 0, "has_more": false]
+            return (try! JSONSerialization.data(withJSONObject: body), 200)
+        }
+    }
+}
+
+private final class LoginFlowURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var scenarios: [String: LoginFlowScenario] = [:]
+
+    static func register(_ scenario: LoginFlowScenario, for key: String) {
+        lock.lock()
+        scenarios[key] = scenario
+        lock.unlock()
+    }
+
+    static func unregister(_ key: String) {
+        lock.lock()
+        scenarios.removeValue(forKey: key)
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "login.fixture.invalid"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
+        let key = auth.hasPrefix("Bearer ") ? String(auth.dropFirst("Bearer ".count)) : ""
+        Self.lock.lock()
+        let scenario = Self.scenarios[key]
+        Self.lock.unlock()
+        let (data, status) = scenario?.reply(for: request) ?? (Data(), 500)
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 @MainActor

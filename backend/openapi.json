@@ -1673,6 +1673,18 @@
           "result_code": {
             "description": "成功时为 success。",
             "type": "string"
+          },
+          "vehicle_client_reloaded": {
+            "anyOf": [
+              {
+                "description": "当前进程中的车辆业务客户端是否已热更新为新 token。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "已配置车辆客户端或待登录车辆标识时为 true。"
           }
         },
         "required": [
@@ -4364,7 +4376,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "挑战在发送上游请求前即消费；请求结果不明时也不重试。成功响应含敏感 token，Cache-Control: no-store。租户模式加密回写 PostgreSQL，需重启后供现有业务客户端使用。",
+        "description": "挑战在发送上游请求前即消费；请求结果不明时也不重试。成功响应含敏感 token，Cache-Control: no-store。租户模式加密回写 PostgreSQL；同时热更新当前进程中运行中的车辆客户端 token（或由待登录配置热初始化客户端），无需重启服务。",
         "operationId": "loginWithNioSms",
         "requestBody": {
           "content": {

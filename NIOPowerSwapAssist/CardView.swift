@@ -23,30 +23,48 @@ struct CardView: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(statusColor.opacity(0.08))
-                    .frame(width: 44, height: 52)
-                Text("\(batteryModel.slotID)")
-                    .font(.system(.title3, design: .rounded, weight: .bold))
-                    .foregroundStyle(statusColor)
+                    .fill(statusColor.opacity(0.10))
+                    .frame(width: 46, height: 54)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(statusColor.opacity(0.18), lineWidth: 1)
+                    }
+                VStack(spacing: 1) {
+                    Text("\(batteryModel.slotID)")
+                        .font(.system(.title3, design: .rounded, weight: .bold).monospacedDigit())
+                        .foregroundStyle(statusColor)
+                    Text("号仓")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(statusColor.opacity(0.8))
+                }
             }
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Text(batteryModel.batteryType.isEmpty ? "未知电池" : batteryModel.batteryType)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Label(batteryModel.status.rawValue, systemImage: statusIcon)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(statusColor)
                         .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(statusColor.opacity(0.1), in: Capsule())
+                        .padding(.vertical, 4)
+                        .background(statusColor.opacity(0.11), in: Capsule())
                 }
 
-                ProgressView(value: batteryModel.progressFraction)
-                    .tint(statusColor)
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(statusColor.opacity(0.14))
+                        Capsule()
+                            .fill(statusColor)
+                            .frame(width: max(6, proxy.size.width * min(max(batteryModel.progressFraction, 0), 1)))
+                    }
+                }
+                .frame(height: 7)
+                .accessibilityHidden(true)
 
                 HStack(spacing: 10) {
                     if let manufactureDate = batteryModel.manufactureDate {
@@ -55,18 +73,18 @@ struct CardView: View {
                     if batteryModel.status == .charging,
                        let minutes = batteryModel.chargingRemainingMinutes {
                         Label("约 \(minutes) 分钟", systemImage: "clock")
+                            .foregroundStyle(AppPalette.amber)
                     }
                     Spacer(minLength: 4)
                     Text(batteryModel.progressText)
-                        .fontWeight(.semibold)
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
                         .foregroundStyle(statusColor)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
         }
-        .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .nioCard(cornerRadius: 20, padding: 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(batteryModel.slotID) 号仓，\(batteryModel.batteryType)，\(batteryModel.status.rawValue)，电量 \(batteryModel.progressText)")
     }

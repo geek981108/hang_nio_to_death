@@ -85,8 +85,7 @@ struct VehicleTripCard: View {
             .padding(12)
             .background(AppPalette.canvas, in: RoundedRectangle(cornerRadius: 12))
         }
-        .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .nioCard(cornerRadius: 24, padding: 20)
     }
 
     @ViewBuilder private var metrics: some View {

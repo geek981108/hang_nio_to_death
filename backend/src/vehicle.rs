@@ -67,6 +67,15 @@ impl NioVehicleClient {
         &self.config.vehicle_id
     }
 
+    pub fn update_bearer_token(&self, token: impl Into<String>) {
+        self.config.update_bearer_token(token);
+    }
+
+    #[cfg(test)]
+    pub fn current_bearer_token(&self) -> String {
+        self.config.current_bearer_token()
+    }
+
     pub fn new(config: VehicleConfig) -> Result<Self, VehicleError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(20))
@@ -96,8 +105,9 @@ impl NioVehicleClient {
             .append_pair("device_id", &self.config.device_id)
             .append_pair("app_ver", &self.config.app_version)
             .append_pair("region", &self.config.region);
-        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
-        self.get(url, true).await
+        let bearer_token = self.config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
+        self.get(url, &bearer_token, true).await
     }
 
     pub async fn widget_info(&self) -> Result<Value, VehicleError> {
@@ -111,8 +121,9 @@ impl NioVehicleClient {
             .append_pair("device_id", &self.config.device_id)
             .append_pair("widget_size", "large")
             .append_pair("widget_functions", WIDGET_FUNCTIONS);
-        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
-        self.get(url, false).await
+        let bearer_token = self.config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
+        self.get(url, &bearer_token, false).await
     }
 
     pub async fn journeys(
@@ -136,8 +147,9 @@ impl NioVehicleClient {
         let query_time = query_time.unwrap_or_else(|| Utc::now().timestamp());
         url.query_pairs_mut()
             .append_pair("query_time", &query_time.to_string());
-        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
-        let payload = self.get(url, false).await?;
+        let bearer_token = self.config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
+        let payload = self.get(url, &bearer_token, false).await?;
         let page = trip_page_from_payload(payload)?;
         Ok(self.enrich_journey_details(page).await)
     }
@@ -219,8 +231,9 @@ impl NioVehicleClient {
         if let Some(account_id) = &self.config.account_id {
             url.query_pairs_mut().append_pair("account_id", account_id);
         }
-        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
-        let payload = self.get(url, false).await?;
+        let bearer_token = self.config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
+        let payload = self.get(url, &bearer_token, false).await?;
         if payload.get("result_code").and_then(Value::as_str) != Some("success") {
             return Err(VehicleError::JourneyApi(
                 payload
@@ -245,8 +258,9 @@ impl NioVehicleClient {
             .append_pair("region", &self.config.region)
             .append_pair("lang", &self.config.language)
             .append_pair("device_id", &self.config.device_id);
-        let url = sign_url(url, &self.config.bearer_token, Utc::now().timestamp());
-        let payload = self.get(url, false).await?;
+        let bearer_token = self.config.current_bearer_token();
+        let url = sign_url(url, &bearer_token, Utc::now().timestamp());
+        let payload = self.get(url, &bearer_token, false).await?;
         switch_cars_from_payload(payload)
     }
 
@@ -328,11 +342,16 @@ impl NioVehicleClient {
         })
     }
 
-    async fn get(&self, url: Url, widget_status_headers: bool) -> Result<Value, VehicleError> {
+    async fn get(
+        &self,
+        url: Url,
+        bearer_token: &str,
+        widget_status_headers: bool,
+    ) -> Result<Value, VehicleError> {
         let mut request = self
             .client
             .get(url)
-            .bearer_auth(&self.config.bearer_token)
+            .bearer_auth(bearer_token)
             .header(header::ACCEPT, "application/json,text/json,text/plain")
             .header(header::ACCEPT_LANGUAGE, "zh-CN,zh-Hans;q=0.9");
         if widget_status_headers {
