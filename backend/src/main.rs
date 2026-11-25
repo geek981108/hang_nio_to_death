@@ -17,6 +17,7 @@ mod poller;
 mod provider;
 mod rewards;
 mod route_estimate;
+mod send_route;
 mod service_order;
 mod station_search;
 mod store;
@@ -41,6 +42,7 @@ use nearby_stations::NioNearbyStationClient;
 use poller::{Poller, StationTarget};
 use provider::NioStationProvider;
 use rewards::NioRewardsClient;
+use send_route::NioSendRouteClient;
 use service_order::{ServiceOrderMonitor, ServiceOrderProvider};
 use station_search::NioStationSearchClient;
 use store::Store;
@@ -312,6 +314,11 @@ async fn build_state(
         .clone()
         .map(NioRewardsClient::new)
         .transpose()?;
+    let send_route = config
+        .vehicle
+        .clone()
+        .map(NioSendRouteClient::new)
+        .transpose()?;
     if config.daily_checkin_enabled
         && let Some(rewards_client) = rewards.clone()
     {
@@ -386,6 +393,7 @@ async fn build_state(
         station_search: Arc::new(std::sync::RwLock::new(station_search)),
         nearby_stations: Arc::new(std::sync::RwLock::new(nearby_stations)),
         rewards: Arc::new(std::sync::RwLock::new(rewards)),
+        send_route: Arc::new(std::sync::RwLock::new(send_route)),
         service_order_configured: config.service_orders.is_some(),
         station_template_configured,
         station_template,

@@ -663,6 +663,79 @@ struct VehicleTripPage: Decodable, Sendable {
     }
 }
 
+struct VehicleTripTrackPoint: Decodable, Equatable, Identifiable, Sendable {
+    let sampledAt: Date
+    let latitude: Double
+    let longitude: Double
+    let speedKPH: Double?
+    let powerConsumption: Double?
+    let npStatus: Int?
+
+    var id: String {
+        "\(sampledAt.timeIntervalSince1970):\(latitude):\(longitude)"
+    }
+
+    var coordinate: VehicleCoordinate {
+        VehicleCoordinate(latitude: latitude, longitude: longitude)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sampledAt = "sampled_at"
+        case latitude, longitude
+        case speedKPH = "speed_kph"
+        case powerConsumption = "power_consumption"
+        case npStatus = "np_status"
+    }
+
+    init(
+        sampledAt: Date,
+        latitude: Double,
+        longitude: Double,
+        speedKPH: Double? = nil,
+        powerConsumption: Double? = nil,
+        npStatus: Int? = nil
+    ) {
+        self.sampledAt = sampledAt
+        self.latitude = latitude
+        self.longitude = longitude
+        self.speedKPH = speedKPH
+        self.powerConsumption = powerConsumption
+        self.npStatus = npStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let timestamp = try values.decode(String.self, forKey: .sampledAt)
+        guard let date = VehicleDateParser.parse(timestamp) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sampledAt,
+                in: values,
+                debugDescription: "Unsupported RFC3339 timestamp"
+            )
+        }
+        sampledAt = date
+        latitude = try values.decode(Double.self, forKey: .latitude)
+        longitude = try values.decode(Double.self, forKey: .longitude)
+        speedKPH = try values.decodeIfPresent(Double.self, forKey: .speedKPH)
+        powerConsumption = try values.decodeIfPresent(Double.self, forKey: .powerConsumption)
+        npStatus = try values.decodeIfPresent(Int.self, forKey: .npStatus)
+    }
+}
+
+struct VehicleTripTrack: Decodable, Equatable, Sendable {
+    let journeyID: String
+    let points: [VehicleTripTrackPoint]
+
+    enum CodingKeys: String, CodingKey {
+        case journeyID = "journey_id"
+        case points
+    }
+
+    var validPoints: [VehicleTripTrackPoint] {
+        points.filter { $0.coordinate.isValid }
+    }
+}
+
 struct DailyVehiclePath: Identifiable, Equatable, Sendable {
     let day: Date
     let points: [VehicleSnapshot]

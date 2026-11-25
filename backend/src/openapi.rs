@@ -534,6 +534,134 @@ pub fn document() -> Value {
         trip_track,
     );
 
+    let mut route_switch = operation(
+        "vehicleRouteSwitch",
+        "查询发送到车机功能开关",
+        "代理 NIO `/app/api/pe/v1/route/send-vehicle/switch`，始终使用当前租户绑定的 vehicle_id，不接受调用方指定任意车辆。",
+        "车辆",
+        "SendRouteSwitchOutcome",
+        true,
+    );
+    error(
+        &mut route_switch,
+        "502",
+        "send_route_upstream_error：上游失败。",
+    );
+    error(
+        &mut route_switch,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    add("/api/v1/vehicle/route/switch", "get", route_switch);
+
+    let mut route_plan = operation(
+        "planVehicleRoute",
+        "规划加电路线（获取官方 route_id 与沿途补能方案）",
+        "只读代理 NIO `POST /app/api/pe/v6/power/energymap-multi`，默认以当前绑定车辆定位为起点，自动规划至目的地（可含途经点），返回官方 route_id、行程摘要、沿途推荐换电/充电站与可直接发车机的 poi_list。",
+        "车辆",
+        "PlanRouteOutcome",
+        true,
+    );
+    route_plan["requestBody"] = request_body("PlanRouteInput", "目标目的地与可选途经点列表。");
+    error(
+        &mut route_plan,
+        "400",
+        "invalid_send_route_input：POI 列表为空或坐标/字段无效。",
+    );
+    error(
+        &mut route_plan,
+        "422",
+        "vehicle_position_unavailable：未提供显式起点且车辆当前位置不可用。",
+    );
+    error(
+        &mut route_plan,
+        "502",
+        "route_plan_failed / send_route_rejected / send_route_upstream_error：上游规划失败或不可用。",
+    );
+    error(
+        &mut route_plan,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    add("/api/v1/vehicle/route/plan", "post", route_plan);
+
+    let mut route_send = operation(
+        "sendVehicleRoute",
+        "发送导航路线/目的地到车机",
+        "单次代理 NIO `POST /app/api/pe/v1/route/send-vehicle`，不自动重试。当未提供 route_id 且未禁用 auto_plan 时，后端会先以车辆当前定位调用 `POST /app/api/pe/v6/power/energymap-multi` 自动获取官方 route_id、行程摘要与沿途推荐补能站点后再下发车机。若上游返回 popup_message 且包含非空按钮 action，后端会签发 5 分钟内有效的单次 confirmation_token 供确认接口原样重放。",
+        "车辆",
+        "SendRouteOutcome",
+        true,
+    );
+    route_send["requestBody"] = request_body("SendRouteInput", "路线 POI 列表与可选行程摘要。");
+    route_send["x-no-automatic-retry"] = json!(true);
+    error(
+        &mut route_send,
+        "400",
+        "invalid_send_route_input：POI 列表为空或坐标/字段无效。",
+    );
+    error(
+        &mut route_send,
+        "422",
+        "vehicle_position_unavailable：自动规划时缺少车辆当前位置。",
+    );
+    error(
+        &mut route_send,
+        "502",
+        "route_plan_failed / send_route_rejected / send_route_upstream_error：上游规划或发送被拒绝或不可用。",
+    );
+    error(
+        &mut route_send,
+        "503",
+        "vehicle_not_configured：车辆凭证未配置。",
+    );
+    error(
+        &mut route_send,
+        "504",
+        "send_route_result_unknown：上游超时或断连，无法确认车机是否已收到路线，切勿自动重试。",
+    );
+    add("/api/v1/vehicle/route/send", "post", route_send);
+
+    let mut route_confirm = operation(
+        "confirmSendVehicleRoute",
+        "确认服务端发送路线弹窗",
+        "消费 confirmation_token 并以用户选择的 btn_action 原样重放绑定到当前租户与车辆的原始路线，单次发送不自动重试。",
+        "车辆",
+        "SendRouteOutcome",
+        true,
+    );
+    route_confirm["requestBody"] = request_body(
+        "ConfirmSendRouteInput",
+        "确认令牌与服务端弹窗返回的非空 btn_action。",
+    );
+    route_confirm["x-no-automatic-retry"] = json!(true);
+    error(
+        &mut route_confirm,
+        "400",
+        "invalid_btn_action：action 不在弹窗允许集合内。",
+    );
+    error(
+        &mut route_confirm,
+        "409",
+        "vehicle_changed：绑定车辆已变更。",
+    );
+    error(
+        &mut route_confirm,
+        "410",
+        "confirmation_expired：确认令牌无效、已使用或已过期。",
+    );
+    error(
+        &mut route_confirm,
+        "502",
+        "send_route_rejected / send_route_upstream_error：上游拒绝或不可用。",
+    );
+    error(
+        &mut route_confirm,
+        "504",
+        "send_route_result_unknown：上游超时或断连，发送结果未知。",
+    );
+    add("/api/v1/vehicle/route/send/confirm", "post", route_confirm);
+
     let mut profile = operation(
         "vehicleProfile",
         "车辆身份与图片地址",
@@ -2637,6 +2765,368 @@ fn schemas() -> Value {
     add(
         "UpstreamWidgetInfo",
         upstream("NIO Widget 信息透传 JSON，车辆状态通常位于 data.status。"),
+    );
+    add(
+        "RouteNodeType",
+        json!({
+            "type": "string",
+            "enum": [
+                "orig",
+                "dest",
+                "waypoint",
+                "resource",
+                "candidate",
+                "waypoint_candidate",
+                "orig_candidate",
+                "dest_candidate"
+            ],
+            "description": "对应原版 RoutePlan.RouteResource.NodeType 枚举值。"
+        }),
+    );
+    add(
+        "SendRoutePoiInput",
+        object(
+            "发送到车机的单个路线节点或目的地 POI。",
+            &[
+                ("name", text("地点名称。")),
+                (
+                    "address",
+                    opt(text("详细地址。"), "可选；为空时默认使用 name。"),
+                ),
+                ("latitude", number("纬度（-90…90）。")),
+                ("longitude", number("经度（-180…180）。")),
+                (
+                    "resource_id",
+                    opt(text("资源 ID。"), "换电站等资源节点原始 ID，可选。"),
+                ),
+                (
+                    "clone_latitude",
+                    opt(
+                        number("克隆站点纬度。"),
+                        "可选，需与 clone_longitude 成对提供。",
+                    ),
+                ),
+                (
+                    "clone_longitude",
+                    opt(
+                        number("克隆站点经度。"),
+                        "可选，需与 clone_latitude 成对提供。",
+                    ),
+                ),
+                (
+                    "next_point_distance",
+                    opt(integer("下一候选点距离。"), "可选。"),
+                ),
+                (
+                    "station_type",
+                    opt(reference("RouteNodeType"), "节点类型，可选。"),
+                ),
+            ],
+            Some(&["name", "latitude", "longitude"]),
+        ),
+    );
+    add(
+        "SendRouteDriverInput",
+        object(
+            "路线摘要信息（可选）。",
+            &[
+                (
+                    "route_driver_duration",
+                    opt(integer("预计驾车时长。"), "可选。"),
+                ),
+                ("charge_times", opt(integer("规划补能次数。"), "可选。")),
+                ("route_distance", opt(integer("规划总距离。"), "可选。")),
+            ],
+            None,
+        ),
+    );
+    add(
+        "PlanRouteInput",
+        object(
+            "加电路线规划请求体；起点默认取绑定车辆当前位置，若首节点为 orig 则使用显式起点。",
+            &[
+                (
+                    "poi_list",
+                    array("SendRoutePoiInput", "至少包含 1 个目的地，最多 20 个。"),
+                ),
+                (
+                    "include_charge_stops",
+                    opt(
+                        boolean("是否包含蔚来自动推荐的沿途补能站。"),
+                        "默认 true；为 false 时仍会向蔚来规划生成官方 route_id，但剔除自动插入的 candidate 补能站。",
+                    ),
+                ),
+            ],
+            Some(&["poi_list"]),
+        ),
+    );
+    add(
+        "PlannedRouteStation",
+        object(
+            "加电路线沿途推荐补能站点。",
+            &[
+                ("name", text("站点名称。")),
+                ("address", opt(text("站点地址。"), "可选。")),
+                (
+                    "resource_id",
+                    opt(text("换电站/充电站原始资源 ID。"), "可选。"),
+                ),
+                (
+                    "resource_type",
+                    opt(
+                        text("站点资源类型（如 PowerSwap / ChargeStation）。"),
+                        "可选。",
+                    ),
+                ),
+                ("station_type", reference("RouteNodeType")),
+                (
+                    "duration_desc",
+                    opt(
+                        text("单站补能用时与电量说明（来自 card_steps.subtitle）。"),
+                        "可选。",
+                    ),
+                ),
+                (
+                    "distance_desc",
+                    opt(text("距上一点或起点距离文案。"), "可选。"),
+                ),
+                (
+                    "remain_soc",
+                    opt(integer("到达预计剩余电量百分比。"), "可选。"),
+                ),
+            ],
+            Some(&["name", "station_type"]),
+        ),
+    );
+    add(
+        "PlannedRouteStep",
+        object(
+            "加电路线卡片逐步节点（含各站点单站补能用时、剩余电量与标签）。",
+            &[
+                ("title", text("节点名称。")),
+                (
+                    "subtitle",
+                    opt(text("补能用时与电量说明（如 预计换电5分钟）。"), "可选。"),
+                ),
+                ("distance_desc", opt(text("路段距离文案。"), "可选。")),
+                ("remain_soc", opt(integer("预计剩余电量百分比。"), "可选。")),
+                ("resource_id", opt(text("补能站点原始资源 ID。"), "可选。")),
+                ("resource_type", opt(text("补能资源类型。"), "可选。")),
+                ("is_poi", boolean("是否为普通地点而非补能资源。")),
+                ("is_power_swap_clone", boolean("是否为克隆换电站。")),
+                (
+                    "tags",
+                    json!({"type":"array","items":{"type":"string"},"description":"站点标签列表。"}),
+                ),
+                ("risk_msg", opt(text("续航或站点风险提示。"), "可选。")),
+            ],
+            Some(&["title", "is_poi", "is_power_swap_clone", "tags"]),
+        ),
+    );
+    add(
+        "PlannedRouteOption",
+        object(
+            "单条加电规划方案，可直接传给发送接口。",
+            &[
+                ("route_id", opt(text("官方规划路线 ID。"), "可选。")),
+                (
+                    "tag_desc",
+                    opt(text("方案标签（如 换电优先 / 推荐路线）。"), "可选。"),
+                ),
+                ("drive_distance_desc", opt(text("距离文案。"), "可选。")),
+                ("drive_duration_desc", opt(text("驾驶时长文案。"), "可选。")),
+                (
+                    "plan_duration_desc",
+                    opt(text("含补能总耗时文案。"), "可选。"),
+                ),
+                ("charge_desc", opt(text("补能概览文案。"), "可选。")),
+                (
+                    "charge_duration",
+                    opt(integer("总补能耗时数值。"), "可选。"),
+                ),
+                (
+                    "charge_duration_desc",
+                    opt(text("总补能耗时文案（如 补能共10分钟）。"), "可选。"),
+                ),
+                ("toll_charge_desc", opt(text("过路费文案。"), "可选。")),
+                ("has_risk", opt(boolean("是否存在续航风险提示。"), "可选。")),
+                (
+                    "driver",
+                    opt(reference("SendRouteDriverInput"), "发车机行程摘要。"),
+                ),
+                (
+                    "poi_list",
+                    array("SendRoutePoiInput", "可直接发送车机的官方节点列表。"),
+                ),
+                (
+                    "charge_stations",
+                    array("PlannedRouteStation", "沿途推荐换电/充电站点列表。"),
+                ),
+                (
+                    "steps",
+                    array("PlannedRouteStep", "含单站补能用时与电量的完整步骤列表。"),
+                ),
+            ],
+            Some(&["poi_list", "charge_stations", "steps"]),
+        ),
+    );
+    add(
+        "PlanRouteOutcome",
+        object(
+            "加电路线规划响应。",
+            &[
+                ("request_id", opt(text("上游请求 ID。"), "可选。")),
+                ("server_time", opt(integer("上游服务端时间戳。"), "可选。")),
+                ("toast_msg", opt(text("上游提示文案。"), "可选。")),
+                ("plans", array("PlannedRouteOption", "可用的规划方案列表。")),
+            ],
+            Some(&["plans"]),
+        ),
+    );
+    add(
+        "PlannedRouteSummary",
+        object(
+            "自动规划并下发车机的路线摘要。",
+            &[
+                ("route_id", opt(text("官方规划路线 ID。"), "可选。")),
+                ("tag_desc", opt(text("方案标签。"), "可选。")),
+                ("drive_distance_desc", opt(text("距离文案。"), "可选。")),
+                ("plan_duration_desc", opt(text("总耗时文案。"), "可选。")),
+                ("charge_desc", opt(text("补能概览文案。"), "可选。")),
+                (
+                    "charge_duration_desc",
+                    opt(text("总补能耗时文案。"), "可选。"),
+                ),
+                ("charge_times", opt(integer("规划补能次数。"), "可选。")),
+                (
+                    "charge_station_names",
+                    json!({"type":"array","items":{"type":"string"},"description":"沿途补能站点名称列表。"}),
+                ),
+                ("poi_count", integer("最终下发给车机的节点总数。")),
+            ],
+            Some(&["charge_station_names", "poi_count"]),
+        ),
+    );
+    add(
+        "SendRouteInput",
+        object(
+            "发送路线到车机请求体；目标车辆由后端按租户凭证自动绑定。",
+            &[
+                (
+                    "poi_list",
+                    array("SendRoutePoiInput", "至少包含 1 个节点，最多 20 个。"),
+                ),
+                (
+                    "driver",
+                    opt(reference("SendRouteDriverInput"), "可选行程摘要。"),
+                ),
+                ("route_id", opt(text("规划路线 ID。"), "可选。")),
+                (
+                    "auto_plan",
+                    opt(
+                        boolean("是否包含自动补能规划（兼容别名）。"),
+                        "可选；未提供 route_id 时后端始终先调用 energymap-multi 生成官方 route_id，设为 false 等同于 include_charge_stops=false。",
+                    ),
+                ),
+                (
+                    "include_charge_stops",
+                    opt(
+                        boolean("是否包含蔚来自动推荐的沿途补能站。"),
+                        "默认 true；为 false 时保留官方 route_id 与用户自选节点，剔除自动插入的 candidate 补能站。",
+                    ),
+                ),
+            ],
+            Some(&["poi_list"]),
+        ),
+    );
+    add(
+        "ConfirmSendRouteInput",
+        object(
+            "确认服务端弹窗请求体。",
+            &[
+                ("confirmation_token", text("发送接口返回的短期单次令牌。")),
+                (
+                    "btn_action",
+                    integer("用户所选弹窗按钮对应的非空 action 数值。"),
+                ),
+            ],
+            Some(&["confirmation_token", "btn_action"]),
+        ),
+    );
+    add(
+        "SendRouteSwitchOutcome",
+        object(
+            "发送到车机开关查询结果。",
+            &[
+                (
+                    "expose_send_vehicle_button",
+                    opt(boolean("上游原始开关值。"), "上游缺失时为 null。"),
+                ),
+                (
+                    "enabled",
+                    boolean("是否明确开启（expose_send_vehicle_button == true）。"),
+                ),
+                ("request_id", opt(text("上游请求 ID。"), "脱敏诊断用。")),
+                ("server_time", opt(integer("上游服务端时间戳。"), "可选。")),
+            ],
+            None,
+        ),
+    );
+    add(
+        "SendRoutePopup",
+        object(
+            "上游返回的二次确认弹窗内容；左右按钮语义以服务端文本与 action 为准。",
+            &[
+                ("content", opt(text("弹窗正文。"), "可选。")),
+                ("left_btn_text", opt(text("左侧按钮文案。"), "可选。")),
+                (
+                    "left_btn_action",
+                    opt(integer("左侧按钮动作码。"), "为 null 表示仅关闭不再发送。"),
+                ),
+                ("right_btn_text", opt(text("右侧按钮文案。"), "可选。")),
+                (
+                    "right_btn_action",
+                    opt(integer("右侧按钮动作码。"), "为 null 表示仅关闭不再发送。"),
+                ),
+            ],
+            None,
+        ),
+    );
+    add(
+        "SendRouteOutcome",
+        object(
+            "发送路线到车机响应结果。",
+            &[
+                ("status", text("completed 或 confirmation_required。")),
+                ("result_code", text("上游 result_code。")),
+                ("request_id", opt(text("上游请求 ID。"), "可选。")),
+                ("server_time", opt(integer("上游服务端时间。"), "可选。")),
+                ("toast_msg", opt(text("上游提示文案。"), "无弹窗时展示。")),
+                (
+                    "popup_message",
+                    opt(
+                        reference("SendRoutePopup"),
+                        "服务端确认弹窗，优先级高于 toast。",
+                    ),
+                ),
+                (
+                    "confirmation_token",
+                    opt(text("短期确认令牌。"), "仅在弹窗含可执行按钮时返回。"),
+                ),
+                (
+                    "confirmation_expires_in_seconds",
+                    opt(integer("确认令牌有效秒数。"), "可选。"),
+                ),
+                (
+                    "planned_route",
+                    opt(
+                        reference("PlannedRouteSummary"),
+                        "后端自动规划路线时返回的路线与沿途补能摘要。",
+                    ),
+                ),
+            ],
+            None,
+        ),
     );
     Value::Object(schemas)
 }

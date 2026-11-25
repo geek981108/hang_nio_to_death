@@ -101,7 +101,7 @@ struct WatchDashboardView: View {
         .alert(item: $viewModel.pendingCommand) { command in
             Alert(
                 title: Text(command.title),
-                message: Text(command.message + " 不会自动重试。"),
+                message: Text(command.message(acTemperature: viewModel.clampedACTemperature) + " 不会自动重试。"),
                 primaryButton: command.isDestructive
                     ? .destructive(Text("确认执行")) {
                         Task { await viewModel.confirmPendingCommand() }
@@ -314,13 +314,14 @@ struct WatchDashboardView: View {
                     .padding(12)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
+                    acTemperatureControlBar
                     Text("轻点确认 · 长按图标直发")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                     LazyVGrid(columns: controlColumns, spacing: 7) {
                         controlTile("锁车", symbol: "lock.fill", tint: .green, command: .lock)
                         controlTile("解锁启动", symbol: "lock.open.fill", tint: .red, command: .unlockStart)
-                        controlTile("开空调", symbol: "fan.fill", tint: .blue, command: .acOn)
+                        controlTile("开 \(viewModel.formattedACTemperature)", symbol: "fan.fill", tint: .blue, command: .acOn)
                         controlTile("寻车", symbol: "horn.blast.fill", tint: .orange, command: .find)
                         controlTile("关空调", symbol: "fan.slash", tint: .gray, command: .acOff)
                         controlTile("停寻车", symbol: "speaker.slash.fill", tint: .gray, command: .stopFinding)
@@ -340,6 +341,57 @@ struct WatchDashboardView: View {
                 endPoint: .bottom
             )
         }
+    }
+
+    private var acTemperatureControlBar: some View {
+        HStack(spacing: 6) {
+            Button {
+                WKInterfaceDevice.current().play(.directionDown)
+                viewModel.adjustACTemperature(by: -0.5)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.caption.bold())
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.14), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.clampedACTemperature <= 16.0 || viewModel.isPerformingCommand)
+
+            HStack(spacing: 4) {
+                Image(systemName: "thermometer.medium")
+                    .font(.caption2)
+                    .foregroundStyle(.cyan)
+                Text(viewModel.formattedACTemperature)
+                    .font(.system(.caption, design: .rounded, weight: .bold).monospacedDigit())
+                    .contentTransition(.numericText())
+            }
+            .frame(maxWidth: .infinity)
+            .focusable(true)
+            .digitalCrownRotation(
+                $viewModel.targetACTemperature,
+                from: 16.0,
+                through: 30.0,
+                by: 0.5,
+                sensitivity: .low,
+                isContinuous: false,
+                isHapticFeedbackEnabled: true
+            )
+
+            Button {
+                WKInterfaceDevice.current().play(.directionUp)
+                viewModel.adjustACTemperature(by: 0.5)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.bold())
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.14), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.clampedACTemperature >= 30.0 || viewModel.isPerformingCommand)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: Capsule())
     }
 
     private func controlTile(
@@ -426,25 +478,56 @@ struct WatchDashboardView: View {
     }
 
     private var stationCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let allowsSwap = viewModel.stationLive?.allowsSwap ?? true
+        return VStack(alignment: .leading, spacing: 8) {
             Label("当前换电站", systemImage: "bolt.car.fill")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.cyan)
             Text(viewModel.stationName ?? (viewModel.hasStation ? "已选择换电站" : "请在 iPhone 中选择"))
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
+
+            if let live = viewModel.stationLive {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(live.available75Count)")
+                        .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(live.available75Count > 0 ? .green : .orange)
+                    Text("块 75kWh")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let price = live.formattedPrice {
+                        Text(price)
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                }
+                if let queueText = live.queueSummary {
+                    Label(queueText, systemImage: "person.2.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                } else if !allowsSwap {
+                    Label("站点暂不可换电", systemImage: "wrench.and.screwdriver.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+
             if viewModel.hasStation, viewModel.hasControlKey {
                 Button {
                     WKInterfaceDevice.current().play(.click)
                     viewModel.pendingCommand = .createSwapOrder
                 } label: {
-                    Label("发起换电", systemImage: "bolt.fill")
+                    Label(allowsSwap ? "发起换电" : "暂不可换电", systemImage: "bolt.fill")
                         .font(.caption.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.cyan)
-                .disabled(viewModel.isPerformingCommand)
+                .tint(allowsSwap ? .cyan : .gray)
+                .disabled(viewModel.isPerformingCommand || !allowsSwap)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

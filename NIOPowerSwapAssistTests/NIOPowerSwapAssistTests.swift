@@ -9,6 +9,7 @@ import Foundation
 import Security
 import Testing
 import UIKit
+import WidgetKit
 @testable import NIOPowerSwapAssist
 
 struct NIOPowerSwapAssistTests {
@@ -1864,6 +1865,681 @@ struct NIOPowerSwapAssistTests {
         #expect(snapshot(state: 2, swapping: true).preferredRefreshInterval == 5 * 60)
     }
 
+    @Test func widgetStationLivePayloadDecodesWhenBatteryIDIsNullOrOmitted() throws {
+        let json = """
+        {
+          "station_name": "滨海换电站",
+          "current_fees": [
+            { "fee": "1.47", "unit": "元/度", "currency": "¥", "is_total": true }
+          ],
+          "available_75_count": 3,
+          "available_75_batteries": [
+            { "battery_id": null, "slot_id": 4, "soc_percent": 100.0, "production_date": null },
+            { "slot_id": 5, "soc_percent": 96.0 },
+            { "battery_id": "", "slot_id": null, "soc_percent": 94.0 }
+          ]
+        }
+        """
+        let payload = try JSONDecoder().decode(WidgetStationLivePayload.self, from: Data(json.utf8))
+        let snapshot = payload.makeSnapshot(selectedName: nil)
+
+        #expect(snapshot.name == "滨海换电站")
+        #expect(snapshot.price == "¥1.47/度")
+        #expect(snapshot.available75Count == 3)
+        #expect(snapshot.batteries.count == 3)
+        #expect(Set(snapshot.batteries.map(\.id)).count == 3)
+        #expect(snapshot.batteries[0].id == "slot-4")
+        #expect(snapshot.batteries[1].id == "slot-5")
+        #expect(snapshot.batteries[2].id == "battery-2")
+    }
+
+    @Test func vehicleTripTrackRequestValidationAndDecoding() throws {
+        let config = try BackendConfiguration(
+            baseURLString: "https://backend.example.com",
+            apiKey: String(repeating: "a", count: 32)
+        )
+        let client = BackendClient(configuration: config)
+
+        let request = try client.makeVehicleTripTrackRequest(journeyID: "journey_2026-11-24_01")
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.path == "/api/v1/vehicle/trips/journey_2026-11-24_01/track")
+
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeVehicleTripTrackRequest(journeyID: "../secret")
+        }
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeVehicleTripTrackRequest(journeyID: "   ")
+        }
+
+        let json = """
+        {
+          "journey_id": "journey_2026-11-24_01",
+          "points": [
+            {
+              "sampled_at": "2026-11-24T08:00:00Z",
+              "latitude": 31.2304,
+              "longitude": 121.4737,
+              "speed_kph": 48.5,
+              "power_consumption": 15.2,
+              "np_status": 1
+            },
+            {
+              "sampled_at": "2026-11-24T08:01:00Z",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "speed_kph": 0.0,
+              "power_consumption": null,
+              "np_status": 0
+            },
+            {
+              "sampled_at": "2026-11-24T08:02:00Z",
+              "latitude": 31.2404,
+              "longitude": 121.4837,
+              "speed_kph": 62.0,
+              "power_consumption": 16.4,
+              "np_status": 0
+            }
+          ]
+        }
+        """
+        let track = try JSONDecoder().decode(VehicleTripTrack.self, from: Data(json.utf8))
+        #expect(track.journeyID == "journey_2026-11-24_01")
+        #expect(track.points.count == 3)
+        #expect(track.validPoints.count == 2)
+        #expect(track.validPoints.first?.speedKPH == 48.5)
+        #expect(track.validPoints.first?.npStatus == 1)
+    }
+
+    @Test func nearbyStationsAndStraightLineEnergyRequestAndDecoding() throws {
+        let config = try BackendConfiguration(
+            baseURLString: "https://backend.example.com",
+            apiKey: String(repeating: "b", count: 32)
+        )
+        let client = BackendClient(configuration: config)
+
+        let nearbyReq = try client.makeNearbyStationsRequest(latitude: 31.23, longitude: 121.47)
+        #expect(nearbyReq.httpMethod == "POST")
+        #expect(nearbyReq.url?.path == "/api/v1/stations/nearby")
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeNearbyStationsRequest(latitude: 95.0, longitude: 121.47)
+        }
+
+        let nearbyJSON = """
+        {
+          "source": "nio_cn_around_recall",
+          "fetched_at": "2026-11-24T08:00:00Z",
+          "viewport_zoom_level": 14,
+          "viewport_screen_ratio": 1.4586,
+          "coverage": "upstream_viewport_results_not_a_radius_complete_list",
+          "stations": [
+            {
+              "station_id": "PS-NIO-001",
+              "name": "陆家嘴换电站",
+              "latitude": 31.2397,
+              "longitude": 121.4998,
+              "straight_line_distance_km": 2.6
+            }
+          ]
+        }
+        """
+        let nearby = try JSONDecoder().decode(NearbyStationResult.self, from: Data(nearbyJSON.utf8))
+        #expect(nearby.stations.count == 1)
+        #expect(nearby.stations[0].displayName == "陆家嘴换电站")
+        #expect(nearby.stations[0].straightLineDistanceKm == 2.6)
+
+        let estimateReq = try client.makeStraightLineEnergyRequest(
+            stationID: "PS-NIO-001",
+            latitude: 31.23,
+            longitude: 121.47,
+            stationLatitude: 31.2397,
+            stationLongitude: 121.4998
+        )
+        #expect(estimateReq.httpMethod == "POST")
+        #expect(estimateReq.url?.path == "/api/v1/stations/PS-NIO-001/straight-line-energy")
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeStraightLineEnergyRequest(
+                stationID: "INVALID-ID",
+                latitude: 31.23,
+                longitude: 121.47
+            )
+        }
+
+        let estimateJSON = """
+        {
+          "station_id": "PS-NIO-001",
+          "station_coordinates_source": "caller_supplied",
+          "straight_line_distance_km": 11.1,
+          "energy_cache": {
+            "status": "fresh",
+            "stale": false,
+            "summary": {
+              "actual_distance_km": 100.0,
+              "consumption_kwh_per_100km": 14.5,
+              "coverage_complete": true
+            }
+          },
+          "estimated_energy_for_straight_line_kwh": 1.61,
+          "distance_kind": "geodesic_straight_line",
+          "road_distance_km": null,
+          "road_travel_time_minutes": null,
+          "traffic_and_tolls_included": false
+        }
+        """
+        let estimate = try JSONDecoder().decode(StraightLineEnergyEstimate.self, from: Data(estimateJSON.utf8))
+        #expect(estimate.stationID == "PS-NIO-001")
+        #expect(estimate.estimatedEnergyForStraightLineKWh == 1.61)
+        #expect(estimate.energyCache.summary?.consumptionKWhPer100Km == 14.5)
+    }
+
+    @Test @MainActor func dailyCheckInHandlesSuccessAndConflictWithoutRetrying() async throws {
+        let fixture = try RefreshTestFixture()
+        defer { fixture.cleanUp() }
+        let model = fixture.model()
+
+        // First call succeeds via RefreshScenario's /api/v1/check-in handler.
+        await model.performDailyCheckIn()
+        if case .succeeded(let outcome) = model.dailyCheckInState {
+            #expect(outcome.checkedIn)
+            #expect(outcome.credit == 5)
+            #expect(outcome.continuousDays == 7)
+        } else {
+            Issue.record("Expected check-in success, got \(model.dailyCheckInState)")
+        }
+
+        // Second call hits 409 check_in_already_attempted -> transitions cleanly to .alreadyCheckedIn.
+        await model.performDailyCheckIn()
+        #expect(model.dailyCheckInState == .alreadyCheckedIn)
+        #expect(fixture.scenario.requestCount(host: "old.fixture.invalid") == 2)
+    }
+
+    @Test func lockScreenAccessoryWidgetFamiliesBuildWithoutError() {
+        let snapshot = WidgetVehicleSnapshot(
+            isConnected: true,
+            stateCode: 2,
+            isSwapping: false,
+            stateOfCharge: 82,
+            remainingRange: 438,
+            remainingActualRange: 396,
+            chargeStateCode: 0,
+            outsideTemperature: 22.5,
+            updatedAt: .now,
+            station: WidgetStationSnapshot(
+                name: "滨海换电站",
+                price: "¥1.47/度",
+                available75Count: 5,
+                batteries: []
+            ),
+            hasStationSelection: true
+        )
+        let entry = VehicleWidgetEntry(date: .now, state: .loaded(snapshot))
+        for family in [WidgetFamily.accessoryCircular, .accessoryRectangular, .accessoryInline] {
+            let view = VehicleWidgetView(entry: entry, standalone: true, previewFamily: family)
+            _ = view.body
+        }
+    }
+
+    @Test func controlCenterVehicleActionRequestsMatchBackendContract() throws {
+        let baseURL = URL(string: "https://backend.example.com")!
+        let apiKey = String(repeating: "a", count: 32)
+        let controlKey = String(repeating: "c", count: 32)
+
+        for action in ControlCenterVehicleAction.allCases {
+            let req = try action.makeRequest(baseURL: baseURL, apiKey: apiKey, controlKey: controlKey)
+            #expect(req.httpMethod == "POST")
+            #expect(req.url?.path == "/api/v1/vehicle/action")
+            #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer \(apiKey)")
+            #expect(req.value(forHTTPHeaderField: "X-Vehicle-Control-Key") == controlKey)
+            let body = try JSONSerialization.jsonObject(with: try #require(req.httpBody)) as? [String: Any]
+            #expect(body?["action"] as? String == action.rawValue)
+            #expect(body?["confirmation"] as? String == action.confirmation)
+            switch action {
+            case .acOn:
+                #expect(body?["temperature"] as? Double == 22.0)
+                #expect(body?["expand_mirrors"] as? Bool == false)
+            case .guardOn:
+                #expect(body?["expand_mirrors"] as? Bool == true)
+                #expect(body?["mirror_confirmation"] as? String == "EXPAND MIRRORS")
+            case .lock, .unlockStart, .find:
+                #expect(body?["expand_mirrors"] as? Bool == false)
+                #expect(body?["mirror_confirmation"] == nil)
+            }
+        }
+
+        #expect(ControlCenterVehicleAction.forLockToggle(targetLocked: true) == .lock)
+        #expect(ControlCenterVehicleAction.forLockToggle(targetLocked: false) == .unlockStart)
+
+        let testService = "nio-lock-cache-test-\(UUID().uuidString)"
+        defer {
+            SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: testService] as CFDictionary)
+        }
+        #expect(ControlCenterLockStateCache.load(service: testService, accessGroup: nil) == nil)
+        #expect(ControlCenterLockStateCache.save(true, service: testService, accessGroup: nil) == true)
+        #expect(ControlCenterLockStateCache.load(service: testService, accessGroup: nil) == true)
+        #expect(ControlCenterLockStateCache.save(true, service: testService, accessGroup: nil) == false)
+        #expect(ControlCenterLockStateCache.save(false, service: testService, accessGroup: nil) == true)
+        #expect(ControlCenterLockStateCache.load(service: testService, accessGroup: nil) == false)
+
+        #expect(throws: ControlCenterActionError.controlKeyUnavailable) {
+            _ = try ControlCenterVehicleAction.lock.makeRequest(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                controlKey: "short"
+            )
+        }
+    }
+
+    @Test func liveActivityPlannerPrioritizesSwapQueueOverChargingAndClearsWhenIdle() throws {
+        let chargingDashboard = VehicleDashboard(
+            vehicleID: "veh-1",
+            isConnected: true,
+            stateCode: 3,
+            mileage: 12000,
+            isSwapping: false,
+            stateOfCharge: 78,
+            remainingRange: 410,
+            remainingActualRange: 380,
+            chargeStateCode: 1,
+            chargingCurrent: 120,
+            chargingPower: 68_400,
+            chargingVoltage: 400,
+            chargeLimitPercent: 90,
+            batterySampledAt: .now,
+            lockStatusCode: 1,
+            location: nil,
+            locationSampledAt: nil,
+            insideTemperature: 21,
+            outsideTemperature: 18,
+            updatedAt: .now
+        )
+
+        let orderJSON = """
+        {
+          "order_no": "SO-20261124-01",
+          "order_type": "swap",
+          "order_status": "queuing",
+          "order_status_name": "排队中",
+          "order_created_at": "2026-11-24T10:00:00Z",
+          "station_key": "PS-NIO-001",
+          "station_name": "滨海换电站",
+          "station_address": "滨海新区",
+          "queue_number": 3,
+          "vehicles_ahead": 2,
+          "estimated_wait_minutes": 12,
+          "queue_status_text": "前方2辆车排队",
+          "first_seen_at": "2026-11-24T10:00:00Z",
+          "last_seen_at": "2026-11-24T10:05:00Z"
+        }
+        """
+        let activeOrder = try JSONDecoder().decode(ActiveServiceOrder.self, from: Data(orderJSON.utf8))
+
+        // 1. Active swap order takes precedence over charging.
+        let swapPlan = try #require(VehicleLiveActivityPlanner.plan(
+            dashboard: chargingDashboard,
+            activeOrders: [activeOrder],
+            currentChargingEnergyKWh: 18.5,
+            vehicleName: "我的 ET5T"
+        ))
+        #expect(swapPlan.sessionKey == "swap:SO-20261124-01")
+        #expect(swapPlan.state.mode == .swapQueue)
+        #expect(swapPlan.state.title == "滨海换电站")
+        #expect(swapPlan.state.queueNumber == 3)
+        #expect(swapPlan.state.vehiclesAhead == 2)
+        #expect(swapPlan.state.estimatedWaitMinutes == 12)
+        #expect(swapPlan.state.swapCompactTrailing == "前2辆")
+
+        // 2. Charging mode converts watts to kW cleanly.
+        let chargingPlan = try #require(VehicleLiveActivityPlanner.plan(
+            dashboard: chargingDashboard,
+            activeOrders: [],
+            currentChargingEnergyKWh: 24.5,
+            vehicleName: "我的 ET5T"
+        ))
+        #expect(chargingPlan.sessionKey == "charging:veh-1")
+        #expect(chargingPlan.state.mode == .charging)
+        #expect(chargingPlan.state.formattedSOC == "78%")
+        #expect(chargingPlan.state.chargingPowerKW == 68.4)
+        #expect(chargingPlan.state.formattedPowerKW == "68.4 kW")
+        #expect(chargingPlan.state.formattedRangeKm == "380 km")
+        #expect(chargingPlan.state.formattedChargedEnergy == "+24.5 kWh")
+
+        // Timestamp-only updates should be treated as identical displayed content.
+        let laterChargingPlan = try #require(VehicleLiveActivityPlanner.plan(
+            dashboard: chargingDashboard,
+            activeOrders: [],
+            currentChargingEnergyKWh: 24.5,
+            vehicleName: "我的 ET5T",
+            now: Date().addingTimeInterval(60)
+        ))
+        #expect(chargingPlan.state.hasSameDisplayedContent(as: laterChargingPlan.state))
+
+        // 3. Parked idle vehicle clears Live Activity.
+        let idleDashboard = VehicleDashboard(
+            vehicleID: "veh-1",
+            isConnected: true,
+            stateCode: 2,
+            mileage: 12000,
+            isSwapping: false,
+            stateOfCharge: 90,
+            remainingRange: 450,
+            remainingActualRange: 420,
+            chargeStateCode: 0,
+            chargingCurrent: nil,
+            chargingPower: nil,
+            chargingVoltage: nil,
+            chargeLimitPercent: 90,
+            batterySampledAt: .now,
+            lockStatusCode: 1,
+            location: nil,
+            locationSampledAt: nil,
+            insideTemperature: 21,
+            outsideTemperature: 18,
+            updatedAt: .now
+        )
+        #expect(VehicleLiveActivityPlanner.plan(
+            dashboard: idleDashboard,
+            activeOrders: [],
+            currentChargingEnergyKWh: nil,
+            vehicleName: "我的 ET5T"
+        ) == nil)
+
+        // 4. Lock Screen views construct cleanly for both modes.
+        for plan in [swapPlan, chargingPlan] {
+            let attributes = NIOVehicleLiveActivityAttributes(
+                sessionKey: plan.sessionKey,
+                vehicleName: plan.vehicleName
+            )
+            let view = NIOVehicleLiveActivityLockScreenView(attributes: attributes, state: plan.state)
+            _ = view.body
+        }
+    }
+
+    @Test func sendRouteToVehicleRequestsValidationAndResponseDecoding() throws {
+        let config = try BackendConfiguration(
+            baseURLString: "https://backend.example.com",
+            apiKey: String(repeating: "r", count: 32)
+        )
+        let client = BackendClient(configuration: config)
+
+        let validInput = SendRouteInput(
+            poiList: [
+                SendRoutePoiInput(
+                    name: "滨海换电站",
+                    address: "滨海新区",
+                    latitude: 39.0294,
+                    longitude: 117.7105,
+                    resourceID: "PS-NIO-001",
+                    stationType: .dest
+                )
+            ],
+            driver: SendRouteDriverInput(
+                routeDriverDuration: 25,
+                chargeTimes: 1,
+                routeDistance: 15200
+            ),
+            routeID: "route-abc"
+        )
+        let sendReq = try client.makeSendRouteRequest(validInput)
+        #expect(sendReq.httpMethod == "POST")
+        #expect(sendReq.url?.path == "/api/v1/vehicle/route/send")
+        let body = try JSONSerialization.jsonObject(with: try #require(sendReq.httpBody)) as? [String: Any]
+        let pois = try #require(body?["poi_list"] as? [[String: Any]])
+        #expect(pois.count == 1)
+        #expect(pois[0]["station_type"] as? String == "dest")
+        #expect(pois[0]["resource_id"] as? String == "PS-NIO-001")
+
+        let planReq = try client.makePlanRouteRequest(validInput.poiList, includeChargeStops: false)
+        #expect(planReq.httpMethod == "POST")
+        #expect(planReq.url?.path == "/api/v1/vehicle/route/plan")
+        let planBody = try JSONSerialization.jsonObject(with: try #require(planReq.httpBody)) as? [String: Any]
+        #expect(planBody?["include_charge_stops"] as? Bool == false)
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makePlanRouteRequest([])
+        }
+
+        let noChargeSendReq = try client.makeSendRouteRequest(
+            SendRouteInput(poiList: validInput.poiList, includeChargeStops: false)
+        )
+        let noChargeSendBody = try JSONSerialization.jsonObject(
+            with: try #require(noChargeSendReq.httpBody)
+        ) as? [String: Any]
+        #expect(noChargeSendBody?["include_charge_stops"] as? Bool == false)
+
+        // Empty POI list must be rejected client-side.
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeSendRouteRequest(SendRouteInput(poiList: []))
+        }
+
+        // Confirm request validation.
+        let confirmReq = try client.makeConfirmSendRouteRequest(token: "tok-123", btnAction: 2)
+        #expect(confirmReq.httpMethod == "POST")
+        #expect(confirmReq.url?.path == "/api/v1/vehicle/route/send/confirm")
+        #expect(throws: BackendClientError.self) {
+            _ = try client.makeConfirmSendRouteRequest(token: "   ", btnAction: 2)
+        }
+
+        // Decode route plan preview payload.
+        let planJSON = """
+        {
+          "request_id": "req-plan-1",
+          "server_time": 1764000100,
+          "toast_msg": null,
+          "plans": [
+            {
+              "route_id": "nio-route-998877",
+              "tag_desc": "换电优先",
+              "drive_distance_desc": "325公里",
+              "drive_duration_desc": "3小时30分",
+              "plan_duration_desc": "3小时40分",
+              "charge_desc": "换电2次",
+              "charge_duration": 10,
+              "charge_duration_desc": "补能共10分钟",
+              "toll_charge_desc": "约140元",
+              "has_risk": false,
+              "driver": {
+                "route_driver_duration": 210,
+                "charge_times": 2,
+                "route_distance": 325400
+              },
+              "poi_list": [
+                {
+                  "name": "京沪高速廊坊换电站",
+                  "address": "廊坊服务区",
+                  "latitude": 39.5,
+                  "longitude": 116.8,
+                  "resource_id": "PS-NIO-001",
+                  "next_point_distance": 120000,
+                  "station_type": "candidate"
+                },
+                {
+                  "name": "天安门广场",
+                  "address": "北京市东城区",
+                  "latitude": 39.908,
+                  "longitude": 116.397,
+                  "station_type": "dest"
+                }
+              ],
+              "charge_stations": [
+                {
+                  "name": "京沪高速廊坊换电站",
+                  "address": "廊坊服务区",
+                  "resource_id": "PS-NIO-001",
+                  "resource_type": "PowerSwap",
+                  "station_type": "candidate",
+                  "duration_desc": "预计换电5分钟 · 到达剩余24%",
+                  "distance_desc": "120公里",
+                  "remain_soc": 24
+                }
+              ],
+              "steps": [
+                {
+                  "title": "京沪高速廊坊换电站",
+                  "subtitle": "预计换电5分钟 · 到达剩余24%",
+                  "distance_desc": "120公里",
+                  "remain_soc": 24,
+                  "resource_id": "PS-NIO-001",
+                  "resource_type": "PowerSwap",
+                  "is_poi": false,
+                  "is_power_swap_clone": false,
+                  "tags": ["推荐换电"],
+                  "risk_msg": null
+                }
+              ]
+            }
+          ]
+        }
+        """
+        let planOutcome = try JSONDecoder().decode(PlanRouteOutcome.self, from: Data(planJSON.utf8))
+        #expect(planOutcome.plans.count == 1)
+        #expect(planOutcome.plans[0].routeID == "nio-route-998877")
+        #expect(planOutcome.plans[0].chargeDurationDesc == "补能共10分钟")
+        #expect(planOutcome.plans[0].chargeStations.map(\.name) == ["京沪高速廊坊换电站"])
+        #expect(planOutcome.plans[0].chargeStations[0].durationDesc == "预计换电5分钟 · 到达剩余24%")
+        #expect(planOutcome.plans[0].steps.count == 1)
+        #expect(planOutcome.plans[0].steps[0].subtitle == "预计换电5分钟 · 到达剩余24%")
+        #expect(planOutcome.plans[0].steps[0].isEnergyStop)
+        #expect(planOutcome.plans[0].poiList.count == 2)
+
+        // Decode switch & popup response payloads.
+        let switchJSON = """
+        {
+          "expose_send_vehicle_button": true,
+          "enabled": true,
+          "request_id": "req-sw-1",
+          "server_time": 1764000000
+        }
+        """
+        let sw = try JSONDecoder().decode(SendRouteSwitchStatus.self, from: Data(switchJSON.utf8))
+        #expect(sw.enabled)
+        #expect(sw.exposeSendVehicleButton == true)
+
+        let popupJSON = """
+        {
+          "status": "confirmation_required",
+          "result_code": "success",
+          "request_id": "req-send-1",
+          "server_time": 1764000001,
+          "toast_msg": null,
+          "popup_message": {
+            "content": "车机已有导航，是否覆盖？",
+            "left_btn_text": "取消",
+            "left_btn_action": null,
+            "right_btn_text": "覆盖发送",
+            "right_btn_action": 2
+          },
+          "confirmation_token": "tok-123",
+          "confirmation_expires_in_seconds": 300,
+          "planned_route": {
+            "route_id": "nio-route-998877",
+            "tag_desc": "换电优先",
+            "drive_distance_desc": "325公里",
+            "plan_duration_desc": "3小时40分",
+            "charge_desc": "换电2次",
+            "charge_times": 2,
+            "charge_station_names": ["京沪高速廊坊换电站"],
+            "poi_count": 4
+          }
+        }
+        """
+        let outcome = try JSONDecoder().decode(SendRouteOutcome.self, from: Data(popupJSON.utf8))
+        #expect(outcome.requiresConfirmation)
+        #expect(outcome.confirmationToken == "tok-123")
+        #expect(outcome.popupMessage?.leftBtnAction == nil)
+        #expect(outcome.popupMessage?.rightBtnAction == 2)
+        #expect(outcome.plannedRoute?.routeID == "nio-route-998877")
+        #expect(outcome.plannedRoute?.chargeStationNames == ["京沪高速廊坊换电站"])
+    }
+
+    @Test func routeDraftManagesWaypointsOriginAndOrderingWithoutOverwritingDestination() {
+        let origin = SendRoutePoiInput(name: "家", latitude: 39.01, longitude: 117.70)
+        let wp1 = SendRoutePoiInput(name: "廊坊服务区", latitude: 39.50, longitude: 116.80)
+        let wp2 = SendRoutePoiInput(
+            name: "亦庄换电站",
+            latitude: 39.70,
+            longitude: 116.50,
+            resourceID: "PS-NIO-002"
+        )
+        let dest = SendRoutePoiInput(name: "天安门广场", latitude: 39.908, longitude: 116.397)
+
+        var draft = RouteDraft(destination: dest)
+        #expect(draft.canPlanOrSend)
+        let added1 = draft.addWaypoint(wp1)
+        let added2 = draft.addWaypoint(wp2)
+        // Duplicate waypoint is ignored.
+        let addedDup = draft.addWaypoint(wp1)
+        #expect(added1)
+        #expect(added2)
+        #expect(!addedDup)
+        // Destination stays untouched after adding waypoints.
+        #expect(draft.destination?.name == "天安门广场")
+        #expect(draft.buildRequestPOIs().map(\.name) == ["廊坊服务区", "亦庄换电站", "天安门广场"])
+        #expect(draft.buildRequestPOIs().map(\.stationType) == [.waypoint, .waypoint, .dest])
+
+        // Reorder waypoints and swap with destination.
+        draft.moveWaypointUp(at: 1)
+        #expect(draft.waypoints.map(\.name) == ["亦庄换电站", "廊坊服务区"])
+        draft.swapWaypointWithDestination(at: 0)
+        #expect(draft.destination?.name == "亦庄换电站")
+        #expect(draft.destination?.stationType == .dest)
+        #expect(draft.waypoints.map(\.name) == ["天安门广场", "廊坊服务区"])
+
+        // Custom origin prepends `.orig`, resetting removes it cleanly.
+        draft.setCustomOrigin(origin)
+        #expect(draft.buildRequestPOIs().map(\.stationType) == [.orig, .waypoint, .waypoint, .dest])
+        draft.resetOriginToVehicle()
+        #expect(draft.buildRequestPOIs().map(\.stationType) == [.waypoint, .waypoint, .dest])
+    }
+
+    @Test func savedRouteStorePersistsPresetsOrderingAndEnergyPlanningPreference() {
+        let suiteName = "nio.saved.route.store.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = SavedRouteStore(defaults: defaults)
+        #expect(store.defaultEnableEnergyPlanning == true)
+        store.defaultEnableEnergyPlanning = false
+        #expect(store.defaultEnableEnergyPlanning == false)
+
+        let swapWP = SendRoutePoiInput(
+            name: "廊坊换电站",
+            latitude: 39.50,
+            longitude: 116.80,
+            resourceID: "PS-NIO-001",
+            stationType: .waypoint
+        )
+        let home = SavedRoutePreset(
+            name: "回家",
+            waypoints: [swapWP],
+            destination: SendRoutePoiInput(name: "滨海新区", latitude: 39.03, longitude: 117.71, stationType: .dest),
+            enableEnergyPlanning: true,
+            preferredPlanTag: "换电优先",
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+        let office = SavedRoutePreset(
+            name: "去公司",
+            destination: SendRoutePoiInput(name: "金融街", latitude: 39.91, longitude: 116.36, stationType: .dest),
+            enableEnergyPlanning: false,
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+
+        _ = store.savePreset(home)
+        let afterBoth = store.savePreset(office)
+        #expect(afterBoth.map(\.name) == ["去公司", "回家"])
+        #expect(afterBoth[1].waypoints.first?.resourceID == "PS-NIO-001")
+        #expect(afterBoth[1].enableEnergyPlanning == true)
+        #expect(afterBoth[0].enableEnergyPlanning == false)
+
+        // Marking an older preset used moves it to the front.
+        let afterUse = store.markUsed(id: home.id, at: Date(timeIntervalSince1970: 300))
+        #expect(afterUse.map(\.name) == ["回家", "去公司"])
+
+        let afterRename = store.rename(id: home.id, name: "周末回家")
+        #expect(afterRename.first?.name == "周末回家")
+        #expect(afterRename.first?.preferredPlanTag == "换电优先")
+
+        let afterDelete = store.delete(id: office.id)
+        #expect(afterDelete.map(\.name) == ["周末回家"])
+    }
+
     @Test func stationBatteryShortcutSpeaksCountAndEveryKnownProductionDate() {
         let status = NIOStationLiveStatus(
             stationID: "PS-NIO-test",
@@ -2314,6 +2990,7 @@ private final class RefreshScenario: @unchecked Sendable {
     let failTrips: Bool
     private let lock = NSLock()
     private var requests: [String] = []
+    private var checkInCount = 0
 
     init(failTrips: Bool) { self.failTrips = failTrips }
 
@@ -2322,7 +2999,34 @@ private final class RefreshScenario: @unchecked Sendable {
         let path = request.url!.path
         lock.lock()
         requests.append(host)
+        let currentCheckInCall: Int
+        if path == "/api/v1/check-in" {
+            checkInCount += 1
+            currentCheckInCall = checkInCount
+        } else {
+            currentCheckInCall = 0
+        }
         lock.unlock()
+        if path == "/api/v1/check-in" {
+            if currentCheckInCall == 1 {
+                let body: [String: Any] = [
+                    "checked_in": true,
+                    "tip": "连续签到奖励",
+                    "credit": 5,
+                    "server_time": 1763971200,
+                    "checkin_time": 1763971200,
+                    "continuous_days": 7,
+                    "credit_amount": 320
+                ]
+                return (try! JSONSerialization.data(withJSONObject: body), 200, 0.001)
+            } else {
+                let body: [String: Any] = [
+                    "error": "check_in_already_attempted",
+                    "message": "daily check-in has already been attempted for this Beijing date"
+                ]
+                return (try! JSONSerialization.data(withJSONObject: body), 409, 0.001)
+            }
+        }
         let vehicleID = host.hasPrefix("old") ? "old-vehicle" : "new-vehicle"
         let status = failTrips && path.hasSuffix("/trips") ? 502 : 200
         let vehicle: [String: Any] = [

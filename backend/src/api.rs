@@ -26,6 +26,11 @@ use crate::{
     provider::{NioStationProvider, ProviderError},
     rewards::{AvailableCouponsPage, CheckInOutcome, NioRewardsClient, RewardsError},
     route_estimate::{self, StationCoordinateBasis, StraightLineEnergyEstimate},
+    send_route::{
+        ConfirmSendRouteInput, NioSendRouteClient, PlanRouteInput, PlanRouteOutcome,
+        RouteVehicleContext, SendRouteError, SendRouteInput, SendRouteOutcome,
+        SendRouteSwitchOutcome,
+    },
     station_search::{
         NioStationSearchClient, StationSearchError, SwapStationSearchItem, SwapStationSearchResult,
         normalize_search_name,
@@ -59,6 +64,7 @@ pub struct AppState {
     pub station_search: Arc<std::sync::RwLock<Option<NioStationSearchClient>>>,
     pub nearby_stations: Arc<std::sync::RwLock<Option<NioNearbyStationClient>>>,
     pub rewards: Arc<std::sync::RwLock<Option<NioRewardsClient>>>,
+    pub send_route: Arc<std::sync::RwLock<Option<NioSendRouteClient>>>,
     pub service_order_configured: bool,
     pub station_template_configured: bool,
     pub station_template: Option<StationTemplateConfig>,
@@ -93,6 +99,13 @@ impl AppState {
 
     pub fn rewards(&self) -> Option<NioRewardsClient> {
         self.rewards
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    pub fn send_route(&self) -> Option<NioSendRouteClient> {
+        self.send_route
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
@@ -134,7 +147,8 @@ impl AppState {
         };
         let station_search = NioStationSearchClient::new(config.clone()).ok();
         let nearby_stations = NioNearbyStationClient::new(config.clone()).ok();
-        let rewards = NioRewardsClient::new(config).ok();
+        let rewards = NioRewardsClient::new(config.clone()).ok();
+        let send_route = NioSendRouteClient::new(config).ok();
         *vehicle_guard = Some(vehicle.clone());
         *self
             .station_search
@@ -148,6 +162,10 @@ impl AppState {
             .rewards
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = rewards;
+        *self
+            .send_route
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = send_route;
         drop(vehicle_guard);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             let store = self.store.clone();
@@ -407,6 +425,22 @@ pub fn configure(config: &mut web::ServiceConfig) {
         .route("/api/v1/auth/sms", web::post().to(send_login_sms))
         .route("/api/v1/auth/login", web::post().to(login_with_sms))
         .route("/api/v1/vehicle/action", web::post().to(vehicle_action))
+        .route(
+            "/api/v1/vehicle/route/switch",
+            web::get().to(vehicle_route_switch),
+        )
+        .route(
+            "/api/v1/vehicle/route/plan",
+            web::post().to(plan_vehicle_route),
+        )
+        .route(
+            "/api/v1/vehicle/route/send",
+            web::post().to(send_vehicle_route),
+        )
+        .route(
+            "/api/v1/vehicle/route/send/confirm",
+            web::post().to(confirm_send_vehicle_route),
+        )
         .route(
             "/api/v1/vehicle/widget-info",
             web::get().to(vehicle_widget_info),
@@ -854,6 +888,124 @@ async fn vehicle_action(
         }
     })?;
     Ok(web::Json(outcome))
+}
+
+async fn vehicle_route_switch(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<web::Json<SendRouteSwitchOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let client = state.send_route().ok_or_else(vehicle_not_configured)?;
+    Ok(web::Json(
+        client.fetch_switch().await.map_err(send_route_error)?,
+    ))
+}
+
+async fn resolve_route_vehicle_context(state: &AppState) -> RouteVehicleContext {
+    let (position, model_type) = match state.vehicle() {
+        Some(vehicle) => {
+            let position = match vehicle.status().await {
+                Ok(status) => current_vehicle_position(&status),
+                Err(error) => {
+                    tracing::debug!(%error, "vehicle position unavailable for route planning/send");
+                    None
+                }
+            };
+            let model_type = match state.store.vehicle_profile(vehicle.vehicle_id()).await {
+                Ok(Some(profile)) => profile.model_type,
+                _ => None,
+            };
+            (position, model_type)
+        }
+        None => (None, None),
+    };
+    RouteVehicleContext {
+        position,
+        model_type,
+    }
+}
+
+async fn plan_vehicle_route(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    input: web::Json<PlanRouteInput>,
+) -> Result<web::Json<PlanRouteOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let client = state.send_route().ok_or_else(vehicle_not_configured)?;
+    let vehicle_ctx = resolve_route_vehicle_context(&state).await;
+    Ok(web::Json(
+        client
+            .plan_route(input.into_inner(), vehicle_ctx)
+            .await
+            .map_err(send_route_error)?,
+    ))
+}
+
+async fn send_vehicle_route(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    input: web::Json<SendRouteInput>,
+) -> Result<web::Json<SendRouteOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let client = state.send_route().ok_or_else(vehicle_not_configured)?;
+    let vehicle_ctx = resolve_route_vehicle_context(&state).await;
+    Ok(web::Json(
+        client
+            .send_route(input.into_inner(), vehicle_ctx)
+            .await
+            .map_err(send_route_error)?,
+    ))
+}
+
+async fn confirm_send_vehicle_route(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    input: web::Json<ConfirmSendRouteInput>,
+) -> Result<web::Json<SendRouteOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let client = state.send_route().ok_or_else(vehicle_not_configured)?;
+    Ok(web::Json(
+        client
+            .confirm_send_route(input.into_inner())
+            .await
+            .map_err(send_route_error)?,
+    ))
+}
+
+fn send_route_error(error: SendRouteError) -> ApiError {
+    let (status, code) = match &error {
+        SendRouteError::InvalidInput(_) => (StatusCode::BAD_REQUEST, "invalid_send_route_input"),
+        SendRouteError::VehiclePositionUnavailable => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "vehicle_position_unavailable",
+        ),
+        SendRouteError::RoutePlanEmpty(_) => (StatusCode::BAD_GATEWAY, "route_plan_failed"),
+        SendRouteError::InvalidAction => (StatusCode::BAD_REQUEST, "invalid_btn_action"),
+        SendRouteError::ConfirmationExpired => (StatusCode::GONE, "confirmation_expired"),
+        SendRouteError::VehicleChanged => (StatusCode::CONFLICT, "vehicle_changed"),
+        SendRouteError::ResultUnknown(_) => {
+            (StatusCode::GATEWAY_TIMEOUT, "send_route_result_unknown")
+        }
+        SendRouteError::Rejected { request_id, .. } => {
+            tracing::warn!(
+                error_code = "send_route_rejected",
+                request_id = ?request_id,
+                "NIO send-route request was rejected by upstream"
+            );
+            return ApiError {
+                status: StatusCode::BAD_GATEWAY,
+                code: "send_route_rejected",
+                message: error.to_string(),
+            };
+        }
+        _ => (StatusCode::BAD_GATEWAY, "send_route_upstream_error"),
+    };
+    tracing::warn!(error_code = code, "NIO send-route request did not complete");
+    ApiError {
+        status,
+        code,
+        message: error.to_string(),
+    }
 }
 
 async fn create_swap_order(
@@ -1643,6 +1795,7 @@ mod tests {
             station_search: Arc::new(std::sync::RwLock::new(None)),
             nearby_stations: Arc::new(std::sync::RwLock::new(None)),
             rewards: Arc::new(std::sync::RwLock::new(None)),
+            send_route: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,
@@ -1785,6 +1938,7 @@ mod tests {
             station_search: Arc::new(std::sync::RwLock::new(None)),
             nearby_stations: Arc::new(std::sync::RwLock::new(None)),
             rewards: Arc::new(std::sync::RwLock::new(None)),
+            send_route: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,
@@ -1870,6 +2024,7 @@ mod tests {
             station_search: Arc::new(std::sync::RwLock::new(None)),
             nearby_stations: Arc::new(std::sync::RwLock::new(None)),
             rewards: Arc::new(std::sync::RwLock::new(None)),
+            send_route: Arc::new(std::sync::RwLock::new(None)),
             service_order_configured: false,
             station_template_configured: false,
             station_template: None,

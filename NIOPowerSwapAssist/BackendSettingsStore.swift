@@ -120,6 +120,7 @@ final class BackendSettingsStore {
         }
         defaults.set(configuration.baseURL.absoluteString, forKey: baseURLKey)
         WidgetCenter.shared.reloadAllTimelines()
+        ControlCenter.shared.reloadAllControls()
         syncWatchConfiguration()
     }
 

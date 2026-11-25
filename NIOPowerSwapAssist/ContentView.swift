@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var showingRequestEditor = false
     @State private var showingSavedRequests = false
     @State private var showingBackendStations = false
+    @State private var showingNearbyStations = false
     @State private var showingBackendSettings = false
     @State private var showingSwapOrderConfirmation = false
     @State private var selectedTab: AppTab = .vehicle
@@ -160,6 +161,16 @@ struct ContentView: View {
         .sheet(isPresented: $showingBackendStations) {
             BackendStationPickerView(
                 isPresented: $showingBackendStations,
+                vehicleViewModel: vehicleViewModel,
+                templateRequest: stationRequestTemplate
+            ) { request, name, stationID in
+                leaveNearestStationMode()
+                Task { await refreshSavedStation(request: request, name: name, stationID: stationID) }
+            }
+        }
+        .sheet(isPresented: $showingNearbyStations) {
+            NearbyStationsSheetView(
+                isPresented: $showingNearbyStations,
                 vehicleViewModel: vehicleViewModel,
                 templateRequest: stationRequestTemplate
             ) { request, name, stationID in
@@ -305,6 +316,10 @@ struct ContentView: View {
                     Button("已保存的站点", systemImage: "list.bullet") {
                         showingSavedRequests = true
                     }
+                    Button("附近换电站地图", systemImage: "map") {
+                        showingNearbyStations = true
+                    }
+                    .disabled(!vehicleViewModel.isConfigured)
                     Button("从后端搜索", systemImage: "magnifyingglass") {
                         showingBackendStations = true
                     }
@@ -397,6 +412,21 @@ struct ContentView: View {
                                     lineWidth: 1
                                 )
                             }
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+                }
+
+                if vehicleViewModel.isConfigured {
+                    Button {
+                        stationFeedbackTick += 1
+                        showingNearbyStations = true
+                    } label: {
+                        Label("附近地图", systemImage: "map")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.10), in: Capsule())
+                            .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1) }
                     }
                     .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
                 }
@@ -843,6 +873,9 @@ private struct EnergyAndCouponsView: View {
             AppPalette.canvas.ignoresSafeArea()
             ScrollView {
                 LazyVStack(spacing: 14) {
+                    if viewModel.isConfigured {
+                        dailyCheckInCard
+                    }
                     rangeCard
 
                     if let error = viewModel.energyStatsErrorMessage {
@@ -879,6 +912,98 @@ private struct EnergyAndCouponsView: View {
         .onChange(of: customFrom) { _, newValue in
             if customTo < newValue { customTo = newValue }
         }
+    }
+
+    private var dailyCheckInCard: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(checkInAccentColor.opacity(0.14))
+                    .frame(width: 44, height: 44)
+                Image(systemName: checkInIconName)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(checkInAccentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("蔚来每日签到")
+                    .font(.subheadline.weight(.semibold))
+                Text(checkInSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(checkInSubtitleColor)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            switch viewModel.dailyCheckInState {
+            case .idle, .failed:
+                Button {
+                    Task { await viewModel.performDailyCheckIn() }
+                } label: {
+                    Text(viewModel.dailyCheckInState == .idle ? "立即签到" : "重试")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(AppPalette.blue, in: Capsule())
+                }
+                .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.94))
+            case .inProgress:
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.horizontal, 12)
+            case .succeeded, .alreadyCheckedIn:
+                Label("已签到", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.green)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .background(AppPalette.green.opacity(0.12), in: Capsule())
+            }
+        }
+        .dataCard()
+    }
+
+    private var checkInAccentColor: Color {
+        switch viewModel.dailyCheckInState {
+        case .succeeded, .alreadyCheckedIn: return AppPalette.green
+        case .failed: return .orange
+        case .idle, .inProgress: return AppPalette.amber
+        }
+    }
+
+    private var checkInIconName: String {
+        switch viewModel.dailyCheckInState {
+        case .succeeded, .alreadyCheckedIn: return "checkmark.seal.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .idle, .inProgress: return "sparkles"
+        }
+    }
+
+    private var checkInSubtitle: String {
+        switch viewModel.dailyCheckInState {
+        case .idle:
+            return "轻点一次发送今日签到，不自动重试"
+        case .inProgress:
+            return "正在向蔚来服务发送签到请求…"
+        case .succeeded(let outcome):
+            var parts: [String] = []
+            if outcome.credit > 0 { parts.append("+\(outcome.credit) 积分") }
+            if outcome.continuousDays > 0 { parts.append("连续 \(outcome.continuousDays) 天") }
+            if !outcome.tip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append(outcome.tip)
+            }
+            return parts.isEmpty ? "今日签到已完成" : parts.joined(separator: " · ")
+        case .alreadyCheckedIn:
+            return "今日已完成签到（北京时间）"
+        case .failed(let message):
+            return message
+        }
+    }
+
+    private var checkInSubtitleColor: Color {
+        if case .failed = viewModel.dailyCheckInState { return .orange }
+        return .secondary
     }
 
     private var rangeCard: some View {
