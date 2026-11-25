@@ -1,6 +1,12 @@
 # NIO 原版 App 与 NIOPowerSwapAssist：上游协议综合分析记录
 
-更新日期：2026-11-23
+更新日期：2026-11-25
+
+最新补充见 [BLE/UWB 方法体复核](android-ble-uwb-followup-2026-11-25.md) 与 [导航路线发送到车机](android-send-route-to-vehicle-analysis.md)。后续已从既有内存样本恢复部分可反编译业务 DEX，本文早期“尚未得到完整 DEX”的记录代表当时进度，不代表当前全部证据状态；仍未恢复完整协议实现。
+
+详细专题：[BLE 生命周期与连接架构](android-ble-lifecycle-detailed-analysis.md)、[UWB 创建与近车设置](android-uwb-detailed-analysis.md)、[RPS 状态与障碍物映射](android-rps-state-detailed-analysis.md)。这些专题优先于下文早期的未完成项描述。
+
+iOS 移植的功能、业务逻辑、状态流转和验收条件见 [iOS 数字钥匙功能规格](ios-digital-key-functional-spec.md)，不规定 Swift 实现方式。
 
 ## 1. 目的
 
@@ -275,7 +281,7 @@ APK 使用 SecNeo/Bangcle 类保护：
 
 ### 5.7 高频心跳与失联保护
 
-`BaseRpsSessionViewModel` 的 `lastHeartbeatTimestamp` 和 `moveJob` 证明会话会持续发送或监控数据，而不是一次请求。
+2026-11-25 方法体复核修正：`lastHeartbeatTimestamp` 用于限制手机振动频率，不能据此证明通信心跳。`moveJob` 内可见持续调用 RPS service 的循环，但应用层调用频率也不等于 BLE 实际发包周期或车辆失联超时。详见后续复核文档。
 
 `RpsSessionDisconnectViewModel` 监听：
 
@@ -297,7 +303,7 @@ APK 使用 SecNeo/Bangcle 类保护：
 
 ### 5.8 泊车状态与障碍物显示
 
-`RpsSessionData` 运行时可见约 40 个整数字段、2 个浮点字段和多个布尔字段，但字段名被混淆，当前不能安全解释各字段含义。
+`RpsSessionData` 运行时可见约 40 个整数字段、2 个浮点字段和多个布尔字段，早期仅靠反射无法解释其混淆字段。2026-11-25 已通过构造器及 UI 模型名称交叉恢复部分显示字段映射，见 RPS 详细专题；无线编码与物理单位仍未完整确认。
 
 `RbRpaInSurfaceView` 已观察到：
 
@@ -310,7 +316,7 @@ APK 使用 SecNeo/Bangcle 类保护：
 - 车辆、车位、箭头和完成动画；
 - `sendTrack(RpaLocationBean)`。
 
-由此可以确认 App 接收并绘制车辆位置、轮胎角度、车位、预测轨迹和分级障碍物，但尚未确认 `RpsSessionData` 每个字段到 UI bean 的精确映射。
+由此可以确认 App 接收并绘制车辆位置、轮胎角度、车位、预测轨迹和分级障碍物。后续已补充 27 项 UI 模型映射及危险区域聚合逻辑，但这些显示字段不等于完整无线协议，也不能证明预测轨迹来自车端规划。
 
 ## 6. UWB 的当前结论
 
@@ -339,7 +345,7 @@ Android Manifest 和资源中存在：
 - BLE：承载 RPS 激活、移动、暂停、心跳和状态数据；
 - 车辆：负责路径规划、驱动控制和障碍物检测。
 
-BLE 配置类存在 `nearTheVehicle` 字段，但该值究竟来自 BLE RSSI、UWB、车辆端融合还是 OEM 钱包服务，仍未证实。
+BLE 配置类存在 `nearTheVehicle` 字段。后续在 `NioBleVirtualKeyManager.l()` 找到主动设为 true 后请求重新扫描的调用，说明至少这一处是应用侧提示，不是测距结果；其他写入来源及底层用途仍需继续核对。
 
 ## 7. iOS 工程现状
 
@@ -377,7 +383,7 @@ base commit: 10796c9
 - 帧头、长度、校验、加密、认证标签与 nonce 格式；
 - RPS activate/move/pause/deactivate 的数值 opcode；
 - 心跳准确周期、超时门槛和容错次数；
-- `RpsSessionData` 字段含义及障碍物数据编码；
+- `RpsSessionData` 完整字段含义、物理单位及无线障碍物数据编码（部分 UI 映射已恢复）；
 - iOS 原版是否使用 Apple Car Key、Nearby Interaction 或 NIO 自有数字钥匙 SDK。
 
 没有这些证据，不能宣称 iOS 已经能连接车辆或执行离车泊入。

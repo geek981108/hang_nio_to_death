@@ -21,6 +21,7 @@ struct VehicleDetailView: View {
     @State private var queuedVehicleExecution: PendingVehicleAction?
     @State private var vehicleControlNotice: VehicleControlNotice?
     @State private var showingDebugDiagnostics = false
+    @State private var showingSendRouteSheet = false
 
     private var dailyPaths: [DailyVehiclePath] {
         viewModel.dailyPaths
@@ -248,6 +249,12 @@ struct VehicleDetailView: View {
         .sheet(isPresented: $showingDebugDiagnostics) {
             DebugDiagnosticsView(viewModel: viewModel)
         }
+        .sheet(isPresented: $showingSendRouteSheet) {
+            SendRouteToVehicleSheet(
+                isPresented: $showingSendRouteSheet,
+                viewModel: viewModel
+            )
+        }
         .alert(item: $vehicleControlNotice) { notice in
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("知道了")))
         }
@@ -421,6 +428,7 @@ struct VehicleDetailView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppPalette.amber)
                 Spacer()
+                liveActivityTogglePill(tint: AppPalette.amber)
                 NavigationLink {
                     SwapRecordsListView(viewModel: viewModel)
                 } label: {
@@ -772,6 +780,20 @@ struct VehicleDetailView: View {
                 Label("车辆位置", systemImage: "location.fill")
                     .font(.headline)
                 Spacer()
+                if viewModel.isConfigured {
+                    Button {
+                        quickControlHapticCount += 1
+                        showingSendRouteSheet = true
+                    } label: {
+                        Label("发目的地到车机", systemImage: "paperplane.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppPalette.blue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(AppPalette.blue.opacity(0.11), in: Capsule())
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.95))
+                }
                 if let coordinate = currentCoordinate {
                     Button("地图打开") { openInMaps(coordinate) }
                         .font(.subheadline.weight(.semibold))
@@ -874,12 +896,21 @@ struct VehicleDetailView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: dashboard.stateOfCharge)
             .accessibilityHidden(true)
             if isCharging {
-                HStack {
-                    chargingValue("功率", formatChargingPower(dashboard.chargingPower))
-                    Spacer()
-                    chargingValue("电压", formatMeasurement(dashboard.chargingVoltage, unit: "V"))
-                    Spacer()
-                    chargingValue("电流", formatMeasurement(dashboard.chargingCurrent, unit: "A"))
+                VStack(spacing: 10) {
+                    HStack {
+                        chargingValue("功率", formatChargingPower(dashboard.chargingPower))
+                        Spacer()
+                        chargingValue("电压", formatMeasurement(dashboard.chargingVoltage, unit: "V"))
+                        Spacer()
+                        chargingValue("电流", formatMeasurement(dashboard.chargingCurrent, unit: "A"))
+                    }
+                    HStack {
+                        Label("灵动岛实时充电进度", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        liveActivityTogglePill(tint: AppPalette.green)
+                    }
                 }
                 .padding(12)
                 .background(AppPalette.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -933,6 +964,30 @@ struct VehicleDetailView: View {
         .navigationTitle("充换电记录")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await viewModel.refresh() }
+    }
+
+    private func liveActivityTogglePill(tint: Color) -> some View {
+        Button {
+            quickControlHapticCount += 1
+            Task { await viewModel.toggleLiveActivity() }
+        } label: {
+            Label(
+                viewModel.isLiveActivityRunning ? "灵动岛已开启" : "贴到灵动岛",
+                systemImage: viewModel.isLiveActivityRunning
+                    ? "checkmark.circle.fill"
+                    : "platter.filled.top.and.arrow.up.iphone"
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(viewModel.isLiveActivityRunning ? tint : .primary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                (viewModel.isLiveActivityRunning ? tint : Color.primary).opacity(0.11),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.isLiveActivityRunning ? "关闭灵动岛实时活动" : "在灵动岛显示实时活动")
     }
 
     private func chargingValue(_ title: String, _ value: String) -> some View {
@@ -1061,7 +1116,7 @@ struct VehicleDetailView: View {
                 Spacer()
                 if !viewModel.trips.isEmpty {
                     NavigationLink {
-                        VehicleTripsListView(trips: viewModel.trips)
+                        VehicleTripsListView(trips: viewModel.trips, viewModel: viewModel)
                     } label: {
                         HStack(spacing: 5) {
                             Text("全部")
@@ -1083,7 +1138,12 @@ struct VehicleDetailView: View {
                     .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
             } else {
                 ForEach(Array(viewModel.trips.prefix(3))) { trip in
-                    VehicleTripCard(trip: trip)
+                    NavigationLink {
+                        VehicleTripDetailView(trip: trip, viewModel: viewModel)
+                    } label: {
+                        VehicleTripCard(trip: trip, showsDisclosure: true)
+                    }
+                    .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.985))
                 }
             }
         }

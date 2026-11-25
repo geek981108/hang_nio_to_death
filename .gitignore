@@ -16,7 +16,12 @@
 **/*.sqlite3
 
 # —— 本地逆向/分析工具目录：含 APK、mTLS 私钥与 PIN，不纳入版本控制 ——
-/tools/
+/tools/*
+!/tools/nio-ble-readonly/
+/tools/nio-ble-readonly/*
+!/tools/nio-ble-readonly/README.md
+!/tools/nio-ble-readonly/decoder.py
+!/tools/nio-ble-readonly/test_decoder.py
 
 # —— Xcode / macOS ——
 .DS_Store

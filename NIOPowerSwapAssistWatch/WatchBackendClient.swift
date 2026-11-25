@@ -55,6 +55,86 @@ struct WatchActiveOrder: Decodable, Equatable, Sendable, Identifiable {
     }
 }
 
+struct WatchStationLive: Decodable, Equatable, Sendable {
+    struct Fee: Decodable, Equatable, Sendable {
+        let fee: String
+        let unit: String
+        let currency: String
+        let isTotal: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case fee, unit, currency
+            case isTotal = "is_total"
+        }
+    }
+
+    struct Queue: Decodable, Equatable, Sendable {
+        let vehiclesAhead: Int?
+        let waitingDescription: String?
+        let estimatedWaitMinutes: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case vehiclesAhead = "vehicles_ahead"
+            case waitingDescription = "waiting_description"
+            case estimatedWaitMinutes = "estimated_wait_minutes"
+        }
+    }
+
+    let stationID: String
+    let stationName: String
+    let available75Count: Int
+    let isScannable: Bool?
+    let currentFees: [Fee]
+    let queue: Queue?
+
+    enum CodingKeys: String, CodingKey {
+        case stationID = "station_id"
+        case stationName = "station_name"
+        case available75Count = "available_75_count"
+        case isScannable = "is_scannable"
+        case currentFees = "current_fees"
+        case queue
+    }
+
+    var allowsSwap: Bool {
+        isScannable ?? true
+    }
+
+    var formattedPrice: String? {
+        let total = currentFees.first(where: \.isTotal)
+        let fallbackTotal = currentFees.compactMap { Double($0.fee) }.reduce(0, +)
+        guard let representative = total ?? currentFees.first else { return nil }
+        let amount = total.flatMap { Double($0.fee) } ?? fallbackTotal
+        let amountText = amount.formatted(.number.precision(.fractionLength(2)))
+        let normalizedUnit = representative.unit
+            .replacingOccurrences(of: "元/", with: "/")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix: String
+        if normalizedUnit.isEmpty {
+            suffix = ""
+        } else if normalizedUnit.hasPrefix("/") {
+            suffix = normalizedUnit
+        } else {
+            suffix = "/\(normalizedUnit)"
+        }
+        return "\(representative.currency)\(amountText)\(suffix)"
+    }
+
+    var queueSummary: String? {
+        if let desc = queue?.waitingDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !desc.isEmpty {
+            return desc
+        }
+        if let ahead = queue?.vehiclesAhead, ahead > 0 {
+            if let wait = queue?.estimatedWaitMinutes, wait > 0 {
+                return "排队 \(ahead) 辆 · 约 \(wait) 分"
+            }
+            return "排队 \(ahead) 辆"
+        }
+        return nil
+    }
+}
+
 enum WatchVehicleAction: String, Sendable {
     case lock
     case unlockDoors = "unlock-doors"
@@ -151,6 +231,12 @@ struct WatchBackendClient: Sendable {
     func fetchActiveOrders() async throws -> [WatchActiveOrder] {
         let page: ActiveOrderPage = try await fetch(path: "api/v1/orders/active")
         return page.items
+    }
+
+    func fetchStationLive(stationID: String) async throws -> WatchStationLive {
+        let trimmed = stationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw WatchBackendError.missingStation }
+        return try await fetch(path: "api/v1/stations/\(trimmed)/live")
     }
 
     func performVehicleAction(

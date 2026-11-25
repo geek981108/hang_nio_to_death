@@ -169,11 +169,20 @@ private struct NIOWidgetInfoResponse: Decodable, Sendable {
   struct Payload: Decodable, Sendable { let status: Status }
 
   struct Status: Decodable, Sendable {
+    struct DoorStatus: Decodable, Sendable {
+      let vehicleLockStatus: Int?
+
+      enum CodingKeys: String, CodingKey {
+        case vehicleLockStatus = "vehicle_lock_status"
+      }
+    }
+
     let vehicleID: String
     let connectionStatus: NIOVehicleStatusResponse.ConnectionStatus?
     let exteriorStatus: NIOVehicleStatusResponse.ExteriorStatus?
     let specialStatus: NIOVehicleStatusResponse.SpecialStatus?
     let socStatus: NIOVehicleStatusResponse.SOCStatus?
+    let doorStatus: DoorStatus?
 
     enum CodingKeys: String, CodingKey {
       case vehicleID = "vehicle_id"
@@ -181,46 +190,7 @@ private struct NIOWidgetInfoResponse: Decodable, Sendable {
       case exteriorStatus = "exterior_status"
       case specialStatus = "special_status"
       case socStatus = "soc_status"
-    }
-  }
-}
-
-private struct NIOStationLiveStatus: Decodable, Sendable {
-  let stationName: String
-  let currentFees: [Fee]
-  let available75Count: Int
-  let available75Batteries: [Battery]
-
-  enum CodingKeys: String, CodingKey {
-    case stationName = "station_name"
-    case currentFees = "current_fees"
-    case available75Count = "available_75_count"
-    case available75Batteries = "available_75_batteries"
-  }
-
-  struct Fee: Decodable, Sendable {
-    let fee: String
-    let unit: String
-    let currency: String
-    let isTotal: Bool
-
-    enum CodingKeys: String, CodingKey {
-      case fee, unit, currency
-      case isTotal = "is_total"
-    }
-  }
-
-  struct Battery: Decodable, Sendable {
-    let batteryID: String
-    let slotID: Int?
-    let stateOfCharge: Double?
-    let productionDate: String?
-
-    enum CodingKeys: String, CodingKey {
-      case batteryID = "battery_id"
-      case slotID = "slot_id"
-      case stateOfCharge = "soc_percent"
-      case productionDate = "production_date"
+      case doorStatus = "door_status"
     }
   }
 }
@@ -251,6 +221,11 @@ private struct WidgetBackendClient: Sendable {
 
     let statusSOC = vehicleStatus.data.socStatus
     let widgetSOC = widgetStatus.socStatus
+    if let lockStatus = widgetStatus.doorStatus?.vehicleLockStatus,
+      ControlCenterLockStateCache.save(lockStatus == 1)
+    {
+      ControlCenter.shared.reloadControls(ofKind: NIOControlLockWidget.kind)
+    }
     return WidgetVehicleSnapshot(
       isConnected: vehicleStatus.data.connectionStatus?.connected
         ?? widgetStatus.connectionStatus?.connected
@@ -272,49 +247,13 @@ private struct WidgetBackendClient: Sendable {
     )
   }
 
-  private func fetchStation() async -> NIOStationLiveStatus? {
+  private func fetchStation() async -> WidgetStationLivePayload? {
     guard let selection = configuration.station else { return nil }
     return try? await fetch(path: "api/v1/stations/\(selection.id)/live")
   }
 
-  private func makeStationSnapshot(_ status: NIOStationLiveStatus) -> WidgetStationSnapshot {
-    let selectedName = configuration.station?.name.trimmingCharacters(in: .whitespacesAndNewlines)
-    let name = selectedName.flatMap { $0.isEmpty ? nil : $0 } ?? status.stationName
-    let total = status.currentFees.first(where: \.isTotal)
-    let fallbackTotal = status.currentFees.compactMap { Double($0.fee) }.reduce(0, +)
-    let representativeFee = total ?? status.currentFees.first
-    let price: String?
-    if let representativeFee {
-      let amount = total.flatMap { Double($0.fee) } ?? fallbackTotal
-      let amountText = amount.formatted(.number.precision(.fractionLength(2)))
-      let normalizedUnit = representativeFee.unit
-        .replacingOccurrences(of: "元/", with: "/")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      let unitSuffix: String
-      if normalizedUnit.isEmpty {
-        unitSuffix = ""
-      } else if normalizedUnit.hasPrefix("/") {
-        unitSuffix = normalizedUnit
-      } else {
-        unitSuffix = "/\(normalizedUnit)"
-      }
-      price = "\(representativeFee.currency)\(amountText)\(unitSuffix)"
-    } else {
-      price = nil
-    }
-    return WidgetStationSnapshot(
-      name: name,
-      price: price,
-      available75Count: status.available75Count,
-      batteries: status.available75Batteries.map {
-        WidgetStationBattery(
-          id: $0.batteryID,
-          slotID: $0.slotID,
-          stateOfCharge: $0.stateOfCharge,
-          productionDate: $0.productionDate
-        )
-      }
-    )
+  private func makeStationSnapshot(_ status: WidgetStationLivePayload) -> WidgetStationSnapshot {
+    status.makeSnapshot(selectedName: configuration.station?.name)
   }
 
   private func fetch<Response: Decodable>(path: String) async throws -> Response {
@@ -363,7 +302,7 @@ private struct VehicleWidgetProvider: TimelineProvider {
       let entry = await loadEntry()
       let interval: TimeInterval
       switch entry.state {
-      case .loaded: interval = 15 * 60
+      case .loaded(let snapshot): interval = snapshot.preferredRefreshInterval
       case .unconfigured: interval = 60 * 60
       case .failed: interval = 5 * 60
       }
@@ -419,8 +358,14 @@ private struct NIOVehicleWidget: Widget {
       VehicleWidgetView(entry: entry)
     }
     .configurationDisplayName("NIO 车辆状态")
-    .description("车辆状态、当前换电站费率与 75 kWh 可用电池。")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .description("车辆状态、当前换电站费率与 75 kWh 可用电池，支持主屏幕与锁屏显示。")
+    .supportedFamilies([
+      .systemSmall,
+      .systemMedium,
+      .accessoryCircular,
+      .accessoryRectangular,
+      .accessoryInline,
+    ])
   }
 }
 
@@ -428,6 +373,11 @@ private struct NIOVehicleWidget: Widget {
 struct NIOPowerSwapAssistWidgetBundle: WidgetBundle {
   var body: some Widget {
     NIOVehicleWidget()
+    NIOVehicleLiveActivityWidget()
+    NIOControlLockWidget()
+    NIOControlACOnWidget()
+    NIOControlGuardOnWidget()
+    NIOControlFindWidget()
   }
 }
 
@@ -443,4 +393,22 @@ struct NIOPowerSwapAssistWidgetBundle: WidgetBundle {
 } timeline: {
   VehicleWidgetEntry(date: .now, state: .loaded(VehicleWidgetProvider.sampleSnapshot))
   VehicleWidgetEntry(date: .now, state: .failed("网络暂时不可用"))
+}
+
+#Preview("锁屏 · 圆形", as: .accessoryCircular) {
+  NIOVehicleWidget()
+} timeline: {
+  VehicleWidgetEntry(date: .now, state: .loaded(VehicleWidgetProvider.sampleSnapshot))
+}
+
+#Preview("锁屏 · 矩形", as: .accessoryRectangular) {
+  NIOVehicleWidget()
+} timeline: {
+  VehicleWidgetEntry(date: .now, state: .loaded(VehicleWidgetProvider.sampleSnapshot))
+}
+
+#Preview("锁屏 · 单行", as: .accessoryInline) {
+  NIOVehicleWidget()
+} timeline: {
+  VehicleWidgetEntry(date: .now, state: .loaded(VehicleWidgetProvider.sampleSnapshot))
 }

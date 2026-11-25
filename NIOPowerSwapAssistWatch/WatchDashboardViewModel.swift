@@ -44,11 +44,11 @@ final class WatchDashboardViewModel: ObservableObject {
             }
         }
 
-        var message: String {
+        func message(acTemperature: Double) -> String {
             switch self {
             case .lock: return "将向车辆发送一次落锁指令。"
             case .unlockStart: return "高风险操作，将解锁车辆并授予启动权限。"
-            case .acOn: return "将以 22℃ 开启车内空调。"
+            case .acOn: return "将以 \(Self.formatTemp(acTemperature)) 开启车内空调。"
             case .acOff: return "将关闭车内空调。"
             case .guardOn: return "将开启守卫模式并展开后视镜。"
             case .guardOff: return "将关闭守卫模式。"
@@ -56,6 +56,13 @@ final class WatchDashboardViewModel: ObservableObject {
             case .stopFinding: return "将发送停止寻车指令。"
             case .createSwapOrder: return "将为 iPhone 当前换电站创建真实订单。"
             }
+        }
+
+        private static func formatTemp(_ value: Double) -> String {
+            let rounded = (value * 2).rounded() / 2
+            return rounded.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(rounded))℃"
+                : String(format: "%.1f℃", rounded)
         }
 
         var inProgressLabel: String {
@@ -85,6 +92,7 @@ final class WatchDashboardViewModel: ObservableObject {
 
     @Published private(set) var dashboard: WatchDashboard?
     @Published private(set) var activeOrder: WatchActiveOrder?
+    @Published private(set) var stationLive: WatchStationLive?
     @Published private(set) var stationName: String?
     @Published private(set) var hasStation = false
     @Published private(set) var hasControlKey = false
@@ -94,9 +102,27 @@ final class WatchDashboardViewModel: ObservableObject {
     @Published private(set) var isPerformingCommand = false
     @Published private(set) var activeCommandLabel: String?
     @Published private(set) var updatedAt: Date?
+    @Published var targetACTemperature: Double = 22.0
     @Published var errorMessage: String?
     @Published var feedback: ActionFeedback?
     @Published var pendingCommand: PendingCommand?
+
+    var clampedACTemperature: Double {
+        let clamped = min(max(targetACTemperature, 16.0), 30.0)
+        return (clamped * 2).rounded() / 2
+    }
+
+    var formattedACTemperature: String {
+        let value = clampedACTemperature
+        return value.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(value))℃"
+            : String(format: "%.1f℃", value)
+    }
+
+    func adjustACTemperature(by delta: Double) {
+        let next = min(max(clampedACTemperature + delta, 16.0), 30.0)
+        targetACTemperature = (next * 2).rounded() / 2
+    }
 
     init() {
         if let configuration = try? WatchCredentialStore.shared.load() {
@@ -134,10 +160,21 @@ final class WatchDashboardViewModel: ObservableObject {
             let client = WatchBackendClient(configuration: configuration)
             async let dashboardRequest = client.fetchDashboard()
             async let ordersRequest = (try? await client.fetchActiveOrders()) ?? []
+            async let stationLiveRequest: WatchStationLive? = {
+                guard let stationID = configuration.stationID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !stationID.isEmpty else { return nil }
+                return try? await client.fetchStationLive(stationID: stationID)
+            }()
             let newDashboard = try await dashboardRequest
             let orders = await ordersRequest
+            let liveStation = await stationLiveRequest
             dashboard = newDashboard
             activeOrder = orders.first
+            stationLive = liveStation
+            if let liveName = liveStation?.stationName,
+               (stationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                stationName = liveName
+            }
             updatedAt = Date()
             isShowingCachedData = false
             errorMessage = nil
@@ -184,8 +221,9 @@ final class WatchDashboardViewModel: ObservableObject {
                 try await client.performVehicleAction(.unlockStart)
                 successMessage = "已发送解锁并启动指令"
             case .acOn:
-                try await client.performVehicleAction(.acOn, temperature: 22)
-                successMessage = "已开启 22℃ 空调"
+                let temperature = clampedACTemperature
+                try await client.performVehicleAction(.acOn, temperature: temperature)
+                successMessage = "已开启 \(formattedACTemperature) 空调"
             case .acOff:
                 try await client.performVehicleAction(.acOff)
                 successMessage = "已关闭空调"

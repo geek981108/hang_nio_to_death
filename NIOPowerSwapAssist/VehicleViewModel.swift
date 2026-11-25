@@ -383,6 +383,14 @@ extension ActiveServiceOrder {
     }
 }
 
+enum DailyCheckInState: Equatable, Sendable {
+    case idle
+    case inProgress
+    case succeeded(DailyCheckInOutcome)
+    case alreadyCheckedIn
+    case failed(String)
+}
+
 @MainActor
 final class VehicleViewModel: ObservableObject {
     @Published private(set) var dashboard: VehicleDashboard?
@@ -408,6 +416,8 @@ final class VehicleViewModel: ObservableObject {
     @Published private(set) var isCreatingSwapOrder = false
     @Published private(set) var lastVehicleActionOutcome: VehicleActionOutcome?
     @Published private(set) var lastSwapOrderOutcome: CreateSwapOrderOutcome?
+    @Published private(set) var dailyCheckInState: DailyCheckInState = .idle
+    @Published private(set) var isLiveActivityRunning = false
     @Published private(set) var queueNotificationsEnabled = false
     @Published private(set) var isConfigured = false
     @Published private(set) var isVehicleControlConfigured = false
@@ -518,6 +528,10 @@ final class VehicleViewModel: ObservableObject {
             isConfigured = false
             isVehicleControlConfigured = false
             return
+        }
+        if settingsStore === BackendSettingsStore.shared,
+           Self.lastCompletedCheckInBeijingDay() == Self.currentBeijingDayString() {
+            dailyCheckInState = .alreadyCheckedIn
         }
         activeBaseURL = configuration.baseURL
         isConfigured = true
@@ -1043,9 +1057,19 @@ final class VehicleViewModel: ObservableObject {
             if errorMessage != nil { errorMessage = nil }
             return
         }
+        let lockChanged = dashboard?.lockStatusCode != newDashboard.lockStatusCode
         dashboard = newDashboard
         errorMessage = nil
         WidgetCenter.shared.reloadAllTimelines()
+        if settingsStore === BackendSettingsStore.shared {
+            let cacheChanged = newDashboard.lockStatusCode.map {
+                ControlCenterLockStateCache.save($0 == 1)
+            } ?? false
+            if lockChanged || cacheChanged {
+                ControlCenter.shared.reloadControls(ofKind: NIOControlLockWidget.kind)
+            }
+        }
+        synchronizeLiveActivity()
     }
 
     private func updateActiveServiceOrdersIfNeeded(_ newOrders: [ActiveServiceOrder]) {
@@ -1057,6 +1081,7 @@ final class VehicleViewModel: ObservableObject {
         guard !unchanged else { return }
         activeServiceOrders = newOrders
         synchronizeQueueNotifications()
+        synchronizeLiveActivity()
     }
 
     private func updateChargingSessions(_ sessions: [ChargingSession]) {
@@ -1319,6 +1344,50 @@ final class VehicleViewModel: ObservableObject {
         Task { await SwapQueueNotificationManager.shared.synchronize(orders: orders) }
     }
 
+    var currentLiveActivityPlan: VehicleLiveActivityPlan? {
+        VehicleLiveActivityPlanner.plan(
+            dashboard: dashboard,
+            activeOrders: activeServiceOrders,
+            currentChargingEnergyKWh: currentChargingEnergyKWh,
+            vehicleName: vehicleTitle
+        )
+    }
+
+    private func synchronizeLiveActivity(forceStart: Bool = false) {
+        #if DEBUG
+        if isDesignPreview { return }
+        #endif
+        guard settingsStore === BackendSettingsStore.shared, injectedSession == nil else { return }
+        let plan = currentLiveActivityPlan
+        Task { @MainActor [weak self] in
+            let running = await VehicleLiveActivityManager.shared.synchronize(
+                plan: plan,
+                forceStart: forceStart
+            )
+            self?.isLiveActivityRunning = running
+        }
+    }
+
+    func toggleLiveActivity() async {
+        #if DEBUG
+        if isDesignPreview {
+            isLiveActivityRunning.toggle()
+            return
+        }
+        #endif
+        guard settingsStore === BackendSettingsStore.shared, injectedSession == nil else { return }
+        let plan = currentLiveActivityPlan
+        if isLiveActivityRunning {
+            await VehicleLiveActivityManager.shared.dismissCurrent(sessionKey: plan?.sessionKey)
+            isLiveActivityRunning = false
+        } else {
+            isLiveActivityRunning = await VehicleLiveActivityManager.shared.synchronize(
+                plan: plan,
+                forceStart: true
+            )
+        }
+    }
+
     func refreshChargingData() async {
         #if DEBUG
         if isDesignPreview { return }
@@ -1336,6 +1405,7 @@ final class VehicleViewModel: ObservableObject {
         case .success(let page):
             if chargingSamples != page.items { chargingSamples = page.items }
             currentChargingEnergyKWh = page.energyKWh
+            synchronizeLiveActivity()
         case .vehicleNotConfigured:
             markNeedsBackendLogin()
         case .failure(let message): chargingErrorMessage = message
@@ -1486,6 +1556,306 @@ final class VehicleViewModel: ObservableObject {
         guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
         try Task.checkCancellation()
         return page.items
+    }
+
+    func fetchVehicleTripTrack(journeyID: String) async throws -> VehicleTripTrack {
+        #if DEBUG
+        if isDesignPreview {
+            return VehicleTripTrack(journeyID: journeyID, points: [])
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let track = try await client(for: configuration).fetchVehicleTripTrack(journeyID: journeyID)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return track
+    }
+
+    func fetchNearbyStations(latitude: Double, longitude: Double) async throws -> NearbyStationResult {
+        #if DEBUG
+        if isDesignPreview {
+            return NearbyStationResult(
+                source: "preview",
+                fetchedAt: "",
+                viewportZoomLevel: 14,
+                viewportScreenRatio: 1.45,
+                coverage: "preview",
+                stations: []
+            )
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let result = try await client(for: configuration)
+            .fetchNearbyStations(latitude: latitude, longitude: longitude)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return result
+    }
+
+    func fetchStraightLineEnergy(
+        stationID: String,
+        latitude: Double,
+        longitude: Double,
+        stationLatitude: Double? = nil,
+        stationLongitude: Double? = nil
+    ) async throws -> StraightLineEnergyEstimate {
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let estimate = try await client(for: configuration).fetchStraightLineEnergy(
+            stationID: stationID,
+            latitude: latitude,
+            longitude: longitude,
+            stationLatitude: stationLatitude,
+            stationLongitude: stationLongitude
+        )
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return estimate
+    }
+
+    func fetchSendRouteSwitch() async throws -> SendRouteSwitchStatus {
+        #if DEBUG
+        if isDesignPreview {
+            return SendRouteSwitchStatus(
+                exposeSendVehicleButton: true,
+                enabled: true,
+                requestID: "preview",
+                serverTime: nil
+            )
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let status = try await client(for: configuration).fetchSendRouteSwitch()
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return status
+    }
+
+    func searchSwapStations(name: String) async throws -> [NIOStationSearchResult.Station] {
+        #if DEBUG
+        if isDesignPreview {
+            return []
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let stations = try await client(for: configuration).searchSwapStations(name: name)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return stations
+    }
+
+    func planRouteToVehicle(
+        _ poiList: [SendRoutePoiInput],
+        includeChargeStops: Bool = true
+    ) async throws -> PlanRouteOutcome {
+        #if DEBUG
+        if isDesignPreview {
+            return PlanRouteOutcome(
+                requestID: "preview",
+                serverTime: nil,
+                toastMsg: nil,
+                plans: [
+                    PlannedRouteOption(
+                        routeID: "preview-route-001",
+                        tagDesc: "换电优先",
+                        driveDistanceDesc: "128公里",
+                        driveDurationDesc: "1小时35分",
+                        planDurationDesc: includeChargeStops ? "1小时45分" : "1小时35分",
+                        chargeDesc: includeChargeStops ? "换电1次" : nil,
+                        chargeDuration: includeChargeStops ? 5 : 0,
+                        chargeDurationDesc: includeChargeStops ? "补能共5分钟" : nil,
+                        tollChargeDesc: "约45元",
+                        hasRisk: false,
+                        driver: SendRouteDriverInput(
+                            routeDriverDuration: 95,
+                            chargeTimes: includeChargeStops ? 1 : 0,
+                            routeDistance: 128000
+                        ),
+                        poiList: poiList,
+                        chargeStations: includeChargeStops ? [
+                            PlannedRouteStation(
+                                name: "京沪高速廊坊换电站",
+                                address: "廊坊服务区",
+                                resourceID: "PS-NIO-PREVIEW",
+                                resourceType: "PowerSwap",
+                                stationType: .candidate,
+                                durationDesc: "预计换电5分钟 · 到达剩余24%",
+                                distanceDesc: "68公里",
+                                remainSOC: 24
+                            )
+                        ] : [],
+                        steps: includeChargeStops ? [
+                            PlannedRouteStep(
+                                title: "当前位置",
+                                subtitle: "出发电量 76%",
+                                distanceDesc: nil,
+                                remainSOC: 76,
+                                resourceID: nil,
+                                resourceType: nil,
+                                isPoi: true,
+                                isPowerSwapClone: false,
+                                tags: [],
+                                riskMsg: nil
+                            ),
+                            PlannedRouteStep(
+                                title: "京沪高速廊坊换电站",
+                                subtitle: "预计换电5分钟 · 到达剩余24%",
+                                distanceDesc: "68公里",
+                                remainSOC: 24,
+                                resourceID: "PS-NIO-PREVIEW",
+                                resourceType: "PowerSwap",
+                                isPoi: false,
+                                isPowerSwapClone: false,
+                                tags: ["推荐换电"],
+                                riskMsg: nil
+                            )
+                        ] : [
+                            PlannedRouteStep(
+                                title: "当前位置",
+                                subtitle: "出发电量 76%",
+                                distanceDesc: nil,
+                                remainSOC: 76,
+                                resourceID: nil,
+                                resourceType: nil,
+                                isPoi: true,
+                                isPowerSwapClone: false,
+                                tags: [],
+                                riskMsg: nil
+                            )
+                        ]
+                    )
+                ]
+            )
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let outcome = try await client(for: configuration).planRouteToVehicle(
+            poiList,
+            includeChargeStops: includeChargeStops
+        )
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        try Task.checkCancellation()
+        return outcome
+    }
+
+    func sendRouteToVehicle(_ input: SendRouteInput) async throws -> SendRouteOutcome {
+        #if DEBUG
+        if isDesignPreview {
+            throw BackendClientError.serverFailure(
+                code: "send_route_rejected",
+                message: "设计预览不会发送真实路线。",
+                status: 400
+            )
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let outcome = try await client(for: configuration).sendRouteToVehicle(input)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        return outcome
+    }
+
+    func confirmSendRouteToVehicle(token: String, btnAction: Int) async throws -> SendRouteOutcome {
+        #if DEBUG
+        if isDesignPreview {
+            throw BackendClientError.serverFailure(
+                code: "send_route_rejected",
+                message: "设计预览不会发送真实路线。",
+                status: 400
+            )
+        }
+        #endif
+        guard let configuration = try? settingsStore.configuration() else {
+            throw BackendClientError.invalidBaseURL
+        }
+        let revision = settingsRevision
+        let outcome = try await client(for: configuration)
+            .confirmSendRouteToVehicle(token: token, btnAction: btnAction)
+        guard revision == settingsRevision else { throw BackendClientError.configurationChanged }
+        return outcome
+    }
+
+    /// Triggers a single explicit daily check-in POST without auto-retry.
+    func performDailyCheckIn() async {
+        #if DEBUG
+        if isDesignPreview {
+            dailyCheckInState = .alreadyCheckedIn
+            return
+        }
+        #endif
+        guard dailyCheckInState != .inProgress else { return }
+        guard let configuration = try? settingsStore.configuration() else {
+            dailyCheckInState = .failed("请先配置后端地址与 API Key。")
+            return
+        }
+        let revision = settingsRevision
+        dailyCheckInState = .inProgress
+        do {
+            let outcome = try await client(for: configuration).performDailyCheckIn()
+            guard revision == settingsRevision, !Task.isCancelled else { return }
+            dailyCheckInState = .succeeded(outcome)
+            if settingsStore === BackendSettingsStore.shared {
+                Self.recordCompletedCheckInBeijingDay(Self.currentBeijingDayString())
+            }
+        } catch let error as BackendClientError {
+            guard revision == settingsRevision, !Task.isCancelled else { return }
+            if case .serverFailure(let code, _, _) = error, code == "check_in_already_attempted" {
+                dailyCheckInState = .alreadyCheckedIn
+                if settingsStore === BackendSettingsStore.shared {
+                    Self.recordCompletedCheckInBeijingDay(Self.currentBeijingDayString())
+                }
+            } else if error.isVehicleNotConfigured {
+                markNeedsBackendLogin()
+                dailyCheckInState = .failed(error.errorDescription ?? "服务端尚未配置账号信息。")
+            } else {
+                dailyCheckInState = .failed(error.errorDescription ?? "签到失败，请稍后重试。")
+            }
+        } catch {
+            guard revision == settingsRevision, !Task.isCancelled else { return }
+            if error.isTaskCancellation {
+                dailyCheckInState = .idle
+                return
+            }
+            dailyCheckInState = .failed(
+                (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            )
+        }
+    }
+
+    private static let checkInDayStorageKey = "nioDailyCheckInBeijingDay.v1"
+
+    private static func currentBeijingDayString(now: Date = Date()) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    private static func lastCompletedCheckInBeijingDay() -> String? {
+        UserDefaults.standard.string(forKey: checkInDayStorageKey)
+    }
+
+    private static func recordCompletedCheckInBeijingDay(_ day: String) {
+        UserDefaults.standard.set(day, forKey: checkInDayStorageKey)
     }
 
     func refreshEnergyStats(from: Date, to: Date) async {

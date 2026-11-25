@@ -303,12 +303,22 @@ struct NIOStationSearchResult: Decodable, Sendable {
         let stationID: String
         let name: String
         let address: String?
+        let latitude: Double?
+        let longitude: Double?
 
         var id: String { stationID }
 
+        var hasValidCoordinates: Bool {
+            guard let latitude, let longitude else { return false }
+            return latitude.isFinite && longitude.isFinite
+                && (-90.0...90.0).contains(latitude)
+                && (-180.0...180.0).contains(longitude)
+                && (latitude != 0 || longitude != 0)
+        }
+
         enum CodingKeys: String, CodingKey {
             case stationID = "station_id"
-            case name, address
+            case name, address, latitude, longitude
         }
     }
 }
@@ -433,7 +443,7 @@ struct NearestStationLive: Decodable, Sendable {
 
     /// Same presentation model as a station fetched through a saved request.
     func stationSnapshot() -> SwapStationSnapshot {
-        let batteries = batteryReadiness.map { entry -> BatteryModel in
+        let batteries = batteryReadiness.enumerated().map { index, entry -> BatteryModel in
             let type: String
             switch entry.capacityKwh {
             case 70: type = "70 kWh"
@@ -444,8 +454,10 @@ struct NearestStationLive: Decodable, Sendable {
             default: type = "其他电池"
             }
             let slot = entry.slotID ?? 0
+            let trimmedID = entry.batteryID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedID = (trimmedID?.isEmpty == false ? trimmedID : nil) ?? "slot-\(slot)-\(index)"
             return BatteryModel(
-                id: entry.batteryID ?? "slot-\(slot)",
+                id: resolvedID,
                 chargingProgress: min(max(entry.progressPercent ?? 0, 0), 100),
                 batteryType: type,
                 chargingRemainingMinutes: (entry.chargingRemainingMinutes ?? 0) > 0
@@ -521,6 +533,19 @@ enum BackendClientError: LocalizedError, Equatable {
             case "station_template_not_configured": return "服务端尚未配置换电站查询模板。"
             case "station_not_configured": return "服务端尚未配置换电站轮询。"
             case "database_error": return "后端数据库暂时不可用，请稍后重试。"
+            case "trip_track_not_found": return "该行程暂未同步 GPS 轨迹。"
+            case "invalid_journey_id": return "行程编号无效。"
+            case "check_in_already_attempted": return "今日已完成签到。"
+            case "rewards_disabled": return "服务端尚未启用积分与签到服务。"
+            case "station_coordinates_unavailable": return "该换电站缺少坐标信息，无法估算直线能耗。"
+            case "send_route_result_unknown": return "发送超时或连接中断，无法确认车机是否已收到路线，请先在车机确认后再决定是否重试。"
+            case "vehicle_position_unavailable": return "暂未获取到车辆当前位置，无法自动规划加电路线。"
+            case "route_plan_failed": return "加电路线规划失败：\(message)"
+            case "confirmation_expired": return "确认弹窗已过期或已使用，请重新发送路线。"
+            case "vehicle_changed": return "当前绑定车辆已变更，请重新发起发送。"
+            case "invalid_btn_action": return "所选弹窗操作无效，请重新发送。"
+            case "invalid_send_route_input": return "路线或目的地信息不完整，请检查后重试。"
+            case "send_route_rejected": return "蔚来云端拒绝了发送路线请求：\(message)"
             default: return "\(message)（HTTP \(status) · \(code)）"
             }
         case .upstreamFailure(let code): return "NIO 上游返回失败状态：\(code)。"
@@ -937,6 +962,492 @@ struct AvailableCouponsPage: Decodable, Equatable, Sendable {
     }
 }
 
+struct DailyCheckInOutcome: Decodable, Equatable, Sendable {
+    let checkedIn: Bool
+    let tip: String
+    let credit: Int
+    let serverTime: Int64
+    let checkinTime: Int64
+    let continuousDays: Int
+    let creditAmount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case checkedIn = "checked_in"
+        case tip, credit
+        case serverTime = "server_time"
+        case checkinTime = "checkin_time"
+        case continuousDays = "continuous_days"
+        case creditAmount = "credit_amount"
+    }
+}
+
+struct NearbyStationsRequestPayload: Encodable, Sendable {
+    let latitude: Double
+    let longitude: Double
+}
+
+struct NearbyStation: Decodable, Equatable, Identifiable, Sendable {
+    let stationID: String
+    let name: String?
+    let latitude: Double
+    let longitude: Double
+    let straightLineDistanceKm: Double
+
+    var id: String { stationID }
+
+    var displayName: String {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false ? trimmed : nil) ?? stationID
+    }
+
+    var coordinate: VehicleCoordinate {
+        VehicleCoordinate(latitude: latitude, longitude: longitude)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case stationID = "station_id"
+        case name, latitude, longitude
+        case straightLineDistanceKm = "straight_line_distance_km"
+    }
+}
+
+struct NearbyStationResult: Decodable, Equatable, Sendable {
+    let source: String
+    let fetchedAt: String
+    let viewportZoomLevel: Int
+    let viewportScreenRatio: Double
+    let coverage: String
+    let stations: [NearbyStation]
+
+    enum CodingKeys: String, CodingKey {
+        case source, coverage, stations
+        case fetchedAt = "fetched_at"
+        case viewportZoomLevel = "viewport_zoom_level"
+        case viewportScreenRatio = "viewport_screen_ratio"
+    }
+}
+
+struct StraightLineEnergyRequestPayload: Encodable, Sendable {
+    let latitude: Double
+    let longitude: Double
+    let stationLatitude: Double?
+    let stationLongitude: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case latitude, longitude
+        case stationLatitude = "station_latitude"
+        case stationLongitude = "station_longitude"
+    }
+}
+
+struct StraightLineEnergyEstimate: Decodable, Equatable, Sendable {
+    struct EnergyCache: Decodable, Equatable, Sendable {
+        struct Summary: Decodable, Equatable, Sendable {
+            let actualDistanceKm: Double?
+            let consumptionKWhPer100Km: Double?
+            let coverageComplete: Bool?
+
+            enum CodingKeys: String, CodingKey {
+                case actualDistanceKm = "actual_distance_km"
+                case consumptionKWhPer100Km = "consumption_kwh_per_100km"
+                case coverageComplete = "coverage_complete"
+            }
+        }
+
+        let status: String
+        let stale: Bool
+        let summary: Summary?
+    }
+
+    let stationID: String
+    let stationCoordinatesSource: String
+    let straightLineDistanceKm: Double
+    let energyCache: EnergyCache
+    let estimatedEnergyForStraightLineKWh: Double?
+    let distanceKind: String
+    let roadDistanceKm: Double?
+    let roadTravelTimeMinutes: Double?
+    let trafficAndTollsIncluded: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case stationID = "station_id"
+        case stationCoordinatesSource = "station_coordinates_source"
+        case straightLineDistanceKm = "straight_line_distance_km"
+        case energyCache = "energy_cache"
+        case estimatedEnergyForStraightLineKWh = "estimated_energy_for_straight_line_kwh"
+        case distanceKind = "distance_kind"
+        case roadDistanceKm = "road_distance_km"
+        case roadTravelTimeMinutes = "road_travel_time_minutes"
+        case trafficAndTollsIncluded = "traffic_and_tolls_included"
+    }
+}
+
+enum RouteNodeType: String, Codable, Equatable, Sendable {
+    case orig
+    case dest
+    case waypoint
+    case resource
+    case candidate
+    case waypointCandidate = "waypoint_candidate"
+    case origCandidate = "orig_candidate"
+    case destCandidate = "dest_candidate"
+}
+
+struct SendRoutePoiInput: Codable, Equatable, Identifiable, Sendable {
+    let name: String
+    let address: String?
+    let latitude: Double
+    let longitude: Double
+    let resourceID: String?
+    let cloneLatitude: Double?
+    let cloneLongitude: Double?
+    let nextPointDistance: Int?
+    let stationType: RouteNodeType?
+
+    var id: String {
+        "\(resourceID ?? name):\(latitude):\(longitude)"
+    }
+
+    init(
+        name: String,
+        address: String? = nil,
+        latitude: Double,
+        longitude: Double,
+        resourceID: String? = nil,
+        cloneLatitude: Double? = nil,
+        cloneLongitude: Double? = nil,
+        nextPointDistance: Int? = nil,
+        stationType: RouteNodeType? = nil
+    ) {
+        self.name = name
+        self.address = address
+        self.latitude = latitude
+        self.longitude = longitude
+        self.resourceID = resourceID
+        self.cloneLatitude = cloneLatitude
+        self.cloneLongitude = cloneLongitude
+        self.nextPointDistance = nextPointDistance
+        self.stationType = stationType
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, address, latitude, longitude
+        case resourceID = "resource_id"
+        case cloneLatitude = "clone_latitude"
+        case cloneLongitude = "clone_longitude"
+        case nextPointDistance = "next_point_distance"
+        case stationType = "station_type"
+    }
+}
+
+struct SendRouteDriverInput: Codable, Equatable, Sendable {
+    let routeDriverDuration: Int?
+    let chargeTimes: Int?
+    let routeDistance: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case routeDriverDuration = "route_driver_duration"
+        case chargeTimes = "charge_times"
+        case routeDistance = "route_distance"
+    }
+}
+
+struct PlanRouteInput: Encodable, Equatable, Sendable {
+    let poiList: [SendRoutePoiInput]
+    let includeChargeStops: Bool?
+
+    init(poiList: [SendRoutePoiInput], includeChargeStops: Bool? = nil) {
+        self.poiList = poiList
+        self.includeChargeStops = includeChargeStops
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case poiList = "poi_list"
+        case includeChargeStops = "include_charge_stops"
+    }
+}
+
+struct PlannedRouteStation: Decodable, Equatable, Identifiable, Sendable {
+    let name: String
+    let address: String?
+    let resourceID: String?
+    let resourceType: String?
+    let stationType: RouteNodeType
+    let durationDesc: String?
+    let distanceDesc: String?
+    let remainSOC: Int?
+
+    var id: String {
+        "\(resourceID ?? name):\(stationType.rawValue)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, address
+        case resourceID = "resource_id"
+        case resourceType = "resource_type"
+        case stationType = "station_type"
+        case durationDesc = "duration_desc"
+        case distanceDesc = "distance_desc"
+        case remainSOC = "remain_soc"
+    }
+}
+
+struct PlannedRouteStep: Decodable, Equatable, Identifiable, Sendable {
+    let title: String
+    let subtitle: String?
+    let distanceDesc: String?
+    let remainSOC: Int?
+    let resourceID: String?
+    let resourceType: String?
+    let isPoi: Bool
+    let isPowerSwapClone: Bool
+    let tags: [String]
+    let riskMsg: String?
+
+    var id: String {
+        "\(resourceID ?? title):\(distanceDesc ?? ""):\(isPoi)"
+    }
+
+    var isEnergyStop: Bool {
+        !isPoi || resourceID != nil || resourceType == "PowerSwap" || resourceType == "ChargeStation" || resourceType == "FakePowerSwap"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title, subtitle, tags
+        case distanceDesc = "distance_desc"
+        case remainSOC = "remain_soc"
+        case resourceID = "resource_id"
+        case resourceType = "resource_type"
+        case isPoi = "is_poi"
+        case isPowerSwapClone = "is_power_swap_clone"
+        case riskMsg = "risk_msg"
+    }
+}
+
+struct PlannedRouteOption: Decodable, Equatable, Identifiable, Sendable {
+    let routeID: String?
+    let tagDesc: String?
+    let driveDistanceDesc: String?
+    let driveDurationDesc: String?
+    let planDurationDesc: String?
+    let chargeDesc: String?
+    let chargeDuration: Int?
+    let chargeDurationDesc: String?
+    let tollChargeDesc: String?
+    let hasRisk: Bool?
+    let driver: SendRouteDriverInput?
+    let poiList: [SendRoutePoiInput]
+    let chargeStations: [PlannedRouteStation]
+    let steps: [PlannedRouteStep]
+
+    var id: String {
+        routeID ?? "\(tagDesc ?? "plan"):\(driveDistanceDesc ?? ""):\(poiList.count)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case routeID = "route_id"
+        case tagDesc = "tag_desc"
+        case driveDistanceDesc = "drive_distance_desc"
+        case driveDurationDesc = "drive_duration_desc"
+        case planDurationDesc = "plan_duration_desc"
+        case chargeDesc = "charge_desc"
+        case chargeDuration = "charge_duration"
+        case chargeDurationDesc = "charge_duration_desc"
+        case tollChargeDesc = "toll_charge_desc"
+        case hasRisk = "has_risk"
+        case driver
+        case poiList = "poi_list"
+        case chargeStations = "charge_stations"
+        case steps
+    }
+
+    init(
+        routeID: String?,
+        tagDesc: String?,
+        driveDistanceDesc: String?,
+        driveDurationDesc: String?,
+        planDurationDesc: String?,
+        chargeDesc: String?,
+        chargeDuration: Int? = nil,
+        chargeDurationDesc: String? = nil,
+        tollChargeDesc: String?,
+        hasRisk: Bool?,
+        driver: SendRouteDriverInput?,
+        poiList: [SendRoutePoiInput],
+        chargeStations: [PlannedRouteStation],
+        steps: [PlannedRouteStep] = []
+    ) {
+        self.routeID = routeID
+        self.tagDesc = tagDesc
+        self.driveDistanceDesc = driveDistanceDesc
+        self.driveDurationDesc = driveDurationDesc
+        self.planDurationDesc = planDurationDesc
+        self.chargeDesc = chargeDesc
+        self.chargeDuration = chargeDuration
+        self.chargeDurationDesc = chargeDurationDesc
+        self.tollChargeDesc = tollChargeDesc
+        self.hasRisk = hasRisk
+        self.driver = driver
+        self.poiList = poiList
+        self.chargeStations = chargeStations
+        self.steps = steps
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        routeID = try container.decodeIfPresent(String.self, forKey: .routeID)
+        tagDesc = try container.decodeIfPresent(String.self, forKey: .tagDesc)
+        driveDistanceDesc = try container.decodeIfPresent(String.self, forKey: .driveDistanceDesc)
+        driveDurationDesc = try container.decodeIfPresent(String.self, forKey: .driveDurationDesc)
+        planDurationDesc = try container.decodeIfPresent(String.self, forKey: .planDurationDesc)
+        chargeDesc = try container.decodeIfPresent(String.self, forKey: .chargeDesc)
+        chargeDuration = try container.decodeIfPresent(Int.self, forKey: .chargeDuration)
+        chargeDurationDesc = try container.decodeIfPresent(String.self, forKey: .chargeDurationDesc)
+        tollChargeDesc = try container.decodeIfPresent(String.self, forKey: .tollChargeDesc)
+        hasRisk = try container.decodeIfPresent(Bool.self, forKey: .hasRisk)
+        driver = try container.decodeIfPresent(SendRouteDriverInput.self, forKey: .driver)
+        poiList = try container.decodeIfPresent([SendRoutePoiInput].self, forKey: .poiList) ?? []
+        chargeStations = try container.decodeIfPresent([PlannedRouteStation].self, forKey: .chargeStations) ?? []
+        steps = try container.decodeIfPresent([PlannedRouteStep].self, forKey: .steps) ?? []
+    }
+}
+
+struct PlanRouteOutcome: Decodable, Equatable, Sendable {
+    let requestID: String?
+    let serverTime: Int64?
+    let toastMsg: String?
+    let plans: [PlannedRouteOption]
+
+    enum CodingKeys: String, CodingKey {
+        case requestID = "request_id"
+        case serverTime = "server_time"
+        case toastMsg = "toast_msg"
+        case plans
+    }
+}
+
+struct PlannedRouteSummary: Decodable, Equatable, Sendable {
+    let routeID: String?
+    let tagDesc: String?
+    let driveDistanceDesc: String?
+    let planDurationDesc: String?
+    let chargeDesc: String?
+    let chargeDurationDesc: String?
+    let chargeTimes: Int?
+    let chargeStationNames: [String]
+    let poiCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case routeID = "route_id"
+        case tagDesc = "tag_desc"
+        case driveDistanceDesc = "drive_distance_desc"
+        case planDurationDesc = "plan_duration_desc"
+        case chargeDesc = "charge_desc"
+        case chargeDurationDesc = "charge_duration_desc"
+        case chargeTimes = "charge_times"
+        case chargeStationNames = "charge_station_names"
+        case poiCount = "poi_count"
+    }
+}
+
+struct SendRouteInput: Encodable, Equatable, Sendable {
+    let poiList: [SendRoutePoiInput]
+    let driver: SendRouteDriverInput?
+    let routeID: String?
+    let autoPlan: Bool?
+    let includeChargeStops: Bool?
+
+    init(
+        poiList: [SendRoutePoiInput],
+        driver: SendRouteDriverInput? = nil,
+        routeID: String? = nil,
+        autoPlan: Bool? = nil,
+        includeChargeStops: Bool? = nil
+    ) {
+        self.poiList = poiList
+        self.driver = driver
+        self.routeID = routeID
+        self.autoPlan = autoPlan
+        self.includeChargeStops = includeChargeStops
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case poiList = "poi_list"
+        case driver
+        case routeID = "route_id"
+        case autoPlan = "auto_plan"
+        case includeChargeStops = "include_charge_stops"
+    }
+}
+
+struct ConfirmSendRouteInput: Encodable, Equatable, Sendable {
+    let confirmationToken: String
+    let btnAction: Int
+
+    enum CodingKeys: String, CodingKey {
+        case confirmationToken = "confirmation_token"
+        case btnAction = "btn_action"
+    }
+}
+
+struct SendRouteSwitchStatus: Decodable, Equatable, Sendable {
+    let exposeSendVehicleButton: Bool?
+    let enabled: Bool
+    let requestID: String?
+    let serverTime: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case exposeSendVehicleButton = "expose_send_vehicle_button"
+        case enabled
+        case requestID = "request_id"
+        case serverTime = "server_time"
+    }
+}
+
+struct SendRoutePopup: Decodable, Equatable, Sendable {
+    let content: String?
+    let leftBtnText: String?
+    let leftBtnAction: Int?
+    let rightBtnText: String?
+    let rightBtnAction: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case leftBtnText = "left_btn_text"
+        case leftBtnAction = "left_btn_action"
+        case rightBtnText = "right_btn_text"
+        case rightBtnAction = "right_btn_action"
+    }
+}
+
+struct SendRouteOutcome: Decodable, Equatable, Sendable {
+    let status: String
+    let resultCode: String
+    let requestID: String?
+    let serverTime: Int64?
+    let toastMsg: String?
+    let popupMessage: SendRoutePopup?
+    let confirmationToken: String?
+    let confirmationExpiresInSeconds: Int?
+    let plannedRoute: PlannedRouteSummary?
+
+    var requiresConfirmation: Bool {
+        popupMessage != nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case resultCode = "result_code"
+        case requestID = "request_id"
+        case serverTime = "server_time"
+        case toastMsg = "toast_msg"
+        case popupMessage = "popup_message"
+        case confirmationToken = "confirmation_token"
+        case confirmationExpiresInSeconds = "confirmation_expires_in_seconds"
+        case plannedRoute = "planned_route"
+    }
+}
+
 private struct BackendErrorEnvelope: Decodable {
     let error: String
     let message: String
@@ -1160,6 +1671,229 @@ struct BackendClient: Sendable {
 
     func fetchVehicleTrips(count: Int = 20) async throws -> VehicleTripPage {
         try await fetch(path: "api/v1/vehicle/trips?count=\(min(max(count, 1), 100))")
+    }
+
+    func makeVehicleTripTrackRequest(journeyID: String) throws -> URLRequest {
+        let trimmed = journeyID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.count <= 128,
+              trimmed.utf8.allSatisfy({ byte in
+                  (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+                      || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte)
+                      || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte)
+                      || byte == UInt8(ascii: "_")
+                      || byte == UInt8(ascii: "-")
+              }) else {
+            throw BackendClientError.serverFailure(
+                code: "invalid_journey_id",
+                message: "invalid journey_id",
+                status: 400
+            )
+        }
+        return makeRequest(path: "api/v1/vehicle/trips/\(trimmed)/track")
+    }
+
+    func fetchVehicleTripTrack(journeyID: String) async throws -> VehicleTripTrack {
+        let request = try makeVehicleTripTrackRequest(journeyID: journeyID)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    /// Single explicit daily check-in POST. Never auto-retried.
+    func makeDailyCheckInRequest() -> URLRequest {
+        var request = makeRequest(path: "api/v1/check-in")
+        request.httpMethod = "POST"
+        return request
+    }
+
+    func performDailyCheckIn() async throws -> DailyCheckInOutcome {
+        let request = makeDailyCheckInRequest()
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeNearbyStationsRequest(latitude: Double, longitude: Double) throws -> URLRequest {
+        guard latitude.isFinite, longitude.isFinite,
+              (-90.0...90.0).contains(latitude),
+              (-180.0...180.0).contains(longitude) else {
+            throw BackendClientError.serverFailure(
+                code: "invalid_request",
+                message: "valid latitude and longitude are required",
+                status: 400
+            )
+        }
+        var request = makeRequest(path: "api/v1/stations/nearby")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            NearbyStationsRequestPayload(latitude: latitude, longitude: longitude)
+        )
+        return request
+    }
+
+    func fetchNearbyStations(latitude: Double, longitude: Double) async throws -> NearbyStationResult {
+        let request = try makeNearbyStationsRequest(latitude: latitude, longitude: longitude)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeStraightLineEnergyRequest(
+        stationID: String,
+        latitude: Double,
+        longitude: Double,
+        stationLatitude: Double? = nil,
+        stationLongitude: Double? = nil
+    ) throws -> URLRequest {
+        let trimmedStationID = stationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedStationID.hasPrefix("PS-NIO-"),
+              trimmedStationID.count > "PS-NIO-".count,
+              trimmedStationID.count <= 128,
+              latitude.isFinite, longitude.isFinite,
+              (-90.0...90.0).contains(latitude),
+              (-180.0...180.0).contains(longitude) else {
+            throw BackendClientError.serverFailure(
+                code: "invalid_request",
+                message: "valid station id, latitude and longitude are required",
+                status: 400
+            )
+        }
+        var request = makeRequest(path: "api/v1/stations/\(trimmedStationID)/straight-line-energy")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            StraightLineEnergyRequestPayload(
+                latitude: latitude,
+                longitude: longitude,
+                stationLatitude: stationLatitude,
+                stationLongitude: stationLongitude
+            )
+        )
+        return request
+    }
+
+    func fetchStraightLineEnergy(
+        stationID: String,
+        latitude: Double,
+        longitude: Double,
+        stationLatitude: Double? = nil,
+        stationLongitude: Double? = nil
+    ) async throws -> StraightLineEnergyEstimate {
+        let request = try makeStraightLineEnergyRequest(
+            stationID: stationID,
+            latitude: latitude,
+            longitude: longitude,
+            stationLatitude: stationLatitude,
+            stationLongitude: stationLongitude
+        )
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func fetchSendRouteSwitch() async throws -> SendRouteSwitchStatus {
+        try await fetch(path: "api/v1/vehicle/route/switch")
+    }
+
+    /// Read-only route planning via NIO `energymap-multi`.
+    func makePlanRouteRequest(
+        _ poiList: [SendRoutePoiInput],
+        includeChargeStops: Bool = true
+    ) throws -> URLRequest {
+        try validateRoutePOIs(poiList)
+        var request = makeRequest(path: "api/v1/vehicle/route/plan")
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            PlanRouteInput(poiList: poiList, includeChargeStops: includeChargeStops)
+        )
+        return request
+    }
+
+    func planRouteToVehicle(
+        _ poiList: [SendRoutePoiInput],
+        includeChargeStops: Bool = true
+    ) async throws -> PlanRouteOutcome {
+        let request = try makePlanRouteRequest(poiList, includeChargeStops: includeChargeStops)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    /// Single explicit POST to send a route/destination to the bound vehicle.
+    /// Never auto-retried; timeout surfaces `send_route_result_unknown`.
+    func makeSendRouteRequest(_ input: SendRouteInput) throws -> URLRequest {
+        try validateRoutePOIs(input.poiList)
+        var request = makeRequest(path: "api/v1/vehicle/route/send")
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(input)
+        return request
+    }
+
+    private func validateRoutePOIs(_ poiList: [SendRoutePoiInput]) throws {
+        guard !poiList.isEmpty, poiList.count <= 20 else {
+            throw BackendClientError.serverFailure(
+                code: "invalid_send_route_input",
+                message: "poi_list must contain 1 to 20 points",
+                status: 400
+            )
+        }
+        for poi in poiList {
+            let trimmedName = poi.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedName.isEmpty,
+                  poi.latitude.isFinite, poi.longitude.isFinite,
+                  (-90.0...90.0).contains(poi.latitude),
+                  (-180.0...180.0).contains(poi.longitude) else {
+                throw BackendClientError.serverFailure(
+                    code: "invalid_send_route_input",
+                    message: "each poi requires a valid name and coordinates",
+                    status: 400
+                )
+            }
+        }
+    }
+
+    func sendRouteToVehicle(_ input: SendRouteInput) async throws -> SendRouteOutcome {
+        let request = try makeSendRouteRequest(input)
+        return try await executeSendRouteRequest(request)
+    }
+
+    func makeConfirmSendRouteRequest(token: String, btnAction: Int) throws -> URLRequest {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 128 else {
+            throw BackendClientError.serverFailure(
+                code: "confirmation_expired",
+                message: "confirmation token is missing or invalid",
+                status: 410
+            )
+        }
+        var request = makeRequest(path: "api/v1/vehicle/route/send/confirm")
+        request.timeoutInterval = 30
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            ConfirmSendRouteInput(confirmationToken: trimmed, btnAction: btnAction)
+        )
+        return request
+    }
+
+    func confirmSendRouteToVehicle(token: String, btnAction: Int) async throws -> SendRouteOutcome {
+        let request = try makeConfirmSendRouteRequest(token: token, btnAction: btnAction)
+        return try await executeSendRouteRequest(request)
+    }
+
+    private func executeSendRouteRequest(_ request: URLRequest) async throws -> SendRouteOutcome {
+        do {
+            let (data, response) = try await session.data(for: request)
+            return try decode(data: data, response: response)
+        } catch let error as URLError
+            where error.code == .timedOut || error.code == .networkConnectionLost {
+            throw BackendClientError.serverFailure(
+                code: "send_route_result_unknown",
+                message: error.localizedDescription,
+                status: 504
+            )
+        }
     }
 
     func fetchEnergyStats(from: Date, to: Date) async throws -> EnergyStats {

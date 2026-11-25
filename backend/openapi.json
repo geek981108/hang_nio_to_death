@@ -799,6 +799,24 @@
         ],
         "type": "object"
       },
+      "ConfirmSendRouteInput": {
+        "description": "确认服务端弹窗请求体。",
+        "properties": {
+          "btn_action": {
+            "description": "用户所选弹窗按钮对应的非空 action 数值。",
+            "type": "integer"
+          },
+          "confirmation_token": {
+            "description": "发送接口返回的短期单次令牌。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation_token",
+          "btn_action"
+        ],
+        "type": "object"
+      },
       "CouponGroupCount": {
         "description": "合并卡券条目的实际张数。面额仅从明确的券标题识别，不能用 full_price 门槛代替。",
         "properties": {
@@ -1724,6 +1742,546 @@
         ],
         "type": "object"
       },
+      "PlanRouteInput": {
+        "description": "加电路线规划请求体；起点默认取绑定车辆当前位置，若首节点为 orig 则使用显式起点。",
+        "properties": {
+          "include_charge_stops": {
+            "anyOf": [
+              {
+                "description": "是否包含蔚来自动推荐的沿途补能站。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 true；为 false 时仍会向蔚来规划生成官方 route_id，但剔除自动插入的 candidate 补能站。"
+          },
+          "poi_list": {
+            "description": "至少包含 1 个目的地，最多 20 个。",
+            "items": {
+              "$ref": "#/components/schemas/SendRoutePoiInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "poi_list"
+        ],
+        "type": "object"
+      },
+      "PlanRouteOutcome": {
+        "description": "加电路线规划响应。",
+        "properties": {
+          "plans": {
+            "description": "可用的规划方案列表。",
+            "items": {
+              "$ref": "#/components/schemas/PlannedRouteOption"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "上游请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "description": "上游服务端时间戳。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "toast_msg": {
+            "anyOf": [
+              {
+                "description": "上游提示文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "plans"
+        ],
+        "type": "object"
+      },
+      "PlannedRouteOption": {
+        "description": "单条加电规划方案，可直接传给发送接口。",
+        "properties": {
+          "charge_desc": {
+            "anyOf": [
+              {
+                "description": "补能概览文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "charge_duration": {
+            "anyOf": [
+              {
+                "description": "总补能耗时数值。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "charge_duration_desc": {
+            "anyOf": [
+              {
+                "description": "总补能耗时文案（如 补能共10分钟）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "charge_stations": {
+            "description": "沿途推荐换电/充电站点列表。",
+            "items": {
+              "$ref": "#/components/schemas/PlannedRouteStation"
+            },
+            "type": "array"
+          },
+          "drive_distance_desc": {
+            "anyOf": [
+              {
+                "description": "距离文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "drive_duration_desc": {
+            "anyOf": [
+              {
+                "description": "驾驶时长文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendRouteDriverInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "发车机行程摘要。"
+          },
+          "has_risk": {
+            "anyOf": [
+              {
+                "description": "是否存在续航风险提示。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "plan_duration_desc": {
+            "anyOf": [
+              {
+                "description": "含补能总耗时文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "poi_list": {
+            "description": "可直接发送车机的官方节点列表。",
+            "items": {
+              "$ref": "#/components/schemas/SendRoutePoiInput"
+            },
+            "type": "array"
+          },
+          "route_id": {
+            "anyOf": [
+              {
+                "description": "官方规划路线 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "steps": {
+            "description": "含单站补能用时与电量的完整步骤列表。",
+            "items": {
+              "$ref": "#/components/schemas/PlannedRouteStep"
+            },
+            "type": "array"
+          },
+          "tag_desc": {
+            "anyOf": [
+              {
+                "description": "方案标签（如 换电优先 / 推荐路线）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "toll_charge_desc": {
+            "anyOf": [
+              {
+                "description": "过路费文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "poi_list",
+          "charge_stations",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "PlannedRouteStation": {
+        "description": "加电路线沿途推荐补能站点。",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "description": "站点地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "distance_desc": {
+            "anyOf": [
+              {
+                "description": "距上一点或起点距离文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "duration_desc": {
+            "anyOf": [
+              {
+                "description": "单站补能用时与电量说明（来自 card_steps.subtitle）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "name": {
+            "description": "站点名称。",
+            "type": "string"
+          },
+          "remain_soc": {
+            "anyOf": [
+              {
+                "description": "到达预计剩余电量百分比。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "description": "换电站/充电站原始资源 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "description": "站点资源类型（如 PowerSwap / ChargeStation）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "station_type": {
+            "$ref": "#/components/schemas/RouteNodeType"
+          }
+        },
+        "required": [
+          "name",
+          "station_type"
+        ],
+        "type": "object"
+      },
+      "PlannedRouteStep": {
+        "description": "加电路线卡片逐步节点（含各站点单站补能用时、剩余电量与标签）。",
+        "properties": {
+          "distance_desc": {
+            "anyOf": [
+              {
+                "description": "路段距离文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "is_poi": {
+            "description": "是否为普通地点而非补能资源。",
+            "type": "boolean"
+          },
+          "is_power_swap_clone": {
+            "description": "是否为克隆换电站。",
+            "type": "boolean"
+          },
+          "remain_soc": {
+            "anyOf": [
+              {
+                "description": "预计剩余电量百分比。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "description": "补能站点原始资源 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "description": "补能资源类型。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "risk_msg": {
+            "anyOf": [
+              {
+                "description": "续航或站点风险提示。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "description": "补能用时与电量说明（如 预计换电5分钟）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "tags": {
+            "description": "站点标签列表。",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "节点名称。",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "is_poi",
+          "is_power_swap_clone",
+          "tags"
+        ],
+        "type": "object"
+      },
+      "PlannedRouteSummary": {
+        "description": "自动规划并下发车机的路线摘要。",
+        "properties": {
+          "charge_desc": {
+            "anyOf": [
+              {
+                "description": "补能概览文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "charge_duration_desc": {
+            "anyOf": [
+              {
+                "description": "总补能耗时文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "charge_station_names": {
+            "description": "沿途补能站点名称列表。",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "charge_times": {
+            "anyOf": [
+              {
+                "description": "规划补能次数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "drive_distance_desc": {
+            "anyOf": [
+              {
+                "description": "距离文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "plan_duration_desc": {
+            "anyOf": [
+              {
+                "description": "总耗时文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "poi_count": {
+            "description": "最终下发给车机的节点总数。",
+            "type": "integer"
+          },
+          "route_id": {
+            "anyOf": [
+              {
+                "description": "官方规划路线 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "tag_desc": {
+            "anyOf": [
+              {
+                "description": "方案标签。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "charge_station_names",
+          "poi_count"
+        ],
+        "type": "object"
+      },
       "PollOutcome": {
         "description": "单次站点轮询结果。",
         "properties": {
@@ -1829,6 +2387,456 @@
           "outcome",
           "snapshot_id",
           "message"
+        ],
+        "type": "object"
+      },
+      "RouteNodeType": {
+        "description": "对应原版 RoutePlan.RouteResource.NodeType 枚举值。",
+        "enum": [
+          "orig",
+          "dest",
+          "waypoint",
+          "resource",
+          "candidate",
+          "waypoint_candidate",
+          "orig_candidate",
+          "dest_candidate"
+        ],
+        "type": "string"
+      },
+      "SendRouteDriverInput": {
+        "description": "路线摘要信息（可选）。",
+        "properties": {
+          "charge_times": {
+            "anyOf": [
+              {
+                "description": "规划补能次数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "route_distance": {
+            "anyOf": [
+              {
+                "description": "规划总距离。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "route_driver_duration": {
+            "anyOf": [
+              {
+                "description": "预计驾车时长。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "route_driver_duration",
+          "charge_times",
+          "route_distance"
+        ],
+        "type": "object"
+      },
+      "SendRouteInput": {
+        "description": "发送路线到车机请求体；目标车辆由后端按租户凭证自动绑定。",
+        "properties": {
+          "auto_plan": {
+            "anyOf": [
+              {
+                "description": "是否包含自动补能规划（兼容别名）。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选；未提供 route_id 时后端始终先调用 energymap-multi 生成官方 route_id，设为 false 等同于 include_charge_stops=false。"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendRouteDriverInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选行程摘要。"
+          },
+          "include_charge_stops": {
+            "anyOf": [
+              {
+                "description": "是否包含蔚来自动推荐的沿途补能站。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 true；为 false 时保留官方 route_id 与用户自选节点，剔除自动插入的 candidate 补能站。"
+          },
+          "poi_list": {
+            "description": "至少包含 1 个节点，最多 20 个。",
+            "items": {
+              "$ref": "#/components/schemas/SendRoutePoiInput"
+            },
+            "type": "array"
+          },
+          "route_id": {
+            "anyOf": [
+              {
+                "description": "规划路线 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "poi_list"
+        ],
+        "type": "object"
+      },
+      "SendRouteOutcome": {
+        "description": "发送路线到车机响应结果。",
+        "properties": {
+          "confirmation_expires_in_seconds": {
+            "anyOf": [
+              {
+                "description": "确认令牌有效秒数。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "description": "短期确认令牌。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅在弹窗含可执行按钮时返回。"
+          },
+          "planned_route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedRouteSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "后端自动规划路线时返回的路线与沿途补能摘要。"
+          },
+          "popup_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendRoutePopup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "服务端确认弹窗，优先级高于 toast。"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "上游请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "result_code": {
+            "description": "上游 result_code。",
+            "type": "string"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "description": "上游服务端时间。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "status": {
+            "description": "completed 或 confirmation_required。",
+            "type": "string"
+          },
+          "toast_msg": {
+            "anyOf": [
+              {
+                "description": "上游提示文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无弹窗时展示。"
+          }
+        },
+        "required": [
+          "status",
+          "result_code",
+          "request_id",
+          "server_time",
+          "toast_msg",
+          "popup_message",
+          "confirmation_token",
+          "confirmation_expires_in_seconds",
+          "planned_route"
+        ],
+        "type": "object"
+      },
+      "SendRoutePoiInput": {
+        "description": "发送到车机的单个路线节点或目的地 POI。",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "description": "详细地址。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选；为空时默认使用 name。"
+          },
+          "clone_latitude": {
+            "anyOf": [
+              {
+                "description": "克隆站点纬度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选，需与 clone_longitude 成对提供。"
+          },
+          "clone_longitude": {
+            "anyOf": [
+              {
+                "description": "克隆站点经度。",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选，需与 clone_latitude 成对提供。"
+          },
+          "latitude": {
+            "description": "纬度（-90…90）。",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "经度（-180…180）。",
+            "type": "number"
+          },
+          "name": {
+            "description": "地点名称。",
+            "type": "string"
+          },
+          "next_point_distance": {
+            "anyOf": [
+              {
+                "description": "下一候选点距离。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "description": "资源 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "换电站等资源节点原始 ID，可选。"
+          },
+          "station_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteNodeType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "节点类型，可选。"
+          }
+        },
+        "required": [
+          "name",
+          "latitude",
+          "longitude"
+        ],
+        "type": "object"
+      },
+      "SendRoutePopup": {
+        "description": "上游返回的二次确认弹窗内容；左右按钮语义以服务端文本与 action 为准。",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "description": "弹窗正文。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "left_btn_action": {
+            "anyOf": [
+              {
+                "description": "左侧按钮动作码。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "为 null 表示仅关闭不再发送。"
+          },
+          "left_btn_text": {
+            "anyOf": [
+              {
+                "description": "左侧按钮文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "right_btn_action": {
+            "anyOf": [
+              {
+                "description": "右侧按钮动作码。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "为 null 表示仅关闭不再发送。"
+          },
+          "right_btn_text": {
+            "anyOf": [
+              {
+                "description": "右侧按钮文案。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "content",
+          "left_btn_text",
+          "left_btn_action",
+          "right_btn_text",
+          "right_btn_action"
+        ],
+        "type": "object"
+      },
+      "SendRouteSwitchOutcome": {
+        "description": "发送到车机开关查询结果。",
+        "properties": {
+          "enabled": {
+            "description": "是否明确开启（expose_send_vehicle_button == true）。",
+            "type": "boolean"
+          },
+          "expose_send_vehicle_button": {
+            "anyOf": [
+              {
+                "description": "上游原始开关值。",
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上游缺失时为 null。"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "上游请求 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "脱敏诊断用。"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "description": "上游服务端时间戳。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [
+          "expose_send_vehicle_button",
+          "enabled",
+          "request_id",
+          "server_time"
         ],
         "type": "object"
       },
@@ -6476,6 +7484,401 @@
           }
         ],
         "summary": "车辆身份与图片地址",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/vehicle/route/plan": {
+      "post": {
+        "description": "只读代理 NIO `POST /app/api/pe/v6/power/energymap-multi`，默认以当前绑定车辆定位为起点，自动规划至目的地（可含途经点），返回官方 route_id、行程摘要、沿途推荐换电/充电站与可直接发车机的 poi_list。",
+        "operationId": "planVehicleRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRouteInput"
+              }
+            }
+          },
+          "description": "目标目的地与可选途经点列表。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRouteOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_send_route_input：POI 列表为空或坐标/字段无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_position_unavailable：未提供显式起点且车辆当前位置不可用。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "route_plan_failed / send_route_rejected / send_route_upstream_error：上游规划失败或不可用。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "规划加电路线（获取官方 route_id 与沿途补能方案）",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/vehicle/route/send": {
+      "post": {
+        "description": "单次代理 NIO `POST /app/api/pe/v1/route/send-vehicle`，不自动重试。当未提供 route_id 且未禁用 auto_plan 时，后端会先以车辆当前定位调用 `POST /app/api/pe/v6/power/energymap-multi` 自动获取官方 route_id、行程摘要与沿途推荐补能站点后再下发车机。若上游返回 popup_message 且包含非空按钮 action，后端会签发 5 分钟内有效的单次 confirmation_token 供确认接口原样重放。",
+        "operationId": "sendVehicleRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendRouteInput"
+              }
+            }
+          },
+          "description": "路线 POI 列表与可选行程摘要。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendRouteOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_send_route_input：POI 列表为空或坐标/字段无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_position_unavailable：自动规划时缺少车辆当前位置。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "route_plan_failed / send_route_rejected / send_route_upstream_error：上游规划或发送被拒绝或不可用。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "send_route_result_unknown：上游超时或断连，无法确认车机是否已收到路线，切勿自动重试。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "发送导航路线/目的地到车机",
+        "tags": [
+          "车辆"
+        ],
+        "x-no-automatic-retry": true
+      }
+    },
+    "/api/v1/vehicle/route/send/confirm": {
+      "post": {
+        "description": "消费 confirmation_token 并以用户选择的 btn_action 原样重放绑定到当前租户与车辆的原始路线，单次发送不自动重试。",
+        "operationId": "confirmSendVehicleRoute",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSendRouteInput"
+              }
+            }
+          },
+          "description": "确认令牌与服务端弹窗返回的非空 btn_action。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendRouteOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_btn_action：action 不在弹窗允许集合内。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_changed：绑定车辆已变更。"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "confirmation_expired：确认令牌无效、已使用或已过期。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "send_route_rejected / send_route_upstream_error：上游拒绝或不可用。"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "send_route_result_unknown：上游超时或断连，发送结果未知。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "确认服务端发送路线弹窗",
+        "tags": [
+          "车辆"
+        ],
+        "x-no-automatic-retry": true
+      }
+    },
+    "/api/v1/vehicle/route/switch": {
+      "get": {
+        "description": "代理 NIO `/app/api/pe/v1/route/send-vehicle/switch`，始终使用当前租户绑定的 vehicle_id，不接受调用方指定任意车辆。",
+        "operationId": "vehicleRouteSwitch",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendRouteSwitchOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "send_route_upstream_error：上游失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "vehicle_not_configured：车辆凭证未配置。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "查询发送到车机功能开关",
         "tags": [
           "车辆"
         ]

@@ -63,6 +63,12 @@
 		C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
 		C38B0E100000000000000007 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
 		C38B0E100000000000000008 /* TemporaryBackendTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = C38B0E100000000000000006 /* TemporaryBackendTLS.swift */; };
+		D49C1F200000000000000011 /* NIOVehicleControlWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000001 /* NIOVehicleControlWidgets.swift */; };
+		D49C1F200000000000000012 /* NIOVehicleControlWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000001 /* NIOVehicleControlWidgets.swift */; };
+		D49C1F200000000000000013 /* NIOVehicleLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000002 /* NIOVehicleLiveActivity.swift */; };
+		D49C1F200000000000000014 /* NIOVehicleLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000002 /* NIOVehicleLiveActivity.swift */; };
+		D49C1F200000000000000015 /* VehicleLiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000003 /* VehicleLiveActivityManager.swift */; };
+		D49C1F200000000000000016 /* SendRouteToVehicleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49C1F200000000000000004 /* SendRouteToVehicleSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -207,6 +213,10 @@
 		C38B0E100000000000000002 /* BackendEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendEventStream.swift; sourceTree = "<group>"; };
 		C38B0E100000000000000004 /* DebugDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugDiagnosticsView.swift; sourceTree = "<group>"; };
 		C38B0E100000000000000006 /* TemporaryBackendTLS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryBackendTLS.swift; sourceTree = "<group>"; };
+		D49C1F200000000000000001 /* NIOVehicleControlWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOVehicleControlWidgets.swift; sourceTree = "<group>"; };
+		D49C1F200000000000000002 /* NIOVehicleLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NIOVehicleLiveActivity.swift; sourceTree = "<group>"; };
+		D49C1F200000000000000003 /* VehicleLiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleLiveActivityManager.swift; sourceTree = "<group>"; };
+		D49C1F200000000000000004 /* SendRouteToVehicleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendRouteToVehicleSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -336,6 +346,8 @@
 				C38B0E100000000000000002 /* BackendEventStream.swift */,
 				C38B0E100000000000000004 /* DebugDiagnosticsView.swift */,
 				C38B0E100000000000000006 /* TemporaryBackendTLS.swift */,
+				D49C1F200000000000000003 /* VehicleLiveActivityManager.swift */,
+				D49C1F200000000000000004 /* SendRouteToVehicleSheet.swift */,
 			);
 			path = NIOPowerSwapAssist;
 			sourceTree = "<group>";
@@ -345,6 +357,8 @@
 			children = (
 				A17C0DE72F7A000200000004 /* NIOPowerSwapAssistWidget.swift */,
 				A17C0DE72F7A000400000001 /* VehicleWidgetPresentation.swift */,
+				D49C1F200000000000000001 /* NIOVehicleControlWidgets.swift */,
+				D49C1F200000000000000002 /* NIOVehicleLiveActivity.swift */,
 				A17C0DE72F7A000200000005 /* Info.plist */,
 				A17C0DE72F7A000200000006 /* NIOPowerSwapAssistWidget.entitlements */,
 			);
@@ -760,6 +774,8 @@
 				A17C0DE72F7A000200000001 /* NIOPowerSwapAssistWidget.swift in Sources */,
 				A17C0DE72F7A000400000003 /* VehicleWidgetPresentation.swift in Sources */,
 				C38B0E100000000000000007 /* TemporaryBackendTLS.swift in Sources */,
+				D49C1F200000000000000011 /* NIOVehicleControlWidgets.swift in Sources */,
+				D49C1F200000000000000013 /* NIOVehicleLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -798,6 +814,10 @@
 				C38B0E100000000000000001 /* BackendEventStream.swift in Sources */,
 				C38B0E100000000000000003 /* DebugDiagnosticsView.swift in Sources */,
 				C38B0E100000000000000005 /* TemporaryBackendTLS.swift in Sources */,
+				D49C1F200000000000000012 /* NIOVehicleControlWidgets.swift in Sources */,
+				D49C1F200000000000000014 /* NIOVehicleLiveActivity.swift in Sources */,
+				D49C1F200000000000000015 /* VehicleLiveActivityManager.swift in Sources */,
+				D49C1F200000000000000016 /* SendRouteToVehicleSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
