@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+<defs><linearGradient id="back" x2="1" y2="1"><stop stop-color="#0a1420"/><stop offset="1" stop-color="#111724"/></linearGradient><linearGradient id="charging" x2="1" y2="1"><stop stop-color="#061b14"/><stop offset="1" stop-color="#081712"/></linearGradient><linearGradient id="queue" x2="1" y2="1"><stop stop-color="#0c1524"/><stop offset="1" stop-color="#101724"/></linearGradient><linearGradient id="green"><stop stop-color="#50e8a1"/><stop offset="1" stop-color="#16cd69"/></linearGradient></defs>
+<rect width="1600" height="900" fill="url(#back)"/>
+<g font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif">
+<text x="70" y="91" font-size="44" font-weight="700" fill="#f5f7fa">实时活动 · Live Activities</text>
+<text x="70" y="132" font-size="23" fill="#9aa7b6">充电与换电排队状态，一眼掌握</text>
+<rect x="65" y="178" width="713" height="655" rx="30" fill="#172232" stroke="#334254" stroke-width="2"/>
+<rect x="821" y="178" width="713" height="655" rx="30" fill="#172232" stroke="#334254" stroke-width="2"/>
+<circle cx="110" cy="227" r="9" fill="#49de90"/><circle cx="866" cy="227" r="9" fill="#ff9148"/>
+<text x="132" y="241" font-size="30" font-weight="700" fill="#f2f6fc">充电状态</text>
+<text x="890" y="241" font-size="30" font-weight="700" fill="#f2f6fc">换电排队</text>
+<text x="101" y="282" font-size="19" fill="#94a3b8">实时功率 · SOC · 累计充电量</text>
+<text x="858" y="282" font-size="19" fill="#94a3b8">排队位置 · 换电号 · 预计等待时间</text>
+<rect x="92" y="311" width="660" height="271" rx="32" fill="url(#charging)" stroke="#284037" stroke-width="2"/>
+<rect x="848" y="311" width="660" height="271" rx="32" fill="url(#queue)" stroke="#2b3b56" stroke-width="2"/>
+<text x="132" y="363" font-size="26" font-weight="700" fill="#e8f5ec">ϟ  正在充电</text>
+<rect x="603" y="330" width="120" height="40" rx="20" fill="#143b27"/>
+<text x="621" y="358" font-size="26" font-weight="700" fill="#51d782">76.5 kW</text>
+<text x="130" y="443" font-size="76" font-weight="700" fill="#35e175">68%</text>
+<text x="318" y="438" font-size="32" fill="#d2d9dd">312 km</text>
+<text x="594" y="431" font-size="24" fill="#52d581">+18.4 kWh</text>
+<text x="649" y="465" font-size="18" fill="#aab3bc">上限 90%</text>
+<rect x="130" y="485" width="584" height="17" rx="8.5" fill="#34443c"/>
+<rect x="130" y="485" width="397" height="17" rx="8.5" fill="url(#green)"/>
+<rect x="656" y="481" width="5" height="24" rx="2" fill="#fff"/>
+<text x="130" y="546" font-size="20" fill="#acb5b8">充电中 · 上限 90%</text>
+<text x="593" y="546" font-size="20" fill="#acb5b8">更新于 14:28</text>
+<text x="880" y="362" font-size="27" fill="#ff9956">▣</text>
+<text x="925" y="362" font-size="25" font-weight="700" fill="#f2f5fa">天津滨海万达换电站</text>
+<rect x="1348" y="330" width="135" height="40" rx="20" fill="#60402b"/>
+<text x="1367" y="359" font-size="23" font-weight="700" fill="#fff">换电号 04</text>
+<text x="884" y="451" font-size="61" font-weight="700" fill="#ff8b3d">前方 2 辆</text>
+<text x="1336" y="447" font-size="40" font-weight="700" fill="#f8faff">约 9 分钟</text>
+<text x="1410" y="479" font-size="20" fill="#c2c8d0">预计等待</text>
+<text x="884" y="548" font-size="20" fill="#abb6c5">换电排队中 · 前方 2 辆</text>
+<text x="1352" y="548" font-size="20" fill="#abb6c5">更新于 14:27</text>
+<text x="100" y="640" font-size="22" fill="#98a6b7">灵动岛 · Dynamic Island</text>
+<text x="858" y="640" font-size="22" fill="#98a6b7">灵动岛 · Dynamic Island</text>
+<rect x="114" y="668" width="631" height="111" rx="55" fill="#000"/>
+<rect x="870" y="668" width="631" height="111" rx="55" fill="#000"/>
+<text x="158" y="741" font-size="56" font-weight="700" fill="#35d86c">ϟ</text>
+<text x="618" y="741" font-size="41" font-weight="700" fill="#35d86c">68%</text>
+<text x="914" y="739" font-size="45" fill="#ff8c40">▣</text>
+<text x="1285" y="742" font-size="40" font-weight="700" fill="#ff944b">前 2 辆</text>
+<text x="70" y="874" font-size="18" fill="#78889b">NIO Power Swap Assist · Live Activities &amp; Dynamic Island · 界面示意</text>
+</g></svg>
