@@ -22,6 +22,7 @@ struct VehicleDetailView: View {
     @State private var vehicleControlNotice: VehicleControlNotice?
     @State private var showingDebugDiagnostics = false
     @State private var showingSendRouteSheet = false
+    @State private var showingSpecialStatusDetail = false
 
     private var dailyPaths: [DailyVehiclePath] {
         viewModel.dailyPaths
@@ -255,6 +256,13 @@ struct VehicleDetailView: View {
                 viewModel: viewModel
             )
         }
+        .sheet(isPresented: $showingSpecialStatusDetail) {
+            if let dashboard = viewModel.dashboard, dashboard.hasActiveSpecialStatus {
+                specialStatusDetailSheet(dashboard)
+                    .presentationDetents([.height(300), .medium])
+                    .presentationDragIndicator(.visible)
+            }
+        }
         .alert(item: $vehicleControlNotice) { notice in
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("知道了")))
         }
@@ -263,9 +271,13 @@ struct VehicleDetailView: View {
     private func statusHero(_ dashboard: VehicleDashboard) -> some View {
         let vehicleTitle = viewModel.vehicleTitle
         let vehicleColor = viewModel.vehicleColorLabel
-        let isActiveState = dashboard.isDriving || dashboard.isSwapping || dashboard.chargeStateCode == 1
+        let isActiveState = dashboard.hasActiveSpecialStatus
+            || dashboard.isDriving
+            || dashboard.chargeStateCode == 1
         let statusDotColor: Color = {
-            if dashboard.isSwapping { return .cyan }
+            if let special = dashboard.primarySpecialStatus {
+                return specialStatusColor(special)
+            }
             if dashboard.chargeStateCode == 1 { return AppPalette.green }
             if dashboard.isDriving { return AppPalette.blue }
             return dashboard.isConnected ? AppPalette.green : .secondary
@@ -280,10 +292,32 @@ struct VehicleDetailView: View {
                     Text(vehicleTitle)
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
                     HStack(spacing: 6) {
-                        LivePulseDot(color: statusDotColor, size: 7, isPulsing: isActiveState)
-                        Text(vehicleStateLabel(dashboard))
-                            .fontWeight(isActiveState ? .semibold : .regular)
-                            .foregroundStyle(isActiveState ? statusDotColor : .secondary)
+                        if dashboard.hasActiveSpecialStatus {
+                            Button {
+                                quickControlHapticCount += 1
+                                showingSpecialStatusDetail = true
+                            } label: {
+                                HStack(spacing: 5) {
+                                    LivePulseDot(color: statusDotColor, size: 7, isPulsing: true)
+                                    Text(vehicleStateLabel(dashboard))
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(statusDotColor)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(statusDotColor.opacity(0.75))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .background(statusDotColor.opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(TactileScaleButtonStyle(pressedScale: 0.95))
+                            .accessibilityLabel("\(vehicleStateLabel(dashboard))，查看详情")
+                        } else {
+                            LivePulseDot(color: statusDotColor, size: 7, isPulsing: isActiveState)
+                            Text(vehicleStateLabel(dashboard))
+                                .fontWeight(isActiveState ? .semibold : .regular)
+                                .foregroundStyle(isActiveState ? statusDotColor : .secondary)
+                        }
                         if let vehicleColor {
                             Text("· \(vehicleColor)")
                         }
@@ -418,6 +452,222 @@ struct VehicleDetailView: View {
                 endPoint: .bottomTrailing
             )
         }
+    }
+
+    private func specialStatusColor(_ kind: VehicleDashboard.SpecialStatusKind) -> Color {
+        switch kind {
+        case .svt: return AppPalette.red
+        case .repairing: return AppPalette.amber
+        case .fota: return AppPalette.violet
+        case .swapping: return .cyan
+        }
+    }
+
+    private func specialStatusIcon(_ kind: VehicleDashboard.SpecialStatusKind) -> String {
+        switch kind {
+        case .svt: return "exclamationmark.shield.fill"
+        case .repairing: return "wrench.and.screwdriver.fill"
+        case .fota: return "arrow.down.circle.fill"
+        case .swapping: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private func specialStatusShortLabel(_ kind: VehicleDashboard.SpecialStatusKind) -> String {
+        switch kind {
+        case .svt: return "防盗追踪中"
+        case .repairing: return "维修中"
+        case .fota: return "系统升级中"
+        case .swapping: return "正在换电"
+        }
+    }
+
+    @ViewBuilder
+    private func specialStatusDetailSheet(_ dashboard: VehicleDashboard) -> some View {
+        if let primary = dashboard.primarySpecialStatus {
+            let tint = specialStatusColor(primary)
+            let secondary = Array(dashboard.activeSpecialStatuses.dropFirst())
+            let chips = specialStatusContextChips(primary, dashboard: dashboard, secondary: secondary)
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: specialStatusIcon(primary))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 44, height: 44)
+                        .background(tint.opacity(0.14), in: Circle())
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            LivePulseDot(color: tint, size: 7, isPulsing: true)
+                            Text(specialStatusCardTitle(primary, dashboard: dashboard))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                        }
+                        if let timeText = specialStatusTimeCaption(primary, dashboard: dashboard) {
+                            Text(timeText)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    if primary == .fota, let countdown = dashboard.fotaPreparingCountdownSeconds, countdown > 0 {
+                        Text(formatCountdown(countdown))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(tint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(tint.opacity(0.14), in: Capsule())
+                    }
+                }
+
+                Text(specialStatusCardBody(primary, dashboard: dashboard))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !chips.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(chips, id: \.title) { chip in
+                            Label(chip.title, systemImage: chip.icon)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(chip.tint)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(chip.tint.opacity(0.12), in: Capsule())
+                        }
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 10) {
+                    if primary == .svt, let coordinate = currentCoordinate {
+                        Button {
+                            showingSpecialStatusDetail = false
+                            openInMaps(coordinate)
+                        } label: {
+                            Label("查看位置", systemImage: "location.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .foregroundStyle(tint)
+                                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    } else if primary == .swapping {
+                        liveActivityTogglePill(tint: tint)
+                    }
+
+                    Button {
+                        showingSpecialStatusDetail = false
+                    } label: {
+                        Text("知道了")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(.white)
+                            .background(tint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+            .background(AppPalette.canvas.ignoresSafeArea())
+        }
+    }
+
+    private func specialStatusCardTitle(
+        _ kind: VehicleDashboard.SpecialStatusKind,
+        dashboard: VehicleDashboard
+    ) -> String {
+        switch kind {
+        case .svt:
+            return "防盗追踪已触发"
+        case .repairing:
+            return "车辆维修中"
+        case .fota:
+            return dashboard.fotaPreparingCountdownSeconds != nil ? "系统升级准备中" : "车辆系统升级中"
+        case .swapping:
+            return "车辆正在换电"
+        }
+    }
+
+    private func specialStatusTimeCaption(
+        _ kind: VehicleDashboard.SpecialStatusKind,
+        dashboard: VehicleDashboard
+    ) -> String? {
+        switch kind {
+        case .svt:
+            return dashboard.svtSampledAt.map { "触发采样 \(formatDateTime($0))" }
+        case .repairing:
+            return dashboard.repairSampledAt.map { "状态更新时间 \(formatDateTime($0))" }
+        case .fota:
+            return dashboard.fotaPreparingSampledAt.map { "准备时间 \(formatDateTime($0))" }
+        case .swapping:
+            return nil
+        }
+    }
+
+    private func specialStatusCardBody(
+        _ kind: VehicleDashboard.SpecialStatusKind,
+        dashboard: VehicleDashboard
+    ) -> String {
+        switch kind {
+        case .svt:
+            return "防盗追踪模式（SVT）已激活，请立即确认车辆状态与停放位置。"
+        case .repairing:
+            return "车辆当前处于维修模式，服务中心可能正在检修作业。"
+        case .fota:
+            if let code = dashboard.fotaStatusCode {
+                return "车辆正在准备或执行系统升级（状态码 \(code)），升级期间请耐心等待。"
+            }
+            return "车辆正在准备或执行系统升级，请耐心等待升级完成。"
+        case .swapping:
+            return "换电站正在为车辆更换电池，完成后将自动同步最新电量与续航。"
+        }
+    }
+
+    private struct SpecialStatusChip {
+        let title: String
+        let icon: String
+        let tint: Color
+    }
+
+    private func specialStatusContextChips(
+        _ primary: VehicleDashboard.SpecialStatusKind,
+        dashboard: VehicleDashboard,
+        secondary: [VehicleDashboard.SpecialStatusKind]
+    ) -> [SpecialStatusChip] {
+        var chips: [SpecialStatusChip] = []
+        if primary == .repairing {
+            if dashboard.stateCode == 1 {
+                chips.append(SpecialStatusChip(title: "车辆通电/移动中", icon: "car.side.fill", tint: AppPalette.blue))
+            }
+            if dashboard.lockStatusCode == 0 {
+                chips.append(SpecialStatusChip(title: "当前未锁车", icon: "lock.open.fill", tint: AppPalette.amber))
+            }
+        }
+        for extra in secondary {
+            chips.append(
+                SpecialStatusChip(
+                    title: specialStatusShortLabel(extra),
+                    icon: specialStatusIcon(extra),
+                    tint: specialStatusColor(extra)
+                )
+            )
+        }
+        return chips
+    }
+
+    private func formatCountdown(_ seconds: Int64) -> String {
+        if seconds >= 60 {
+            let minutes = max(1, (seconds + 30) / 60)
+            return "约 \(minutes) 分钟后"
+        }
+        return "约 \(seconds) 秒后"
     }
 
     private func activeOrderHomeCard(_ order: ActiveServiceOrder) -> some View {
@@ -1380,7 +1630,12 @@ struct VehicleDetailView: View {
 
 
     private func vehicleStateLabel(_ dashboard: VehicleDashboard) -> String {
-        if dashboard.isSwapping { return "正在换电" }
+        if let special = dashboard.primarySpecialStatus {
+            if special == .fota && dashboard.fotaPreparingCountdownSeconds != nil {
+                return "准备系统升级"
+            }
+            return specialStatusShortLabel(special)
+        }
         switch dashboard.stateCode {
         case 1: return "行驶中"
         case 2: return "已驻车"

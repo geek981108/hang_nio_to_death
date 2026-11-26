@@ -23,6 +23,9 @@ struct WidgetVehicleSnapshot: Equatable, Sendable {
   let isConnected: Bool
   let stateCode: Int?
   let isSwapping: Bool
+  let isRepairing: Bool
+  let isFotaActive: Bool
+  let isSVTActive: Bool
   let stateOfCharge: Double?
   let remainingRange: Double?
   let remainingActualRange: Double?
@@ -32,8 +35,41 @@ struct WidgetVehicleSnapshot: Equatable, Sendable {
   let station: WidgetStationSnapshot?
   let hasStationSelection: Bool
 
+  init(
+    isConnected: Bool,
+    stateCode: Int?,
+    isSwapping: Bool,
+    isRepairing: Bool = false,
+    isFotaActive: Bool = false,
+    isSVTActive: Bool = false,
+    stateOfCharge: Double?,
+    remainingRange: Double?,
+    remainingActualRange: Double?,
+    chargeStateCode: Int?,
+    outsideTemperature: Double?,
+    updatedAt: Date,
+    station: WidgetStationSnapshot?,
+    hasStationSelection: Bool
+  ) {
+    self.isConnected = isConnected
+    self.stateCode = stateCode
+    self.isSwapping = isSwapping
+    self.isRepairing = isRepairing
+    self.isFotaActive = isFotaActive
+    self.isSVTActive = isSVTActive
+    self.stateOfCharge = stateOfCharge
+    self.remainingRange = remainingRange
+    self.remainingActualRange = remainingActualRange
+    self.chargeStateCode = chargeStateCode
+    self.outsideTemperature = outsideTemperature
+    self.updatedAt = updatedAt
+    self.station = station
+    self.hasStationSelection = hasStationSelection
+  }
+
   var prefersFrequentRefresh: Bool {
-    isSwapping || chargeStateCode == 1 || stateCode == 1 || stateCode == 3 || stateCode == 4
+    isSVTActive || isRepairing || isFotaActive || isSwapping
+      || chargeStateCode == 1 || stateCode == 1 || stateCode == 3 || stateCode == 4
   }
 
   var preferredRefreshInterval: TimeInterval {
@@ -41,6 +77,9 @@ struct WidgetVehicleSnapshot: Equatable, Sendable {
   }
 
   var statusText: String {
+    if isSVTActive { return "防盗追踪中" }
+    if isRepairing { return "维修中" }
+    if isFotaActive { return "系统升级中" }
     if isSwapping { return "正在换电" }
     if chargeStateCode == 1 || stateCode == 3 { return "正在充电" }
     switch stateCode {
@@ -52,6 +91,9 @@ struct WidgetVehicleSnapshot: Equatable, Sendable {
   }
 
   var statusIcon: String {
+    if isSVTActive { return "exclamationmark.shield.fill" }
+    if isRepairing { return "wrench.and.screwdriver.fill" }
+    if isFotaActive { return "arrow.down.circle.fill" }
     if isSwapping { return "bolt.circle.fill" }
     if chargeStateCode == 1 || stateCode == 3 { return "bolt.fill" }
     if stateCode == 1 { return "car.side.fill" }
@@ -59,7 +101,10 @@ struct WidgetVehicleSnapshot: Equatable, Sendable {
   }
 
   var statusColor: Color {
-    if isSwapping { return .orange }
+    if isSVTActive { return .red }
+    if isRepairing { return .orange }
+    if isFotaActive { return .purple }
+    if isSwapping { return .cyan }
     if chargeStateCode == 1 || stateCode == 3 { return .green }
     return isConnected ? .teal : .secondary
   }

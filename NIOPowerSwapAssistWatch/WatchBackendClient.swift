@@ -1,11 +1,36 @@
 import Foundation
 
+struct WatchVehicleProfile: Decodable, Equatable, Sendable {
+    let vehicleID: String
+    let displayName: String?
+    let modelType: String?
+
+    enum CodingKeys: String, CodingKey {
+        case vehicleID = "vehicle_id"
+        case displayName = "display_name"
+        case modelType = "model_type"
+    }
+
+    var displayTitle: String {
+        if let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        if let model = modelType?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+            return "NIO \(model)"
+        }
+        return "我的蔚来"
+    }
+}
+
 struct WatchDashboard: Equatable, Sendable {
     let isConnected: Bool
     let stateOfCharge: Double?
     let remainingRange: Double?
     let isCharging: Bool
     let isSwapping: Bool
+    let isRepairing: Bool
+    let isFotaActive: Bool
+    let isSVTActive: Bool
     let isDriving: Bool
     let lockStatusCode: Int?
     let insideTemperature: Double?
@@ -16,6 +41,9 @@ struct WatchDashboard: Equatable, Sendable {
         remainingRange: Double?,
         isCharging: Bool,
         isSwapping: Bool,
+        isRepairing: Bool = false,
+        isFotaActive: Bool = false,
+        isSVTActive: Bool = false,
         isDriving: Bool = false,
         lockStatusCode: Int? = nil,
         insideTemperature: Double? = nil
@@ -25,6 +53,9 @@ struct WatchDashboard: Equatable, Sendable {
         self.remainingRange = remainingRange
         self.isCharging = isCharging
         self.isSwapping = isSwapping
+        self.isRepairing = isRepairing
+        self.isFotaActive = isFotaActive
+        self.isSVTActive = isSVTActive
         self.isDriving = isDriving
         self.lockStatusCode = lockStatusCode
         self.insideTemperature = insideTemperature
@@ -207,9 +238,12 @@ struct WatchBackendClient: Sendable {
             throw WatchBackendError.vehicleMismatch
         }
         let soc = vehicleStatus.data.socStatus ?? fallback.socStatus
-        let isSwapping = (vehicleStatus.data.specialStatus?.swapping
-            ?? fallback.specialStatus?.swapping
-            ?? 0) != 0
+        let statusSpecial = vehicleStatus.data.specialStatus
+        let fallbackSpecial = fallback.specialStatus
+        let isSwapping = (statusSpecial?.swapping ?? fallbackSpecial?.swapping ?? 0) != 0
+        let isRepairing = (statusSpecial?.effectiveRepairing ?? fallbackSpecial?.effectiveRepairing ?? 0) != 0
+        let isFotaActive = (statusSpecial?.fotaStatus ?? fallbackSpecial?.fotaStatus ?? 0) != 0
+        let isSVTActive = (statusSpecial?.effectiveSVT ?? fallbackSpecial?.effectiveSVT ?? 0) != 0
         let vehicleState = vehicleStatus.data.exteriorStatus?.vehicleState
             ?? fallback.exteriorStatus?.vehicleState
         return WatchDashboard(
@@ -220,12 +254,19 @@ struct WatchBackendClient: Sendable {
             remainingRange: soc?.remainingActualRange ?? soc?.remainingRange,
             isCharging: soc?.chargeState == 1,
             isSwapping: isSwapping,
-            isDriving: !isSwapping && vehicleState == 1,
+            isRepairing: isRepairing,
+            isFotaActive: isFotaActive,
+            isSVTActive: isSVTActive,
+            isDriving: !isSwapping && !isRepairing && !isFotaActive && vehicleState == 1,
             lockStatusCode: fallback.doorStatus?.vehicleLockStatus
                 ?? vehicleStatus.data.doorStatus?.vehicleLockStatus,
             insideTemperature: vehicleStatus.data.hvacStatus?.temperature
                 ?? fallback.hvacStatus?.temperature
         )
+    }
+
+    func fetchVehicleProfile() async throws -> WatchVehicleProfile {
+        try await fetch(path: "api/v1/vehicle/profile")
     }
 
     func fetchActiveOrders() async throws -> [WatchActiveOrder] {
@@ -356,7 +397,34 @@ private struct WidgetInfoEnvelope: Decodable {
 
 private struct VehiclePayload: Decodable {
     struct ConnectionStatus: Decodable { let connected: Bool? }
-    struct SpecialStatus: Decodable { let swapping: Int? }
+    struct SpecialStatus: Decodable {
+        let swapping: Int?
+        let repaired: Int?
+        let repairing: Int?
+        let vehlRepaired: Int?
+        let fotaStatus: Int?
+        let svt: Int?
+        let vehlSVT: Int?
+
+        var effectiveRepairing: Int? {
+            [repaired, repairing, vehlRepaired].compactMap { $0 }.first { $0 != 0 }
+                ?? repaired ?? repairing ?? vehlRepaired
+        }
+
+        var effectiveSVT: Int? {
+            [svt, vehlSVT].compactMap { $0 }.first { $0 != 0 } ?? svt ?? vehlSVT
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case swapping
+            case repaired
+            case repairing
+            case vehlRepaired = "vehl_repaired"
+            case fotaStatus = "fota_status"
+            case svt
+            case vehlSVT = "vehl_svt"
+        }
+    }
     struct ExteriorStatus: Decodable {
         let vehicleState: Int?
         enum CodingKeys: String, CodingKey {

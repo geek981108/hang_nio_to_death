@@ -112,6 +112,9 @@ final class VehicleLiveActivityManager {
     private var manuallyDismissedSessionKey: String?
     private var lastPushedSessionKey: String?
     private var lastPushedState: NIOVehicleLiveActivityAttributes.ContentState?
+    #if DEBUG
+    private var isSimulationActive = false
+    #endif
 
     var hasActiveActivity: Bool {
         !Activity<NIOVehicleLiveActivityAttributes>.activities.isEmpty
@@ -120,6 +123,15 @@ final class VehicleLiveActivityManager {
     /// Synchronizes the system Live Activity with the latest vehicle/order state.
     /// Returns whether a Live Activity is active after synchronization.
     func synchronize(plan: VehicleLiveActivityPlan?, forceStart: Bool = false) async -> Bool {
+        #if DEBUG
+        if isSimulationActive {
+            return hasActiveActivity
+        }
+        #endif
+        return await applyPlan(plan, forceStart: forceStart)
+    }
+
+    private func applyPlan(_ plan: VehicleLiveActivityPlan?, forceStart: Bool) async -> Bool {
         let activities = Activity<NIOVehicleLiveActivityAttributes>.activities
 
         guard let plan else {
@@ -192,6 +204,9 @@ final class VehicleLiveActivityManager {
     }
 
     func dismissCurrent(sessionKey: String?) async {
+        #if DEBUG
+        isSimulationActive = false
+        #endif
         manuallyDismissedSessionKey = sessionKey
         lastPushedSessionKey = nil
         lastPushedState = nil
@@ -199,4 +214,149 @@ final class VehicleLiveActivityManager {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
+
+    #if DEBUG
+    enum DebugSimulationPreset: String {
+        case swap
+        case swapReady = "swap-ready"
+        case charging
+        case end
+
+        init?(rawValueInsensitive: String) {
+            switch rawValueInsensitive.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "swap", "swap-queue", "swap_queue", "queue":
+                self = .swap
+            case "swap-ready", "swap_ready", "ready", "swapping":
+                self = .swapReady
+            case "charging", "charge":
+                self = .charging
+            case "end", "stop", "off", "clear":
+                self = .end
+            default:
+                return nil
+            }
+        }
+    }
+
+    static func debugSimulationPresetFromLaunchArgs() -> DebugSimulationPreset? {
+        let prefix = "--live-activity-demo="
+        guard let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }) else {
+            return nil
+        }
+        return DebugSimulationPreset(rawValueInsensitive: String(arg.dropFirst(prefix.count)))
+    }
+
+    @discardableResult
+    func handleDebugURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "niopowerswapassist",
+              url.host?.lowercased() == "debug",
+              url.path.lowercased() == "/live-activity" else {
+            return false
+        }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let query = Dictionary(
+            uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item -> (String, String)? in
+                guard let value = item.value else { return nil }
+                return (item.name.lowercased(), value)
+            }
+        )
+        guard let rawMode = query["mode"],
+              let preset = DebugSimulationPreset(rawValueInsensitive: rawMode) else {
+            return false
+        }
+        Task {
+            await applyDebugSimulation(preset, query: query)
+        }
+        return true
+    }
+
+    func applyDebugSimulation(
+        _ preset: DebugSimulationPreset,
+        query: [String: String] = [:]
+    ) async {
+        if preset == .end {
+            isSimulationActive = false
+            await dismissCurrent(sessionKey: nil)
+            return
+        }
+        isSimulationActive = true
+        let now = Date()
+        let plan: VehicleLiveActivityPlan
+        switch preset {
+        case .swap:
+            let ahead = Int(query["ahead"] ?? "") ?? 2
+            let wait = Int(query["wait"] ?? "") ?? 9
+            let queueNo = Int(query["queue"] ?? "") ?? 4
+            let soc = Double(query["soc"] ?? "") ?? 24
+            plan = VehicleLiveActivityPlan(
+                sessionKey: "debug-live-activity:swap",
+                vehicleName: "我的 ET5T",
+                state: NIOVehicleLiveActivityAttributes.ContentState(
+                    mode: .swapQueue,
+                    title: query["station"] ?? "天津滨海万达换电站",
+                    subtitle: ahead == 0 ? "已到你换电 · 请准备进站" : "换电排队中 · 前方 \(ahead) 辆",
+                    updatedAt: now,
+                    orderNo: "DEBUG-SWAP-001",
+                    queueNumber: queueNo,
+                    vehiclesAhead: ahead,
+                    estimatedWaitMinutes: wait,
+                    stateOfCharge: soc,
+                    chargeLimitPercent: nil,
+                    chargingPowerKW: nil,
+                    remainingRangeKm: 108,
+                    chargedEnergyKWh: nil
+                )
+            )
+        case .swapReady:
+            let queueNo = Int(query["queue"] ?? "") ?? 4
+            plan = VehicleLiveActivityPlan(
+                sessionKey: "debug-live-activity:swap",
+                vehicleName: "我的 ET5T",
+                state: NIOVehicleLiveActivityAttributes.ContentState(
+                    mode: .swapQueue,
+                    title: query["station"] ?? "天津滨海万达换电站",
+                    subtitle: "换电站已就绪 · 请驶入换电车位",
+                    updatedAt: now,
+                    orderNo: "DEBUG-SWAP-001",
+                    queueNumber: queueNo,
+                    vehiclesAhead: 0,
+                    estimatedWaitMinutes: 0,
+                    stateOfCharge: 24,
+                    chargeLimitPercent: nil,
+                    chargingPowerKW: nil,
+                    remainingRangeKm: 108,
+                    chargedEnergyKWh: nil
+                )
+            )
+        case .charging:
+            let soc = Double(query["soc"] ?? "") ?? 68
+            let limit = Double(query["limit"] ?? "") ?? 90
+            let power = Double(query["power"] ?? "") ?? 76.5
+            let energy = Double(query["energy"] ?? "") ?? 18.4
+            let range = Double(query["range"] ?? "") ?? 312
+            plan = VehicleLiveActivityPlan(
+                sessionKey: "debug-live-activity:charging",
+                vehicleName: "我的 ET5T",
+                state: NIOVehicleLiveActivityAttributes.ContentState(
+                    mode: .charging,
+                    title: "正在充电",
+                    subtitle: "充电中 · 上限 \(Int(limit.rounded()))%",
+                    updatedAt: now,
+                    orderNo: nil,
+                    queueNumber: nil,
+                    vehiclesAhead: nil,
+                    estimatedWaitMinutes: nil,
+                    stateOfCharge: soc,
+                    chargeLimitPercent: limit,
+                    chargingPowerKW: power,
+                    remainingRangeKm: range,
+                    chargedEnergyKWh: energy
+                )
+            )
+        case .end:
+            return
+        }
+        _ = await applyPlan(plan, forceStart: true)
+    }
+    #endif
 }

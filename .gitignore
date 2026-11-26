@@ -22,6 +22,8 @@
 !/tools/nio-ble-readonly/README.md
 !/tools/nio-ble-readonly/decoder.py
 !/tools/nio-ble-readonly/test_decoder.py
+!/tools/nio-ble-readonly/replay.py
+!/tools/nio-ble-readonly/test_replay.py
 
 # —— Xcode / macOS ——
 .DS_Store
