@@ -117,17 +117,27 @@ private struct WatchWidgetView: View {
 
     private var statusText: String {
         guard let snapshot = entry.snapshot else { return "打开 App 刷新" }
+        if snapshot.isSVTActive { return "防盗追踪" }
+        if snapshot.isRepairing { return "维修中" }
+        if snapshot.isFotaActive { return "升级中" }
         if snapshot.isSwapping { return "换电中" }
         if snapshot.isCharging { return "充电中" }
         return snapshot.isConnected ? "在线" : "离线"
     }
 
     private var queueOrStatusText: String {
-        entry.snapshot?.queueText ?? entry.snapshot?.stationName ?? statusText
+        if let snapshot = entry.snapshot,
+           snapshot.isSVTActive || snapshot.isRepairing || snapshot.isFotaActive {
+            return statusText
+        }
+        return entry.snapshot?.queueText ?? entry.snapshot?.stationName ?? statusText
     }
 
     private var statusSymbol: String {
         guard let snapshot = entry.snapshot else { return "car.side" }
+        if snapshot.isSVTActive { return "exclamationmark.shield.fill" }
+        if snapshot.isRepairing { return "wrench.and.screwdriver.fill" }
+        if snapshot.isFotaActive { return "arrow.down.circle.fill" }
         if snapshot.isSwapping { return "arrow.triangle.2.circlepath" }
         if snapshot.isCharging { return "bolt.fill" }
         return snapshot.isConnected ? "car.side.fill" : "car.side"
@@ -135,6 +145,9 @@ private struct WatchWidgetView: View {
 
     private var statusColor: Color {
         guard let snapshot = entry.snapshot else { return .secondary }
+        if snapshot.isSVTActive { return .red }
+        if snapshot.isRepairing { return .orange }
+        if snapshot.isFotaActive { return .purple }
         if snapshot.isSwapping { return .cyan }
         if snapshot.isCharging { return .green }
         if let soc = snapshot.stateOfCharge {

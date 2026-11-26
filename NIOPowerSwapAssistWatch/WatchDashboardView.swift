@@ -595,7 +595,7 @@ struct WatchDashboardView: View {
 
     private var pageTitle: String {
         switch selectedPage {
-        case .overview: return "我的蔚来"
+        case .overview: return viewModel.vehicleName ?? "我的蔚来"
         case .controls: return "远程车控"
         case .station: return "换电站"
         }
@@ -625,6 +625,9 @@ struct WatchDashboardView: View {
 
     private var statusText: String {
         guard let dashboard = viewModel.dashboard else { return "等待刷新" }
+        if dashboard.isSVTActive { return "防盗追踪" }
+        if dashboard.isRepairing { return "维修中" }
+        if dashboard.isFotaActive { return "升级中" }
         if dashboard.isSwapping { return "正在换电" }
         if dashboard.isCharging { return "正在充电" }
         if dashboard.isDriving { return "行驶中" }
@@ -633,6 +636,9 @@ struct WatchDashboardView: View {
 
     private var statusSymbol: String {
         guard let dashboard = viewModel.dashboard else { return "arrow.clockwise" }
+        if dashboard.isSVTActive { return "exclamationmark.shield.fill" }
+        if dashboard.isRepairing { return "wrench.and.screwdriver.fill" }
+        if dashboard.isFotaActive { return "arrow.down.circle.fill" }
         if dashboard.isSwapping { return "arrow.triangle.2.circlepath" }
         if dashboard.isCharging { return "bolt.fill" }
         if dashboard.isDriving { return "car.rear.road.lane" }
@@ -641,6 +647,9 @@ struct WatchDashboardView: View {
 
     private var batteryRingColor: Color {
         guard let soc = viewModel.dashboard?.stateOfCharge else { return accentColor }
+        if viewModel.dashboard?.isSVTActive == true { return .red }
+        if viewModel.dashboard?.isRepairing == true { return .orange }
+        if viewModel.dashboard?.isFotaActive == true { return .purple }
         if viewModel.dashboard?.isSwapping == true { return .cyan }
         if viewModel.dashboard?.isCharging == true { return .green }
         if soc < 20 { return .red }
@@ -650,6 +659,9 @@ struct WatchDashboardView: View {
 
     private var accentColor: Color {
         guard let dashboard = viewModel.dashboard else { return .secondary }
+        if dashboard.isSVTActive { return .red }
+        if dashboard.isRepairing { return .orange }
+        if dashboard.isFotaActive { return .purple }
         if dashboard.isSwapping { return .cyan }
         if dashboard.isCharging { return .green }
         if dashboard.isDriving { return .blue }

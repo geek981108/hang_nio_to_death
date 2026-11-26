@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var showingBackendStations = false
     @State private var showingNearbyStations = false
     @State private var showingBackendSettings = false
+    @State private var pendingAppleTVEndpoint: TVPairingEndpoint?
     @State private var showingSwapOrderConfirmation = false
     @State private var selectedTab: AppTab = .vehicle
     @State private var didInitialLoad = false
@@ -207,6 +208,15 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             guard url.scheme?.lowercased() == "niopowerswapassist" else { return }
+            #if DEBUG
+            if VehicleLiveActivityManager.shared.handleDebugURL(url) {
+                return
+            }
+            #endif
+            if let tvEndpoint = TVPairingEndpoint(pairingURL: url) {
+                pendingAppleTVEndpoint = tvEndpoint
+                return
+            }
             if url.host?.lowercased() == "vehicle" {
                 selectedTab = .vehicle
             } else if url.host?.lowercased() == "station" {
@@ -214,6 +224,21 @@ struct ContentView: View {
             } else if url.host?.lowercased() == "insights" {
                 selectedTab = .insights
             }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { pendingAppleTVEndpoint != nil },
+                set: { if !$0 { pendingAppleTVEndpoint = nil } }
+            )
+        ) {
+            AppleTVPairingSheet(
+                isPresented: Binding(
+                    get: { pendingAppleTVEndpoint != nil },
+                    set: { if !$0 { pendingAppleTVEndpoint = nil } }
+                ),
+                viewModel: vehicleViewModel,
+                initialEndpoint: pendingAppleTVEndpoint
+            )
         }
     }
 

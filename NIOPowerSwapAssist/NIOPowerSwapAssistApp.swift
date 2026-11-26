@@ -32,6 +32,11 @@ struct NIOPowerSwapAssistApp: App {
                 WatchConfigurationBridge.shared.sync(
                     BackendSettingsStore.shared.watchConfiguration()
                 )
+                #if DEBUG
+                if let preset = VehicleLiveActivityManager.debugSimulationPresetFromLaunchArgs() {
+                    await VehicleLiveActivityManager.shared.applyDebugSimulation(preset)
+                }
+                #endif
             }
         }
     }

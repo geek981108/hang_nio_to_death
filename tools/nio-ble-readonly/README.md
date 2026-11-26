@@ -8,7 +8,28 @@
 python3 -m unittest discover -s tools/nio-ble-readonly -v
 ```
 
-当前 17 项测试全部使用人工构造的合成字节，覆盖已恢复的方法体逻辑和明确标记的防御性处理。没有真实抓包，也没有证明实际车辆支持 NT2。**测试通过不代表完整目标完成。** 本轮验证环境为 Python 3.15.2、cryptography 50.0.2；未安装或更改依赖。纯解析部分仅用标准库，加密测试及接收解码需 cryptography。
+当前 23 项测试（17 项解析、6 项回放）全部使用人工构造的合成字节，覆盖已恢复的方法体逻辑和明确标记的防御性处理。没有真实抓包，也没有证明实际车辆支持 NT2。**测试通过不代表完整目标完成。** 本轮验证环境为 Python 3.15.2、cryptography 50.0.2；未安装或更改依赖。纯解析部分仅用标准库，加密测试及接收解码需 cryptography。
+
+## 离线记录回放
+
+```sh
+python3 tools/nio-ble-readonly/replay.py /absolute/path/recording.jsonl
+```
+
+输入每行一个 JSON 对象，仅支持以下事件：
+
+```json
+{"event":"connect","generation":"connection-1","timestamp":0}
+{"event":"notification","generation":"connection-1","timestamp":1,"hex":"04b10020b2957c733126bfd1"}
+{"event":"notification","generation":"connection-1","timestamp":2,"hex":"60abd9379cc977feb9a9a15acf2cc3c347498be51d867881"}
+{"event":"disconnect","generation":"connection-1","timestamp":3}
+```
+
+以上是公开合成密文示例，绝非真实记录。timestamp 是整份记录共用的单调时间，单位秒；generation 是每次连接新分配的匿名标识，不使用账号、车辆 ID 或 MAC。保存每次通知原有边界，不重分片、不拼帧。
+
+工具逐行读取并限制输入大小，拒绝重复 JSON 字段、跨连接数据、时间倒退、超时和不完整帧；首个错误终止，输出行号和固定诊断，退出码 2。成功退出码 0 仅代表记录通过该模式的检查，报告始终保留 `authentication_verified=false` 和 `vehicle_verified=false`。完整帧后记录结束可以保留连接开启状态，不能据此声称验证过断开。
+
+命令行只做外层重组，输出包类别、长度、时间及连接序号，不输出原始包或连接标识，也不接收密钥文件。库函数 `replay(events, decode_packet=...)` 可注入进程内解码器，按 generation 选择已合法建立会话的上下文；测试用它回放 OpenSSL 合成向量并核对已知状态。回调须返回现有 decoder 的结构，不得返回凭据；错误内容不会回显。当前没有实际认证模块或真实录制器。
 
 ## 输入边界
 

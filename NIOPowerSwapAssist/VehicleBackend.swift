@@ -41,11 +41,26 @@ struct BackendConfiguration: Equatable, Sendable {
 }
 
 struct VehicleDashboard: Codable, Equatable, Sendable {
+    enum SpecialStatusKind: String, Codable, Equatable, Hashable, Sendable {
+        case svt
+        case repairing
+        case fota
+        case swapping
+    }
+
     let vehicleID: String
     let isConnected: Bool
     let stateCode: Int?
     let mileage: Double?
     let isSwapping: Bool
+    let isRepairing: Bool
+    let fotaStatusCode: Int?
+    let isSVTActive: Bool
+    let repairSampledAt: Date?
+    let fotaPreparingSampledAt: Date?
+    let fotaPreparingCountdownSeconds: Int64?
+    let svtSampledAt: Date?
+    let rawSpecialStatusFields: [String: String]?
     let stateOfCharge: Double?
     let remainingRange: Double?
     let remainingActualRange: Double?
@@ -62,9 +77,123 @@ struct VehicleDashboard: Codable, Equatable, Sendable {
     let outsideTemperature: Double?
     let updatedAt: Date
 
-    /// Vehicle is actively driving when stateCode == 1 and not in a battery swap.
+    init(
+        vehicleID: String,
+        isConnected: Bool,
+        stateCode: Int?,
+        mileage: Double?,
+        isSwapping: Bool,
+        isRepairing: Bool = false,
+        fotaStatusCode: Int? = nil,
+        isSVTActive: Bool = false,
+        repairSampledAt: Date? = nil,
+        fotaPreparingSampledAt: Date? = nil,
+        fotaPreparingCountdownSeconds: Int64? = nil,
+        svtSampledAt: Date? = nil,
+        rawSpecialStatusFields: [String: String]? = nil,
+        stateOfCharge: Double?,
+        remainingRange: Double?,
+        remainingActualRange: Double?,
+        chargeStateCode: Int?,
+        chargingCurrent: Double?,
+        chargingPower: Double?,
+        chargingVoltage: Double?,
+        chargeLimitPercent: Double?,
+        batterySampledAt: Date?,
+        lockStatusCode: Int?,
+        location: VehicleCoordinate?,
+        locationSampledAt: Date?,
+        insideTemperature: Double?,
+        outsideTemperature: Double?,
+        updatedAt: Date
+    ) {
+        self.vehicleID = vehicleID
+        self.isConnected = isConnected
+        self.stateCode = stateCode
+        self.mileage = mileage
+        self.isSwapping = isSwapping
+        self.isRepairing = isRepairing
+        self.fotaStatusCode = fotaStatusCode
+        self.isSVTActive = isSVTActive
+        self.repairSampledAt = repairSampledAt
+        self.fotaPreparingSampledAt = fotaPreparingSampledAt
+        self.fotaPreparingCountdownSeconds = fotaPreparingCountdownSeconds
+        self.svtSampledAt = svtSampledAt
+        self.rawSpecialStatusFields = rawSpecialStatusFields
+        self.stateOfCharge = stateOfCharge
+        self.remainingRange = remainingRange
+        self.remainingActualRange = remainingActualRange
+        self.chargeStateCode = chargeStateCode
+        self.chargingCurrent = chargingCurrent
+        self.chargingPower = chargingPower
+        self.chargingVoltage = chargingVoltage
+        self.chargeLimitPercent = chargeLimitPercent
+        self.batterySampledAt = batterySampledAt
+        self.lockStatusCode = lockStatusCode
+        self.location = location
+        self.locationSampledAt = locationSampledAt
+        self.insideTemperature = insideTemperature
+        self.outsideTemperature = outsideTemperature
+        self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vehicleID = try container.decode(String.self, forKey: .vehicleID)
+        isConnected = try container.decode(Bool.self, forKey: .isConnected)
+        stateCode = try container.decodeIfPresent(Int.self, forKey: .stateCode)
+        mileage = try container.decodeIfPresent(Double.self, forKey: .mileage)
+        isSwapping = try container.decodeIfPresent(Bool.self, forKey: .isSwapping) ?? false
+        isRepairing = try container.decodeIfPresent(Bool.self, forKey: .isRepairing) ?? false
+        fotaStatusCode = try container.decodeIfPresent(Int.self, forKey: .fotaStatusCode)
+        isSVTActive = try container.decodeIfPresent(Bool.self, forKey: .isSVTActive) ?? false
+        repairSampledAt = try container.decodeIfPresent(Date.self, forKey: .repairSampledAt)
+        fotaPreparingSampledAt = try container.decodeIfPresent(Date.self, forKey: .fotaPreparingSampledAt)
+        fotaPreparingCountdownSeconds = try container.decodeIfPresent(Int64.self, forKey: .fotaPreparingCountdownSeconds)
+        svtSampledAt = try container.decodeIfPresent(Date.self, forKey: .svtSampledAt)
+        rawSpecialStatusFields = try container.decodeIfPresent([String: String].self, forKey: .rawSpecialStatusFields)
+        stateOfCharge = try container.decodeIfPresent(Double.self, forKey: .stateOfCharge)
+        remainingRange = try container.decodeIfPresent(Double.self, forKey: .remainingRange)
+        remainingActualRange = try container.decodeIfPresent(Double.self, forKey: .remainingActualRange)
+        chargeStateCode = try container.decodeIfPresent(Int.self, forKey: .chargeStateCode)
+        chargingCurrent = try container.decodeIfPresent(Double.self, forKey: .chargingCurrent)
+        chargingPower = try container.decodeIfPresent(Double.self, forKey: .chargingPower)
+        chargingVoltage = try container.decodeIfPresent(Double.self, forKey: .chargingVoltage)
+        chargeLimitPercent = try container.decodeIfPresent(Double.self, forKey: .chargeLimitPercent)
+        batterySampledAt = try container.decodeIfPresent(Date.self, forKey: .batterySampledAt)
+        lockStatusCode = try container.decodeIfPresent(Int.self, forKey: .lockStatusCode)
+        location = try container.decodeIfPresent(VehicleCoordinate.self, forKey: .location)
+        locationSampledAt = try container.decodeIfPresent(Date.self, forKey: .locationSampledAt)
+        insideTemperature = try container.decodeIfPresent(Double.self, forKey: .insideTemperature)
+        outsideTemperature = try container.decodeIfPresent(Double.self, forKey: .outsideTemperature)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    var isFotaActive: Bool {
+        (fotaStatusCode ?? 0) != 0
+    }
+
+    /// Ordered by safety/intervention priority: SVT > Repairing > FOTA > Swapping.
+    var activeSpecialStatuses: [SpecialStatusKind] {
+        var list: [SpecialStatusKind] = []
+        if isSVTActive { list.append(.svt) }
+        if isRepairing { list.append(.repairing) }
+        if isFotaActive { list.append(.fota) }
+        if isSwapping { list.append(.swapping) }
+        return list
+    }
+
+    var primarySpecialStatus: SpecialStatusKind? {
+        activeSpecialStatuses.first
+    }
+
+    var hasActiveSpecialStatus: Bool {
+        !activeSpecialStatuses.isEmpty
+    }
+
+    /// Vehicle is actively driving when stateCode == 1 and not in swap/repair/FOTA special modes.
     var isDriving: Bool {
-        !isSwapping && stateCode == 1
+        !isSwapping && !isRepairing && !isFotaActive && stateCode == 1
     }
 }
 
@@ -204,6 +333,109 @@ struct NIOVehicleStatusResponse: Decodable, Sendable {
 
     struct SpecialStatus: Decodable, Sendable {
         let swapping: Int?
+        let repairing: Int?
+        let fotaStatus: Int?
+        let svt: Int?
+        let repairSampleTime: Int64?
+        let preparingSampleTime: Int64?
+        let preparingCountdownSeconds: Int64?
+        let svtSampleTime: Int64?
+        let rawFields: [String: String]
+
+        private struct DynamicKey: CodingKey {
+            var stringValue: String
+            var intValue: Int?
+            init?(stringValue: String) { self.stringValue = stringValue; self.intValue = nil }
+            init?(intValue: Int) { self.stringValue = String(intValue); self.intValue = intValue }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case swapping
+            case repaired
+            case repairing
+            case vehlRepaired = "vehl_repaired"
+            case fotaStatus = "fota_status"
+            case fota
+            case svt
+            case vehlSVT = "vehl_svt"
+            case repairSampleTime = "repair_sample_time"
+            case preparingSampleTime = "preparing_sample_time"
+            case preparingCountdownSeconds = "preparing_countdown_seconds"
+            case svtSampleTime = "svt_sample_time"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            swapping = Self.decodeFlagInt(container, forKey: .swapping)
+            repairing = Self.decodeFirstFlagInt(container, keys: [.repaired, .repairing, .vehlRepaired])
+            fotaStatus = Self.decodeFirstFlagInt(container, keys: [.fotaStatus, .fota])
+            svt = Self.decodeFirstFlagInt(container, keys: [.svt, .vehlSVT])
+            repairSampleTime = Self.decodeInt64(container, forKey: .repairSampleTime)
+            preparingSampleTime = Self.decodeInt64(container, forKey: .preparingSampleTime)
+            preparingCountdownSeconds = Self.decodeInt64(container, forKey: .preparingCountdownSeconds)
+            svtSampleTime = Self.decodeInt64(container, forKey: .svtSampleTime)
+
+            var captured: [String: String] = [:]
+            if let dynamic = try? decoder.container(keyedBy: DynamicKey.self) {
+                for key in dynamic.allKeys {
+                    if let intVal = try? dynamic.decode(Int64.self, forKey: key) {
+                        captured[key.stringValue] = String(intVal)
+                    } else if let boolVal = try? dynamic.decode(Bool.self, forKey: key) {
+                        captured[key.stringValue] = boolVal ? "true" : "false"
+                    } else if let strVal = try? dynamic.decode(String.self, forKey: key), !strVal.isEmpty {
+                        captured[key.stringValue] = strVal
+                    } else if let dblVal = try? dynamic.decode(Double.self, forKey: key) {
+                        captured[key.stringValue] = String(dblVal)
+                    }
+                }
+            }
+            rawFields = captured
+        }
+
+        private static func decodeFirstFlagInt(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            keys: [CodingKeys]
+        ) -> Int? {
+            var fallbackZero: Int?
+            for key in keys {
+                guard let value = decodeFlagInt(container, forKey: key) else { continue }
+                if value != 0 { return value }
+                fallbackZero = value
+            }
+            return fallbackZero
+        }
+
+        private static func decodeFlagInt(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            forKey key: CodingKeys
+        ) -> Int? {
+            if let intVal = try? container.decodeIfPresent(Int.self, forKey: key) {
+                return intVal
+            }
+            if let boolVal = try? container.decodeIfPresent(Bool.self, forKey: key) {
+                return boolVal ? 1 : 0
+            }
+            if let strVal = try? container.decodeIfPresent(String.self, forKey: key) {
+                let trimmed = strVal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if let parsed = Int(trimmed) { return parsed }
+                if trimmed == "true" || trimmed == "yes" { return 1 }
+                if trimmed == "false" || trimmed == "no" { return 0 }
+            }
+            return nil
+        }
+
+        private static func decodeInt64(
+            _ container: KeyedDecodingContainer<CodingKeys>,
+            forKey key: CodingKeys
+        ) -> Int64? {
+            if let intVal = try? container.decodeIfPresent(Int64.self, forKey: key) {
+                return intVal
+            }
+            if let strVal = try? container.decodeIfPresent(String.self, forKey: key) {
+                return Int64(strVal.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            return nil
+        }
     }
 
     struct PositionStatus: Decodable, Sendable {
@@ -2093,6 +2325,16 @@ struct BackendClient: Sendable {
             let value = VehicleCoordinate(latitude: latitude, longitude: longitude)
             return value.isValid ? value : nil
         }
+        let statusSpecial = status.data.specialStatus
+        let widgetSpecial = widgetStatus.specialStatus
+        let fotaStatusCode = statusSpecial?.fotaStatus ?? widgetSpecial?.fotaStatus
+        let mergedSpecialFields: [String: String]? = {
+            var merged = widgetSpecial?.rawFields ?? [:]
+            for (k, v) in statusSpecial?.rawFields ?? [:] {
+                merged[k] = v
+            }
+            return merged.isEmpty ? nil : merged
+        }()
         return VehicleDashboard(
             vehicleID: status.data.vehicleID,
             isConnected: status.data.connectionStatus?.connected
@@ -2102,9 +2344,20 @@ struct BackendClient: Sendable {
                 ?? widgetStatus.exteriorStatus?.vehicleState,
             mileage: status.data.exteriorStatus?.mileage
                 ?? widgetStatus.exteriorStatus?.mileage,
-            isSwapping: (status.data.specialStatus?.swapping
-                ?? widgetStatus.specialStatus?.swapping
-                ?? 0) != 0,
+            isSwapping: (statusSpecial?.swapping ?? widgetSpecial?.swapping ?? 0) != 0,
+            isRepairing: (statusSpecial?.repairing ?? widgetSpecial?.repairing ?? 0) != 0,
+            fotaStatusCode: fotaStatusCode,
+            isSVTActive: (statusSpecial?.svt ?? widgetSpecial?.svt ?? 0) != 0,
+            repairSampledAt: (statusSpecial?.repairSampleTime ?? widgetSpecial?.repairSampleTime)
+                .flatMap(Self.positiveDateFromUnixTimestamp),
+            fotaPreparingSampledAt: (statusSpecial?.preparingSampleTime ?? widgetSpecial?.preparingSampleTime)
+                .flatMap(Self.positiveDateFromUnixTimestamp),
+            fotaPreparingCountdownSeconds: (statusSpecial?.preparingCountdownSeconds
+                ?? widgetSpecial?.preparingCountdownSeconds)
+                .flatMap { $0 > 0 ? $0 : nil },
+            svtSampledAt: (statusSpecial?.svtSampleTime ?? widgetSpecial?.svtSampleTime)
+                .flatMap(Self.positiveDateFromUnixTimestamp),
+            rawSpecialStatusFields: mergedSpecialFields,
             stateOfCharge: statusSOC?.soc ?? widgetStatus.socStatus?.soc,
             remainingRange: statusSOC?.remainingRange ?? widgetStatus.socStatus?.remainingRange,
             remainingActualRange: statusSOC?.remainingActualRange
@@ -2127,6 +2380,11 @@ struct BackendClient: Sendable {
             outsideTemperature: status.data.hvacStatus?.outsideTemperature,
             updatedAt: Date()
         )
+    }
+
+    private static func positiveDateFromUnixTimestamp(_ value: Int64) -> Date? {
+        guard value > 0 else { return nil }
+        return dateFromUnixTimestamp(value)
     }
 
     private static func dateFromUnixTimestamp(_ value: Int64) -> Date? {

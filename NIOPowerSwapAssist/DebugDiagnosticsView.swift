@@ -105,6 +105,7 @@ struct DebugDiagnosticsView: View {
                     valueRow("当前数据来源", viewModel.isShowingCachedDashboard ? "本地缓存" : "网络响应")
                     valueRow("活动订单", "\(viewModel.activeServiceOrders.count) 条")
                     valueRow("车辆连接", vehicleConnectionSummary)
+                    valueRow("特殊状态", specialStatusSummary)
                     if let message = viewModel.debugLatestAPIError {
                         diagnosticMessage(message)
                     }
@@ -149,6 +150,30 @@ struct DebugDiagnosticsView: View {
     private var vehicleConnectionSummary: String {
         guard let dashboard = viewModel.dashboard else { return "暂无数据" }
         return dashboard.isConnected ? "在线" : "离线"
+    }
+
+    private var specialStatusSummary: String {
+        guard let dashboard = viewModel.dashboard else { return "暂无数据" }
+        let flags = [
+            dashboard.isSVTActive ? "svt=1" : nil,
+            dashboard.isRepairing ? "repairing=1" : nil,
+            dashboard.isFotaActive ? "fota=\(dashboard.fotaStatusCode ?? 1)" : nil,
+            dashboard.isSwapping ? "swapping=1" : nil
+        ].compactMap { $0 }
+        let rawSummary = dashboard.rawSpecialStatusFields
+            .map { fields in
+                fields.keys.sorted().map { "\($0)=\(fields[$0] ?? "")" }.joined(separator: ", ")
+            }
+        if flags.isEmpty {
+            if let rawSummary, !rawSummary.isEmpty {
+                return "正常（\(rawSummary)）"
+            }
+            return "正常（无特殊工况）"
+        }
+        if let rawSummary, !rawSummary.isEmpty {
+            return "\(flags.joined(separator: " · ")) [\(rawSummary)]"
+        }
+        return flags.joined(separator: " · ")
     }
 
     private func valueRow(_ title: String, _ value: String) -> some View {

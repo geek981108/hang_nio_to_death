@@ -346,6 +346,14 @@ extension VehicleDashboard {
             && stateCode == other.stateCode
             && mileage == other.mileage
             && isSwapping == other.isSwapping
+            && isRepairing == other.isRepairing
+            && fotaStatusCode == other.fotaStatusCode
+            && isSVTActive == other.isSVTActive
+            && repairSampledAt == other.repairSampledAt
+            && fotaPreparingSampledAt == other.fotaPreparingSampledAt
+            && fotaPreparingCountdownSeconds == other.fotaPreparingCountdownSeconds
+            && svtSampledAt == other.svtSampledAt
+            && rawSpecialStatusFields == other.rawSpecialStatusFields
             && stateOfCharge == other.stateOfCharge
             && remainingRange == other.remainingRange
             && remainingActualRange == other.remainingActualRange

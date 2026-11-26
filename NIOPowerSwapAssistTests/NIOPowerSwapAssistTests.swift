@@ -2540,6 +2540,173 @@ struct NIOPowerSwapAssistTests {
         #expect(afterDelete.map(\.name) == ["周末回家"])
     }
 
+    @Test func specialStatusDecodingPriorityAndBackwardCompatibleCache() throws {
+        let config = try BackendConfiguration(
+            baseURLString: "https://backend.example.com",
+            apiKey: String(repeating: "s", count: 32)
+        )
+        let client = BackendClient(configuration: config)
+
+        let statusJSON = """
+        {
+          "result_code": "success",
+          "server_time": 1764060000,
+          "data": {
+            "vehicle_id": "veh-repair-1",
+            "connection_status": { "connected": true },
+            "exterior_status": { "mileage": 12345.0, "vehicle_state": 1 },
+            "special_status": {
+              "swapping": 0,
+              "repaired": 1,
+              "fota_status": 2,
+              "svt": 0,
+              "repair_sample_time": 1764059000,
+              "preparing_sample_time": 0,
+              "preparing_countdown_seconds": 180,
+              "svt_sample_time": 0
+            },
+            "soc_status": { "soc": 64, "remaining_range": 310, "charge_state": 0 }
+          }
+        }
+        """
+        let widgetJSON = """
+        {
+          "result_code": "success",
+          "server_time": 1764060000,
+          "data": {
+            "status": {
+              "vehicle_id": "veh-repair-1",
+              "door_status": { "vehicle_lock_status": 0 }
+            }
+          }
+        }
+        """
+        let status = try JSONDecoder().decode(NIOVehicleStatusResponse.self, from: Data(statusJSON.utf8))
+        let widget = try JSONDecoder().decode(NIOWidgetInfoResponse.self, from: Data(widgetJSON.utf8))
+        let dashboard = try client.makeDashboard(status: status, widget: widget)
+
+        #expect(dashboard.isRepairing == true)
+        #expect(dashboard.isFotaActive == true)
+        #expect(dashboard.fotaStatusCode == 2)
+        #expect(dashboard.isSVTActive == false)
+        #expect(dashboard.isSwapping == false)
+        #expect(dashboard.primarySpecialStatus == .repairing)
+        #expect(dashboard.activeSpecialStatuses == [.repairing, .fota])
+        #expect(dashboard.isDriving == false)
+        #expect(dashboard.repairSampledAt == Date(timeIntervalSince1970: 1764059000))
+        #expect(dashboard.fotaPreparingSampledAt == nil)
+        #expect(dashboard.fotaPreparingCountdownSeconds == 180)
+        #expect(dashboard.svtSampledAt == nil)
+
+        // Legacy cached VehicleDashboard JSON without new special_status keys must still decode cleanly.
+        let legacyCachedJSON = """
+        {
+          "vehicleID": "veh-legacy",
+          "isConnected": true,
+          "stateCode": 2,
+          "mileage": 1000,
+          "isSwapping": false,
+          "updatedAt": 1764060000
+        }
+        """
+        let legacy = try JSONDecoder().decode(VehicleDashboard.self, from: Data(legacyCachedJSON.utf8))
+        #expect(legacy.vehicleID == "veh-legacy")
+        #expect(legacy.isRepairing == false)
+        #expect(legacy.isFotaActive == false)
+        #expect(legacy.isSVTActive == false)
+
+        // Widget snapshot priority and refresh cadence reflect repairing / FOTA / SVT states.
+        let repairWidget = WidgetVehicleSnapshot(
+            isConnected: true,
+            stateCode: 2,
+            isSwapping: false,
+            isRepairing: true,
+            stateOfCharge: 64,
+            remainingRange: 310,
+            remainingActualRange: 280,
+            chargeStateCode: 0,
+            outsideTemperature: 18,
+            updatedAt: .now,
+            station: nil,
+            hasStationSelection: false
+        )
+        #expect(repairWidget.statusText == "维修中")
+        #expect(repairWidget.statusIcon == "wrench.and.screwdriver.fill")
+        #expect(repairWidget.prefersFrequentRefresh == true)
+
+        let svtWidget = WidgetVehicleSnapshot(
+            isConnected: true,
+            stateCode: 2,
+            isSwapping: true,
+            isRepairing: true,
+            isFotaActive: true,
+            isSVTActive: true,
+            stateOfCharge: 64,
+            remainingRange: 310,
+            remainingActualRange: 280,
+            chargeStateCode: 0,
+            outsideTemperature: 18,
+            updatedAt: .now,
+            station: nil,
+            hasStationSelection: false
+        )
+        #expect(svtWidget.statusText == "防盗追踪中")
+    }
+
+    @Test func tvPairingProtocolParsesURLValidatesCodeAndHTTPWire() throws {
+        let endpoint = try #require(
+            TVPairingEndpoint(host: "192.168.1.88", port: 54321, code: "482910", tvName: "客厅 Apple TV")
+        )
+        let url = try #require(endpoint.pairingURL)
+        let roundTrip = try #require(TVPairingEndpoint(pairingURL: url))
+        #expect(roundTrip == endpoint)
+
+        // Reject malformed pairing codes & non-matching URLs.
+        #expect(TVPairingEndpoint(host: "192.168.1.88", port: 54321, code: "12345") == nil)
+        #expect(TVPairingEndpoint(host: "192.168.1.88", port: 54321, code: "abcdef") == nil)
+        #expect(TVPairingEndpoint(pairingURL: URL(string: "niopowerswapassist://vehicle")!) == nil)
+
+        // Constant-time comparison matches exact 6-digit code only.
+        #expect(TVPairingWire.constantTimeEquals("482910", "482910"))
+        #expect(!TVPairingWire.constantTimeEquals("482910", "482911"))
+        #expect(!TVPairingWire.constantTimeEquals("482910", "48291"))
+
+        // HTTP/1.1 wire parsing round-trips a full pairing envelope with route presets.
+        let preset = TVPairingRoutePreset(
+            name: "回家",
+            destination: SendRoutePoiInput(name: "滨海新区", latitude: 39.03, longitude: 117.71, stationType: .dest),
+            enableEnergyPlanning: false
+        )
+        let envelope = TVPairingEnvelope(
+            code: "482910",
+            payload: TVPairingPayload(
+                baseURLString: "https://backend.example.com",
+                apiKey: String(repeating: "a", count: 32),
+                controlKey: nil,
+                stationID: "PS-NIO-001",
+                stationName: "滨海换电站",
+                routePresets: [preset]
+            )
+        )
+        let body = try JSONEncoder().encode(envelope)
+        let rawHTTP = "POST /pair HTTP/1.1\r\nHost: tv.local\r\nContent-Length: \(body.count)\r\n\r\n"
+        var buffer = Data(rawHTTP.utf8)
+        buffer.append(body)
+
+        let parsed = try TVPairingWire.parseHTTPRequest(from: buffer).get()
+        #expect(parsed.method == "POST")
+        #expect(parsed.path == "/pair")
+        let decoded = try JSONDecoder().decode(TVPairingEnvelope.self, from: parsed.body)
+        #expect(decoded == envelope)
+        #expect(decoded.payload.routePresets?.first?.buildRequestPOIs().first?.stationType == .dest)
+
+        // Non-POST or wrong path fails cleanly.
+        let badMethod = Data("GET /pair HTTP/1.1\r\nContent-Length: 0\r\n\r\n".utf8)
+        #expect(TVPairingWire.parseHTTPRequest(from: badMethod) == .failure(.unsupportedMethod))
+        let badPath = Data("POST /other HTTP/1.1\r\nContent-Length: 0\r\n\r\n".utf8)
+        #expect(TVPairingWire.parseHTTPRequest(from: badPath) == .failure(.notFound))
+    }
+
     @Test func stationBatteryShortcutSpeaksCountAndEveryKnownProductionDate() {
         let status = NIOStationLiveStatus(
             stationID: "PS-NIO-test",

@@ -192,6 +192,7 @@ fn normalized_vehicle_state(payload: &serde_json::Value) -> Option<serde_json::V
                             | "update_time"
                             | "preparing_sample_time"
                             | "repair_sample_time"
+                            | "svt_sample_time"
                     )
                 });
                 for child in map.values_mut() {
@@ -364,6 +365,55 @@ mod tests {
         assert_ne!(
             normalized_vehicle_state(&later),
             normalized_vehicle_state(&unlocked)
+        );
+    }
+
+    #[test]
+    fn vehicle_ui_state_detects_special_status_changes_while_ignoring_sample_times() {
+        let normal = serde_json::json!({
+            "data": {
+                "special_status": {
+                    "swapping": 0,
+                    "repairing": 0,
+                    "fota_status": 0,
+                    "svt": 0,
+                    "repair_sample_time": 100,
+                    "preparing_sample_time": 100,
+                    "svt_sample_time": 100
+                }
+            }
+        });
+        let normal_later = serde_json::json!({
+            "data": {
+                "special_status": {
+                    "swapping": 0,
+                    "repairing": 0,
+                    "fota_status": 0,
+                    "svt": 0,
+                    "repair_sample_time": 200,
+                    "preparing_sample_time": 200,
+                    "svt_sample_time": 200
+                }
+            }
+        });
+        let repairing = serde_json::json!({
+            "data": {
+                "special_status": {
+                    "swapping": 0,
+                    "repairing": 1,
+                    "fota_status": 0,
+                    "svt": 0,
+                    "repair_sample_time": 300
+                }
+            }
+        });
+        assert_eq!(
+            normalized_vehicle_state(&normal),
+            normalized_vehicle_state(&normal_later)
+        );
+        assert_ne!(
+            normalized_vehicle_state(&normal_later),
+            normalized_vehicle_state(&repairing)
         );
     }
 }

@@ -132,7 +132,34 @@ private struct NIOVehicleStatusResponse: Decodable, Sendable {
     }
   }
 
-  struct SpecialStatus: Decodable, Sendable { let swapping: Int? }
+  struct SpecialStatus: Decodable, Sendable {
+    let swapping: Int?
+    let repaired: Int?
+    let repairing: Int?
+    let vehlRepaired: Int?
+    let fotaStatus: Int?
+    let svt: Int?
+    let vehlSVT: Int?
+
+    var effectiveRepairing: Int? {
+      [repaired, repairing, vehlRepaired].compactMap { $0 }.first { $0 != 0 }
+        ?? repaired ?? repairing ?? vehlRepaired
+    }
+
+    var effectiveSVT: Int? {
+      [svt, vehlSVT].compactMap { $0 }.first { $0 != 0 } ?? svt ?? vehlSVT
+    }
+
+    enum CodingKeys: String, CodingKey {
+      case swapping
+      case repaired
+      case repairing
+      case vehlRepaired = "vehl_repaired"
+      case fotaStatus = "fota_status"
+      case svt
+      case vehlSVT = "vehl_svt"
+    }
+  }
 
   struct SOCStatus: Decodable, Sendable {
     let soc: Double?
@@ -226,15 +253,18 @@ private struct WidgetBackendClient: Sendable {
     {
       ControlCenter.shared.reloadControls(ofKind: NIOControlLockWidget.kind)
     }
+    let statusSpecial = vehicleStatus.data.specialStatus
+    let widgetSpecial = widgetStatus.specialStatus
     return WidgetVehicleSnapshot(
       isConnected: vehicleStatus.data.connectionStatus?.connected
         ?? widgetStatus.connectionStatus?.connected
         ?? false,
       stateCode: vehicleStatus.data.exteriorStatus?.vehicleState
         ?? widgetStatus.exteriorStatus?.vehicleState,
-      isSwapping: (vehicleStatus.data.specialStatus?.swapping
-        ?? widgetStatus.specialStatus?.swapping
-        ?? 0) != 0,
+      isSwapping: (statusSpecial?.swapping ?? widgetSpecial?.swapping ?? 0) != 0,
+      isRepairing: (statusSpecial?.effectiveRepairing ?? widgetSpecial?.effectiveRepairing ?? 0) != 0,
+      isFotaActive: (statusSpecial?.fotaStatus ?? widgetSpecial?.fotaStatus ?? 0) != 0,
+      isSVTActive: (statusSpecial?.effectiveSVT ?? widgetSpecial?.effectiveSVT ?? 0) != 0,
       stateOfCharge: statusSOC?.soc ?? widgetSOC?.soc,
       remainingRange: statusSOC?.remainingRange ?? widgetSOC?.remainingRange,
       remainingActualRange: statusSOC?.remainingActualRange

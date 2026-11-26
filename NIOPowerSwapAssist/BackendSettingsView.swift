@@ -11,6 +11,7 @@ struct BackendSettingsView: View {
     @State private var errorMessage: String?
     @State private var batteryFilter: String
     @State private var showingNIOLogin = false
+    @State private var showingAppleTVPairing = false
     @State private var feedbackTick = 0
 
     private let filterColumns = [
@@ -50,6 +51,7 @@ struct BackendSettingsView: View {
                     backendConfigCard
                     if viewModel.isConfigured {
                         nioAccountCard
+                        appleTVSyncCard
                     }
                     stationPreferencesCard
                     if let errorMessage {
@@ -80,7 +82,44 @@ struct BackendSettingsView: View {
                     openSettings: nil
                 )
             }
+            .sheet(isPresented: $showingAppleTVPairing) {
+                AppleTVPairingSheet(
+                    isPresented: $showingAppleTVPairing,
+                    viewModel: viewModel
+                )
+            }
         }
+    }
+
+    private var appleTVSyncCard: some View {
+        Button {
+            feedbackTick += 1
+            showingAppleTVPairing = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "appletv.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppPalette.blue)
+                    .frame(width: 40, height: 40)
+                    .background(AppPalette.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("同步配置到 Apple TV")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("局域网一键推送后端密钥、常用换电站与常用路线")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .nioCard(cornerRadius: 20, padding: 16)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Connection Status Hero

@@ -90,6 +90,7 @@ final class WatchDashboardViewModel: ObservableObject {
         let isError: Bool
     }
 
+    @Published private(set) var vehicleName: String?
     @Published private(set) var dashboard: WatchDashboard?
     @Published private(set) var activeOrder: WatchActiveOrder?
     @Published private(set) var stationLive: WatchStationLive?
@@ -132,12 +133,16 @@ final class WatchDashboardViewModel: ObservableObject {
             hasControlKey = !configuration.controlKey.isEmpty
         }
         if let snapshot = WatchSnapshotStore.load() {
+            vehicleName = snapshot.vehicleName
             dashboard = WatchDashboard(
                 isConnected: snapshot.isConnected,
                 stateOfCharge: snapshot.stateOfCharge,
                 remainingRange: snapshot.remainingRange,
                 isCharging: snapshot.isCharging,
-                isSwapping: snapshot.isSwapping
+                isSwapping: snapshot.isSwapping,
+                isRepairing: snapshot.isRepairing,
+                isFotaActive: snapshot.isFotaActive,
+                isSVTActive: snapshot.isSVTActive
             )
             if stationName == nil {
                 stationName = snapshot.stationName
@@ -159,6 +164,7 @@ final class WatchDashboardViewModel: ObservableObject {
             hasControlKey = !configuration.controlKey.isEmpty
             let client = WatchBackendClient(configuration: configuration)
             async let dashboardRequest = client.fetchDashboard()
+            async let profileRequest = try? await client.fetchVehicleProfile()
             async let ordersRequest = (try? await client.fetchActiveOrders()) ?? []
             async let stationLiveRequest: WatchStationLive? = {
                 guard let stationID = configuration.stationID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -166,13 +172,17 @@ final class WatchDashboardViewModel: ObservableObject {
                 return try? await client.fetchStationLive(stationID: stationID)
             }()
             let newDashboard = try await dashboardRequest
+            let profile = await profileRequest
             let orders = await ordersRequest
             let liveStation = await stationLiveRequest
+            if let resolvedTitle = profile?.displayTitle {
+                vehicleName = resolvedTitle
+            }
             dashboard = newDashboard
             activeOrder = orders.first
             stationLive = liveStation
-            if let liveName = liveStation?.stationName,
-               (stationName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+            if let liveName = liveStation?.stationName.trimmingCharacters(in: .whitespacesAndNewlines),
+               !liveName.isEmpty {
                 stationName = liveName
             }
             updatedAt = Date()
@@ -255,11 +265,15 @@ final class WatchDashboardViewModel: ObservableObject {
     private func cacheSnapshot(dashboard: WatchDashboard, activeOrder: WatchActiveOrder?) {
         WatchSnapshotStore.save(
             WatchSnapshot(
+                vehicleName: vehicleName,
                 stateOfCharge: dashboard.stateOfCharge,
                 remainingRange: dashboard.remainingRange,
                 isConnected: dashboard.isConnected,
                 isCharging: dashboard.isCharging,
                 isSwapping: dashboard.isSwapping,
+                isRepairing: dashboard.isRepairing,
+                isFotaActive: dashboard.isFotaActive,
+                isSVTActive: dashboard.isSVTActive,
                 stationName: activeOrder?.stationName ?? stationName,
                 queueText: activeOrder?.queueStatusText,
                 updatedAt: Date()
