@@ -1950,12 +1950,14 @@ async fn start_live_activity_simulation(
     body: Option<web::Json<LiveActivitySimulationRequest>>,
 ) -> Result<web::Json<LiveActivitySimulationOutcome>, ApiError> {
     authorize(&state, &request)?;
-    let mut input = body.map(web::Json::into_inner).unwrap_or(LiveActivitySimulationRequest {
-        mode: crate::live_activity_push::LiveActivityMode::Charging,
-        interval_seconds: 5,
-        steps: 6,
-        device_id: None,
-    });
+    let mut input = body
+        .map(web::Json::into_inner)
+        .unwrap_or(LiveActivitySimulationRequest {
+            mode: crate::live_activity_push::LiveActivityMode::Charging,
+            interval_seconds: 5,
+            steps: 6,
+            device_id: None,
+        });
     if let Some(raw_device_id) = input.device_id.as_deref() {
         if raw_device_id.trim().is_empty() {
             input.device_id = None;
@@ -2919,7 +2921,9 @@ mod tests {
             test::TestRequest::post()
                 .uri("/api/v1/live-activities/simulation")
                 .insert_header((AUTHORIZATION, "Bearer la-key"))
-                .set_json(serde_json::json!({"mode": "charging", "interval_seconds": 5, "steps": 3}))
+                .set_json(
+                    serde_json::json!({"mode": "charging", "interval_seconds": 5, "steps": 3}),
+                )
                 .to_request(),
         )
         .await;

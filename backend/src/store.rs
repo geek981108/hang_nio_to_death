@@ -2488,7 +2488,9 @@ impl Store {
     }
 
     pub async fn finalize_latest_vehicle_charging_session(&self) -> Result<(), StoreError> {
-        let _ = self.refresh_latest_vehicle_charging_session_energy().await?;
+        let _ = self
+            .refresh_latest_vehicle_charging_session_energy()
+            .await?;
         Ok(())
     }
 
@@ -2539,7 +2541,8 @@ impl Store {
         }
         let computed = crate::analytics::integrated_charging_power_kwh(items_ascending);
         if computed.is_some() {
-            self.persist_charging_session_energy(items_ascending).await?;
+            self.persist_charging_session_energy(items_ascending)
+                .await?;
             return Ok(computed);
         }
         Ok(cached.map(|row| row.energy_kwh))
@@ -4033,7 +4036,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(first_kwh, Some(2.0));
-        let page1 = store.latest_vehicle_charging_session_page(5_000).await.unwrap();
+        let page1 = store
+            .latest_vehicle_charging_session_page(5_000)
+            .await
+            .unwrap();
         assert_eq!(page1.energy_kwh, Some(2.0));
         assert!(!page1.energy_finalized);
 
@@ -4044,7 +4050,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second_kwh, Some(4.0));
-        let page2 = store.latest_vehicle_charging_session_page(5_000).await.unwrap();
+        let page2 = store
+            .latest_vehicle_charging_session_page(5_000)
+            .await
+            .unwrap();
         assert_eq!(page2.energy_kwh, Some(4.0));
         assert!(!page2.energy_finalized);
 

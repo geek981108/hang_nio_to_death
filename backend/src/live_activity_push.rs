@@ -454,7 +454,11 @@ impl ApnsClient {
             .json::<serde_json::Value>()
             .await
             .ok()
-            .and_then(|v| v.get("reason").and_then(serde_json::Value::as_str).map(str::to_owned))
+            .and_then(|v| {
+                v.get("reason")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
             .unwrap_or_else(|| status.to_string());
         classify_apns_error(status.as_u16(), &reason)
     }
@@ -614,7 +618,10 @@ impl LiveVehicleObservation {
             .and_then(|v| {
                 v.as_bool()
                     .or_else(|| v.as_i64().map(|n| n == 1))
-                    .or_else(|| v.as_str().map(|s| s == "1" || s.eq_ignore_ascii_case("true")))
+                    .or_else(|| {
+                        v.as_str()
+                            .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+                    })
             });
         let charge_limit_percent = if max_soc_enabled == Some(false) {
             None
@@ -1038,8 +1045,10 @@ impl LiveActivityCoordinator {
         };
         let start_tokens: Vec<LiveActivityTokenRecord> =
             all_start_tokens.into_iter().filter(filter_device).collect();
-        let existing_update_tokens: Vec<LiveActivityTokenRecord> =
-            all_update_tokens.into_iter().filter(filter_device).collect();
+        let existing_update_tokens: Vec<LiveActivityTokenRecord> = all_update_tokens
+            .into_iter()
+            .filter(filter_device)
+            .collect();
 
         if start_tokens.is_empty() && existing_update_tokens.is_empty() {
             return Err(SimulationError::NoRegisteredTokens);
@@ -1094,7 +1103,10 @@ impl LiveActivityCoordinator {
                     let _ = self
                         .deliver_and_handle(apns, stale, "end", 10, 0, &end_body)
                         .await;
-                    let _ = self.store.invalidate_live_activity_token(&stale.token_id).await;
+                    let _ = self
+                        .store
+                        .invalidate_live_activity_token(&stale.token_id)
+                        .await;
                 }
             }
         } else {
@@ -1134,7 +1146,10 @@ impl LiveActivityCoordinator {
             "update"
         };
         let initial_error = if delivered_initial == 0 {
-            Some("初始 APNs 推送未被 Apple 接受，请检查服务端日志与设备沙盒/生产环境是否匹配".to_owned())
+            Some(
+                "初始 APNs 推送未被 Apple 接受，请检查服务端日志与设备沙盒/生产环境是否匹配"
+                    .to_owned(),
+            )
         } else {
             None
         };
@@ -1260,7 +1275,10 @@ impl LiveActivityCoordinator {
                 sim.last_delivered_count = delivered;
                 sim.last_state = Some(plan.state.clone());
                 sim.last_error = if update_tokens.is_empty() {
-                    Some("等待 iPhone 上报活动更新令牌（请确认 App 已收到实时活动并允许推送）".to_owned())
+                    Some(
+                        "等待 iPhone 上报活动更新令牌（请确认 App 已收到实时活动并允许推送）"
+                            .to_owned(),
+                    )
                 } else if delivered == 0 {
                     Some("update 推送未投递成功，请查看后端日志".to_owned())
                 } else {
@@ -1290,8 +1308,15 @@ impl LiveActivityCoordinator {
                 .and_then(|sim| sim.last_state.clone())
         }
         .unwrap_or_else(|| {
-            build_simulation_plan(mode, &session_key, &vehicle_name, total_steps, total_steps, now)
-                .state
+            build_simulation_plan(
+                mode,
+                &session_key,
+                &vehicle_name,
+                total_steps,
+                total_steps,
+                now,
+            )
+            .state
         });
         let update_tokens = self
             .matching_simulation_update_tokens(&session_key, target_device_id.as_deref())
@@ -1305,7 +1330,10 @@ impl LiveActivityCoordinator {
             {
                 delivered += 1;
             }
-            let _ = self.store.invalidate_live_activity_token(&token.token_id).await;
+            let _ = self
+                .store
+                .invalidate_live_activity_token(&token.token_id)
+                .await;
         }
         let mut guard = self
             .state
@@ -1351,11 +1379,7 @@ impl LiveActivityCoordinator {
             .filter(|t| t.session_key.as_deref() == Some(session_key))
             .cloned()
             .collect();
-        if !exact.is_empty() {
-            exact
-        } else {
-            filtered
-        }
+        if !exact.is_empty() { exact } else { filtered }
     }
 
     pub async fn stop_simulation(
@@ -1437,7 +1461,10 @@ impl LiveActivityCoordinator {
             {
                 end_delivered += 1;
             }
-            let _ = self.store.invalidate_live_activity_token(&token.token_id).await;
+            let _ = self
+                .store
+                .invalidate_live_activity_token(&token.token_id)
+                .await;
         }
         if end_delivered > 0 {
             let mut guard = self
@@ -1472,16 +1499,17 @@ impl LiveActivityCoordinator {
             return;
         }
 
-        let observation = match vehicle_payload.and_then(LiveVehicleObservation::from_status_payload) {
-            Some(obs) => Some(obs),
-            None => self
-                .store
-                .list_vehicle_snapshots(1)
-                .await
-                .ok()
-                .and_then(|mut list| list.pop())
-                .map(|s| LiveVehicleObservation::from_snapshot(&s)),
-        };
+        let observation =
+            match vehicle_payload.and_then(LiveVehicleObservation::from_status_payload) {
+                Some(obs) => Some(obs),
+                None => self
+                    .store
+                    .list_vehicle_snapshots(1)
+                    .await
+                    .ok()
+                    .and_then(|mut list| list.pop())
+                    .map(|s| LiveVehicleObservation::from_snapshot(&s)),
+            };
         let active_orders = match self.store.list_active_service_orders(10).await {
             Ok(orders) => orders,
             Err(error) => {
@@ -1491,7 +1519,10 @@ impl LiveActivityCoordinator {
         };
         let energy_kwh = if live_charging_energy_kwh.is_some() {
             live_charging_energy_kwh
-        } else if observation.as_ref().is_some_and(|s| s.charge_state == Some(1)) {
+        } else if observation
+            .as_ref()
+            .is_some_and(|s| s.charge_state == Some(1))
+        {
             self.store
                 .latest_vehicle_charging_session_page(1)
                 .await
@@ -1580,7 +1611,10 @@ impl LiveActivityCoordinator {
                 for token in &update_tokens {
                     self.deliver_and_handle(apns, token, "end", 10, 0, &body)
                         .await;
-                    let _ = self.store.invalidate_live_activity_token(&token.token_id).await;
+                    let _ = self
+                        .store
+                        .invalidate_live_activity_token(&token.token_id)
+                        .await;
                 }
             }
             Some(plan) => {
@@ -1599,7 +1633,10 @@ impl LiveActivityCoordinator {
                     for token in &stale_session_tokens {
                         self.deliver_and_handle(apns, token, "end", 10, 0, &end_body)
                             .await;
-                        let _ = self.store.invalidate_live_activity_token(&token.token_id).await;
+                        let _ = self
+                            .store
+                            .invalidate_live_activity_token(&token.token_id)
+                            .await;
                     }
                 }
 
@@ -1614,12 +1651,14 @@ impl LiveActivityCoordinator {
                         .state
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    guard
-                        .start_sent_at
-                        .retain(|_, sent_at| now_inst.saturating_duration_since(*sent_at) < START_COOLDOWN);
+                    guard.start_sent_at.retain(|_, sent_at| {
+                        now_inst.saturating_duration_since(*sent_at) < START_COOLDOWN
+                    });
                     start_tokens
                         .into_iter()
-                        .filter(|token| !devices_with_active_activity.contains(token.device_id.as_str()))
+                        .filter(|token| {
+                            !devices_with_active_activity.contains(token.device_id.as_str())
+                        })
                         .filter(|token| {
                             let key = (token.device_id.clone(), plan.session_key.clone());
                             !guard.start_sent_at.contains_key(&key)
@@ -1730,7 +1769,10 @@ impl LiveActivityCoordinator {
             .await;
         match outcome {
             ApnsDeliveryOutcome::Delivered => {
-                let _ = self.store.mark_live_activity_token_pushed(&token.token_id).await;
+                let _ = self
+                    .store
+                    .mark_live_activity_token_pushed(&token.token_id)
+                    .await;
                 info!(
                     event,
                     env = env.as_str(),
@@ -1747,7 +1789,10 @@ impl LiveActivityCoordinator {
                     %reason,
                     "APNs rejected live activity token; marking invalidated"
                 );
-                let _ = self.store.invalidate_live_activity_token(&token.token_id).await;
+                let _ = self
+                    .store
+                    .invalidate_live_activity_token(&token.token_id)
+                    .await;
                 false
             }
             ApnsDeliveryOutcome::ExpiredProviderToken => {
@@ -1786,7 +1831,9 @@ pub fn validate_hex_token(token: &str) -> Result<String, &'static str> {
         || normalized.len() % 2 != 0
         || !normalized.bytes().all(|b| b.is_ascii_hexdigit())
     {
-        return Err("push_token must be an even-length hexadecimal string between 32 and 512 chars");
+        return Err(
+            "push_token must be an even-length hexadecimal string between 32 and 512 chars",
+        );
     }
     Ok(normalized)
 }
@@ -1861,8 +1908,14 @@ mod tests {
 
         let start = build_start_payload(&plan, now);
         assert_eq!(start["aps"]["event"], "start");
-        assert_eq!(start["aps"]["attributes-type"], "NIOVehicleLiveActivityAttributes");
-        assert_eq!(start["aps"]["attributes"]["sessionKey"], "charging:veh-et5t");
+        assert_eq!(
+            start["aps"]["attributes-type"],
+            "NIOVehicleLiveActivityAttributes"
+        );
+        assert_eq!(
+            start["aps"]["attributes"]["sessionKey"],
+            "charging:veh-et5t"
+        );
         assert_eq!(start["aps"]["attributes"]["vehicleName"], "我的 ET5T");
         assert_eq!(start["aps"]["content-state"]["mode"], "charging");
         assert_eq!(start["aps"]["content-state"]["chargingPowerKW"], 76.5);

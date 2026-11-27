@@ -496,9 +496,7 @@ fn apns_from_env(
     let (Some(team_id), Some(key_id), Some(private_key_source)) = (
         team_id,
         key_id,
-        key_inline
-            .map(Ok)
-            .or_else(|| key_path.map(Err)),
+        key_inline.map(Ok).or_else(|| key_path.map(Err)),
     ) else {
         let mut missing = Vec::new();
         if non_empty("APNS_TEAM_ID").is_none() {
@@ -525,8 +523,8 @@ fn apns_from_env(
     };
     validate_identifier("APNS_TEAM_ID", &team_id)?;
     validate_identifier("APNS_KEY_ID", &key_id)?;
-    let bundle_id = non_empty("APNS_BUNDLE_ID")
-        .unwrap_or_else(|| "com.shuto.happyvalley".to_owned());
+    let bundle_id =
+        non_empty("APNS_BUNDLE_ID").unwrap_or_else(|| "com.shuto.happyvalley".to_owned());
     let default_environment = match non_empty("APNS_ENVIRONMENT") {
         Some(raw) => crate::live_activity_push::ApnsEnvironment::parse(&raw).ok_or_else(|| {
             ConfigError::Invalid {
