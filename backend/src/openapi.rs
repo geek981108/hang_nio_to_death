@@ -838,10 +838,8 @@ pub fn document() -> Value {
         "LiveActivitySimulationStopOutcome",
         true,
     );
-    stop_la_sim["requestBody"] = request_body(
-        "LiveActivitySimulationStopInput",
-        "可选目标设备 ID。",
-    );
+    stop_la_sim["requestBody"] =
+        request_body("LiveActivitySimulationStopInput", "可选目标设备 ID。");
     add("/api/v1/live-activities/simulation", "delete", stop_la_sim);
 
     let mut poll = operation(
@@ -3230,19 +3228,22 @@ fn schemas() -> Value {
                 ("device_id", text("应用安装级设备标识（UUID）。")),
                 (
                     "token_kind",
-                    text_enum(
-                        "令牌类型。",
-                        &["push_to_start", "activity_update"],
-                    ),
+                    text_enum("令牌类型。", &["push_to_start", "activity_update"]),
                 ),
                 ("push_token", text("十六进制 APNs Token（32~512 位）。")),
                 (
                     "activity_id",
-                    opt(text("ActivityKit 活动 ID。"), "token_kind 为 activity_update 时必填。"),
+                    opt(
+                        text("ActivityKit 活动 ID。"),
+                        "token_kind 为 activity_update 时必填。",
+                    ),
                 ),
                 (
                     "session_key",
-                    opt(text("活动会话键，如 charging:<vehicle_id> 或 swap:<order_no>。"), "可选。"),
+                    opt(
+                        text("活动会话键，如 charging:<vehicle_id> 或 swap:<order_no>。"),
+                        "可选。",
+                    ),
                 ),
                 (
                     "activity_mode",
@@ -3253,7 +3254,10 @@ fn schemas() -> Value {
                 ),
                 (
                     "bundle_id",
-                    opt(text("iOS 应用 Bundle ID。"), "留空则使用服务端默认 APNS_BUNDLE_ID。"),
+                    opt(
+                        text("iOS 应用 Bundle ID。"),
+                        "留空则使用服务端默认 APNS_BUNDLE_ID。",
+                    ),
                 ),
                 (
                     "apns_environment",
@@ -3279,10 +3283,7 @@ fn schemas() -> Value {
                         "留空则删除该设备全部令牌。",
                     ),
                 ),
-                (
-                    "activity_id",
-                    opt(text("活动 ID 过滤。"), "可选。"),
-                ),
+                ("activity_id", opt(text("活动 ID 过滤。"), "可选。")),
             ],
             Some(&["device_id"]),
         ),
@@ -3293,7 +3294,10 @@ fn schemas() -> Value {
             "Live Activity 推送令牌注册结果。",
             &[
                 ("registered", boolean("是否已保存令牌。")),
-                ("apns_configured", boolean("服务端是否已配置 APNs .p8 凭证。")),
+                (
+                    "apns_configured",
+                    boolean("服务端是否已配置 APNs .p8 凭证。"),
+                ),
                 (
                     "token_kind",
                     text_enum("已注册令牌类型。", &["push_to_start", "activity_update"]),
@@ -3320,7 +3324,10 @@ fn schemas() -> Value {
             "Live Activity 远程推送状态摘要（不含原始令牌）。",
             &[
                 ("apns_configured", boolean("服务端是否已启用 APNs 推送。")),
-                ("bundle_id", opt(text("服务端默认 Bundle ID。"), "未配置 APNs 时为 null。")),
+                (
+                    "bundle_id",
+                    opt(text("服务端默认 Bundle ID。"), "未配置 APNs 时为 null。"),
+                ),
                 (
                     "default_environment",
                     opt(
@@ -3328,9 +3335,18 @@ fn schemas() -> Value {
                         "未配置 APNs 时为 null。",
                     ),
                 ),
-                ("push_to_start_token_count", integer("有效 Push-to-Start 令牌数量。")),
-                ("activity_update_token_count", integer("有效活动更新令牌数量。")),
-                ("active_session_key", opt(text("当前活跃实时活动会话键。"), "无活跃会话时为 null。")),
+                (
+                    "push_to_start_token_count",
+                    integer("有效 Push-to-Start 令牌数量。"),
+                ),
+                (
+                    "activity_update_token_count",
+                    integer("有效活动更新令牌数量。"),
+                ),
+                (
+                    "active_session_key",
+                    opt(text("当前活跃实时活动会话键。"), "无活跃会话时为 null。"),
+                ),
                 (
                     "active_mode",
                     opt(
@@ -3338,7 +3354,13 @@ fn schemas() -> Value {
                         "无活跃会话时为 null。",
                     ),
                 ),
-                ("last_push_at", opt(date_time("最近一次成功投递 APNs 推送时间。"), "尚未推送时为 null。")),
+                (
+                    "last_push_at",
+                    opt(
+                        date_time("最近一次成功投递 APNs 推送时间。"),
+                        "尚未推送时为 null。",
+                    ),
+                ),
                 (
                     "simulation",
                     opt(
@@ -3364,7 +3386,10 @@ fn schemas() -> Value {
                 ),
                 (
                     "interval_seconds",
-                    opt(integer("每步 update 推送间隔秒数（夹取到 3~30）。"), "默认 5。"),
+                    opt(
+                        integer("每步 update 推送间隔秒数（夹取到 3~30）。"),
+                        "默认 5。",
+                    ),
                 ),
                 (
                     "steps",
@@ -3372,7 +3397,10 @@ fn schemas() -> Value {
                 ),
                 (
                     "device_id",
-                    opt(text("仅向指定 device_id 推送。"), "留空则向当前租户全部已注册设备推送。"),
+                    opt(
+                        text("仅向指定 device_id 推送。"),
+                        "留空则向当前租户全部已注册设备推送。",
+                    ),
                 ),
             ],
             Some(&[]),
@@ -3395,16 +3423,31 @@ fn schemas() -> Value {
                 ("simulation_id", opt(text("模拟任务 ID。"), "可选。")),
                 (
                     "mode",
-                    opt(text_enum("模拟模式。", &["charging", "swapQueue"]), "可选。"),
+                    opt(
+                        text_enum("模拟模式。", &["charging", "swapQueue"]),
+                        "可选。",
+                    ),
                 ),
                 ("session_key", opt(text("模拟会话键（sim:*）。"), "可选。")),
-                ("current_step", integer("当前已推送步数（0 表示初始 start）。")),
+                (
+                    "current_step",
+                    integer("当前已推送步数（0 表示初始 start）。"),
+                ),
                 ("total_steps", integer("计划总 update 步数。")),
                 ("interval_seconds", integer("每步推送间隔秒数。")),
                 ("started_at", opt(date_time("模拟启动时间。"), "可选。")),
-                ("last_event", opt(text("最近一次推送事件（start / update / end）。"), "可选。")),
-                ("last_delivered_count", integer("最近一步成功投递到 APNs 的设备数。")),
-                ("last_error", opt(text("最近一步的提示或错误信息。"), "可选。")),
+                (
+                    "last_event",
+                    opt(text("最近一次推送事件（start / update / end）。"), "可选。"),
+                ),
+                (
+                    "last_delivered_count",
+                    integer("最近一步成功投递到 APNs 的设备数。"),
+                ),
+                (
+                    "last_error",
+                    opt(text("最近一步的提示或错误信息。"), "可选。"),
+                ),
             ],
             None,
         ),
@@ -3420,10 +3463,19 @@ fn schemas() -> Value {
                 ("session_key", text("模拟会话键。")),
                 ("interval_seconds", integer("每步推送间隔秒数。")),
                 ("total_steps", integer("后续 update 推送总步数。")),
-                ("start_tokens_targeted", integer("本次命中的 push_to_start 令牌数量。")),
+                (
+                    "start_tokens_targeted",
+                    integer("本次命中的 push_to_start 令牌数量。"),
+                ),
                 ("start_delivered", integer("成功投递的 start 推送数量。")),
-                ("update_tokens_targeted", integer("直接命中的 activity_update 令牌数量。")),
-                ("update_delivered", integer("成功投递的初始 update 推送数量。")),
+                (
+                    "update_tokens_targeted",
+                    integer("直接命中的 activity_update 令牌数量。"),
+                ),
+                (
+                    "update_delivered",
+                    integer("成功投递的初始 update 推送数量。"),
+                ),
             ],
             None,
         ),
@@ -3433,8 +3485,14 @@ fn schemas() -> Value {
         object(
             "停止 Live Activity 后端模拟推送测试结果。",
             &[
-                ("stopped", boolean("是否停止了运行中的模拟任务或关闭了模拟活动。")),
-                ("ended_tokens", integer("本次尝试发送 end 的活动更新令牌数量。")),
+                (
+                    "stopped",
+                    boolean("是否停止了运行中的模拟任务或关闭了模拟活动。"),
+                ),
+                (
+                    "ended_tokens",
+                    integer("本次尝试发送 end 的活动更新令牌数量。"),
+                ),
                 ("end_delivered", integer("成功投递的 end 推送数量。")),
             ],
             None,
