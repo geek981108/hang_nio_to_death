@@ -2253,6 +2253,195 @@ struct NIOPowerSwapAssistTests {
         }
     }
 
+    @Test func liveActivityAPNsContentStateDecodingAndTokenRegistration() throws {
+        // Verify exact Rust APNs `content-state` JSON contract (Apple Reference Date `updatedAt`).
+        let referenceDateSeconds = 817_488_000.0
+        let chargingJSON = Data("""
+        {
+          "mode": "charging",
+          "title": "正在充电",
+          "subtitle": "充电中 · 上限 90%",
+          "updatedAt": \(referenceDateSeconds),
+          "orderNo": null,
+          "queueNumber": null,
+          "vehiclesAhead": null,
+          "estimatedWaitMinutes": null,
+          "stateOfCharge": 68.0,
+          "chargeLimitPercent": 90.0,
+          "chargingPowerKW": 74.6,
+          "remainingRangeKm": 310.0,
+          "chargedEnergyKWh": 18.4
+        }
+        """.utf8)
+        let chargingState = try JSONDecoder().decode(
+            NIOVehicleLiveActivityAttributes.ContentState.self,
+            from: chargingJSON
+        )
+        #expect(chargingState.mode == .charging)
+        #expect(chargingState.title == "正在充电")
+        #expect(chargingState.subtitle == "充电中 · 上限 90%")
+        #expect(abs(chargingState.updatedAt.timeIntervalSinceReferenceDate - referenceDateSeconds) < 0.001)
+        #expect(chargingState.stateOfCharge == 68.0)
+        #expect(chargingState.chargeLimitPercent == 90.0)
+        #expect(chargingState.chargingPowerKW == 74.6)
+        #expect(chargingState.remainingRangeKm == 310.0)
+        #expect(chargingState.chargedEnergyKWh == 18.4)
+
+        // Verify ISO-8601 fallback for swapQueue content-state.
+        let swapJSON = Data("""
+        {
+          "mode": "swapQueue",
+          "title": "天津滨海万达换电站",
+          "subtitle": "排队中",
+          "updatedAt": "2026-11-27T08:00:00Z",
+          "orderNo": "ORD-999",
+          "queueNumber": 3,
+          "vehiclesAhead": 2,
+          "estimatedWaitMinutes": 8,
+          "stateOfCharge": 24.0,
+          "remainingRangeKm": 102.0
+        }
+        """.utf8)
+        let swapState = try JSONDecoder().decode(
+            NIOVehicleLiveActivityAttributes.ContentState.self,
+            from: swapJSON
+        )
+        #expect(swapState.mode == .swapQueue)
+        #expect(swapState.orderNo == "ORD-999")
+        #expect(swapState.vehiclesAhead == 2)
+        #expect(swapState.estimatedWaitMinutes == 8)
+
+        // Verify token registration & deletion requests and response decoding.
+        let config = try BackendConfiguration(
+            baseURLString: "https://backend.example.com",
+            apiKey: String(repeating: "p", count: 32)
+        )
+        let client = BackendClient(configuration: config)
+        let registration = LiveActivityTokenRegistration(
+            deviceID: "device-1",
+            tokenKind: .pushToStart,
+            pushToken: "0123456789abcdef0123456789abcdef",
+            bundleID: "com.shuto.happyvalley",
+            apnsEnvironment: .sandbox
+        )
+        let postReq = try client.makeRegisterLiveActivityTokenRequest(registration)
+        #expect(postReq.httpMethod == "POST")
+        #expect(postReq.url?.path == "/api/v1/live-activities/tokens")
+        #expect(postReq.value(forHTTPHeaderField: "Authorization") == "Bearer \(String(repeating: "p", count: 32))")
+        let postBody = try #require(postReq.httpBody)
+        let postJSON = try #require(
+            try JSONSerialization.jsonObject(with: postBody) as? [String: Any]
+        )
+        #expect(postJSON["device_id"] as? String == "device-1")
+        #expect(postJSON["token_kind"] as? String == "push_to_start")
+        #expect(postJSON["push_token"] as? String == "0123456789abcdef0123456789abcdef")
+        #expect(postJSON["bundle_id"] as? String == "com.shuto.happyvalley")
+        #expect(postJSON["apns_environment"] as? String == "sandbox")
+
+        let registerResponse = try JSONDecoder().decode(
+            LiveActivityTokenResponse.self,
+            from: Data("""
+            {"registered":true,"apns_configured":true,"token_kind":"push_to_start","apns_environment":"sandbox"}
+            """.utf8)
+        )
+        #expect(registerResponse.registered == true)
+        #expect(registerResponse.apnsConfigured == true)
+        #expect(registerResponse.apnsEnvironment == .sandbox)
+
+        let deleteReq = try client.makeDeleteLiveActivityTokenRequest(
+            LiveActivityTokenDeleteInput(
+                deviceID: "device-1",
+                tokenKind: .activityUpdate,
+                activityID: "act-42"
+            )
+        )
+        #expect(deleteReq.httpMethod == "DELETE")
+        #expect(deleteReq.url?.path == "/api/v1/live-activities/tokens")
+
+        let statusResponse = try JSONDecoder().decode(
+            LiveActivityPushStatus.self,
+            from: Data("""
+            {
+              "apns_configured": true,
+              "bundle_id": "com.shuto.happyvalley",
+              "default_environment": "production",
+              "push_to_start_token_count": 1,
+              "activity_update_token_count": 2,
+              "active_session_key": "sim:charging:abcd1234",
+              "active_mode": "charging",
+              "last_push_at": "2026-11-27T08:30:00Z",
+              "simulation": {
+                "running": true,
+                "simulation_id": "abcd1234",
+                "mode": "charging",
+                "session_key": "sim:charging:abcd1234",
+                "current_step": 2,
+                "total_steps": 6,
+                "interval_seconds": 5,
+                "started_at": "2026-11-27T08:29:50Z",
+                "last_event": "update",
+                "last_delivered_count": 1,
+                "last_error": null
+              }
+            }
+            """.utf8)
+        )
+        #expect(statusResponse.apnsConfigured == true)
+        #expect(statusResponse.defaultEnvironment == .production)
+        #expect(statusResponse.pushToStartTokenCount == 1)
+        #expect(statusResponse.activityUpdateTokenCount == 2)
+        #expect(statusResponse.simulation?.running == true)
+        #expect(statusResponse.simulation?.currentStep == 2)
+
+        let simStartReq = try client.makeStartLiveActivitySimulationRequest(
+            LiveActivitySimulationRequest(
+                mode: .charging,
+                intervalSeconds: 5,
+                steps: 6,
+                deviceID: "device-1"
+            )
+        )
+        #expect(simStartReq.httpMethod == "POST")
+        #expect(simStartReq.url?.path == "/api/v1/live-activities/simulation")
+        let simStartBody = try #require(simStartReq.httpBody)
+        let simStartJSON = try #require(
+            try JSONSerialization.jsonObject(with: simStartBody) as? [String: Any]
+        )
+        #expect(simStartJSON["mode"] as? String == "charging")
+        #expect(simStartJSON["interval_seconds"] as? Int == 5)
+        #expect(simStartJSON["steps"] as? Int == 6)
+        #expect(simStartJSON["device_id"] as? String == "device-1")
+
+        let simStopReq = try client.makeStopLiveActivitySimulationRequest(deviceID: "device-1")
+        #expect(simStopReq.httpMethod == "DELETE")
+        #expect(simStopReq.url?.path == "/api/v1/live-activities/simulation")
+
+        let simOutcome = try JSONDecoder().decode(
+            LiveActivitySimulationOutcome.self,
+            from: Data("""
+            {
+              "started": true,
+              "simulation_id": "abcd1234",
+              "mode": "charging",
+              "session_key": "sim:charging:abcd1234",
+              "interval_seconds": 5,
+              "total_steps": 6,
+              "start_tokens_targeted": 1,
+              "start_delivered": 1,
+              "update_tokens_targeted": 0,
+              "update_delivered": 0
+            }
+            """.utf8)
+        )
+        #expect(simOutcome.started == true)
+        #expect(simOutcome.startDelivered == 1)
+
+        #expect(
+            VehicleLiveActivityManager.hexEncodedPushToken(Data([0x00, 0x0a, 0xff, 0x1b]))
+                == "000aff1b"
+        )
+    }
+
     @Test func sendRouteToVehicleRequestsValidationAndResponseDecoding() throws {
         let config = try BackendConfiguration(
             baseURLString: "https://backend.example.com",

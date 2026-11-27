@@ -28,6 +28,95 @@ struct NIOVehicleLiveActivityAttributes: ActivityAttributes, Hashable, Sendable 
     let remainingRangeKm: Double?
     let chargedEnergyKWh: Double?
 
+    enum CodingKeys: String, CodingKey {
+      case mode
+      case title
+      case subtitle
+      case updatedAt
+      case orderNo
+      case queueNumber
+      case vehiclesAhead
+      case estimatedWaitMinutes
+      case stateOfCharge
+      case chargeLimitPercent
+      case chargingPowerKW
+      case remainingRangeKm
+      case chargedEnergyKWh
+    }
+
+    init(
+      mode: Mode,
+      title: String,
+      subtitle: String?,
+      updatedAt: Date,
+      orderNo: String?,
+      queueNumber: Int?,
+      vehiclesAhead: Int?,
+      estimatedWaitMinutes: Int?,
+      stateOfCharge: Double?,
+      chargeLimitPercent: Double?,
+      chargingPowerKW: Double?,
+      remainingRangeKm: Double?,
+      chargedEnergyKWh: Double?
+    ) {
+      self.mode = mode
+      self.title = title
+      self.subtitle = subtitle
+      self.updatedAt = updatedAt
+      self.orderNo = orderNo
+      self.queueNumber = queueNumber
+      self.vehiclesAhead = vehiclesAhead
+      self.estimatedWaitMinutes = estimatedWaitMinutes
+      self.stateOfCharge = stateOfCharge
+      self.chargeLimitPercent = chargeLimitPercent
+      self.chargingPowerKW = chargingPowerKW
+      self.remainingRangeKm = remainingRangeKm
+      self.chargedEnergyKWh = chargedEnergyKWh
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      mode = try container.decode(Mode.self, forKey: .mode)
+      title = try container.decode(String.self, forKey: .title)
+      subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
+      updatedAt = Self.decodeUpdatedAt(from: container)
+      orderNo = try container.decodeIfPresent(String.self, forKey: .orderNo)
+      queueNumber = try container.decodeIfPresent(Int.self, forKey: .queueNumber)
+      vehiclesAhead = try container.decodeIfPresent(Int.self, forKey: .vehiclesAhead)
+      estimatedWaitMinutes = try container.decodeIfPresent(Int.self, forKey: .estimatedWaitMinutes)
+      stateOfCharge = try container.decodeIfPresent(Double.self, forKey: .stateOfCharge)
+      chargeLimitPercent = try container.decodeIfPresent(Double.self, forKey: .chargeLimitPercent)
+      chargingPowerKW = try container.decodeIfPresent(Double.self, forKey: .chargingPowerKW)
+      remainingRangeKm = try container.decodeIfPresent(Double.self, forKey: .remainingRangeKm)
+      chargedEnergyKWh = try container.decodeIfPresent(Double.self, forKey: .chargedEnergyKWh)
+    }
+
+    private static func decodeUpdatedAt(
+      from container: KeyedDecodingContainer<CodingKeys>
+    ) -> Date {
+      if let numeric = try? container.decode(Double.self, forKey: .updatedAt), numeric.isFinite {
+        // ActivityKit's default JSONDecoder uses Apple Reference Date (seconds since 2001-01-01).
+        // Also tolerate Unix epoch timestamps (>= 1e9) if ever sent in that format.
+        if abs(numeric) >= 1_000_000_000 {
+          return Date(timeIntervalSince1970: numeric)
+        }
+        return Date(timeIntervalSinceReferenceDate: numeric)
+      }
+      if let iso = try? container.decode(String.self, forKey: .updatedAt) {
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = withFractional.date(from: iso) {
+          return parsed
+        }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        if let parsed = standard.date(from: iso) {
+          return parsed
+        }
+      }
+      return Date()
+    }
+
     /// Compares all rendered fields while ignoring timestamp-only ticks.
     func hasSameDisplayedContent(as other: ContentState) -> Bool {
       mode == other.mode

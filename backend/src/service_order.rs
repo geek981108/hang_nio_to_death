@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, TimeZone, Utc};
 use reqwest::{Client, StatusCode, header::HeaderMap};
@@ -11,6 +11,7 @@ use url::Url;
 use crate::{
     config::{ServiceOrderConfig, StationConfig, StationTemplateConfig, VehicleConfig},
     events::EventHub,
+    live_activity_push::LiveActivityCoordinator,
     models::{
         ImportedOrder, ObservedServiceOrder, ObservedServiceOrderQueue, ObservedSwapStation,
         StationQueueStatus, SwapPaymentItem,
@@ -47,6 +48,7 @@ pub struct ServiceOrderMonitor {
     station_target: StationTarget,
     interval: Duration,
     events: EventHub,
+    live_activity: Arc<LiveActivityCoordinator>,
 }
 
 #[derive(Debug, Error)]
@@ -282,6 +284,7 @@ impl ServiceOrderProvider {
 }
 
 impl ServiceOrderMonitor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         provider: ServiceOrderProvider,
         store: Store,
@@ -289,6 +292,7 @@ impl ServiceOrderMonitor {
         station_target: StationTarget,
         interval: Duration,
         events: EventHub,
+        live_activity: Arc<LiveActivityCoordinator>,
     ) -> Self {
         Self {
             provider,
@@ -297,6 +301,7 @@ impl ServiceOrderMonitor {
             station_target,
             interval,
             events,
+            live_activity,
         }
     }
 
@@ -539,6 +544,7 @@ impl ServiceOrderMonitor {
                 );
             }
         }
+        self.live_activity.sync_live_state(None, None).await;
         Ok(())
     }
 

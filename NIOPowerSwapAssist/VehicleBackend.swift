@@ -1680,6 +1680,236 @@ struct SendRouteOutcome: Decodable, Equatable, Sendable {
     }
 }
 
+enum LiveActivityTokenKind: String, Codable, Equatable, Sendable {
+    case pushToStart = "push_to_start"
+    case activityUpdate = "activity_update"
+}
+
+enum LiveActivityAPNsEnvironment: String, Codable, Equatable, Sendable {
+    case sandbox
+    case production
+}
+
+struct LiveActivityTokenRegistration: Encodable, Equatable, Sendable {
+    let deviceID: String
+    let tokenKind: LiveActivityTokenKind
+    let pushToken: String
+    let activityID: String?
+    let sessionKey: String?
+    let activityMode: String?
+    let bundleID: String?
+    let apnsEnvironment: LiveActivityAPNsEnvironment
+
+    init(
+        deviceID: String,
+        tokenKind: LiveActivityTokenKind,
+        pushToken: String,
+        activityID: String? = nil,
+        sessionKey: String? = nil,
+        activityMode: String? = nil,
+        bundleID: String? = nil,
+        apnsEnvironment: LiveActivityAPNsEnvironment
+    ) {
+        self.deviceID = deviceID
+        self.tokenKind = tokenKind
+        self.pushToken = pushToken
+        self.activityID = activityID
+        self.sessionKey = sessionKey
+        self.activityMode = activityMode
+        self.bundleID = bundleID
+        self.apnsEnvironment = apnsEnvironment
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+        case tokenKind = "token_kind"
+        case pushToken = "push_token"
+        case activityID = "activity_id"
+        case sessionKey = "session_key"
+        case activityMode = "activity_mode"
+        case bundleID = "bundle_id"
+        case apnsEnvironment = "apns_environment"
+    }
+}
+
+struct LiveActivityTokenDeleteInput: Encodable, Equatable, Sendable {
+    let deviceID: String
+    let tokenKind: LiveActivityTokenKind?
+    let activityID: String?
+
+    init(
+        deviceID: String,
+        tokenKind: LiveActivityTokenKind? = nil,
+        activityID: String? = nil
+    ) {
+        self.deviceID = deviceID
+        self.tokenKind = tokenKind
+        self.activityID = activityID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+        case tokenKind = "token_kind"
+        case activityID = "activity_id"
+    }
+}
+
+struct LiveActivityTokenResponse: Decodable, Equatable, Sendable {
+    let registered: Bool
+    let apnsConfigured: Bool
+    let tokenKind: LiveActivityTokenKind
+    let apnsEnvironment: LiveActivityAPNsEnvironment
+
+    enum CodingKeys: String, CodingKey {
+        case registered
+        case apnsConfigured = "apns_configured"
+        case tokenKind = "token_kind"
+        case apnsEnvironment = "apns_environment"
+    }
+}
+
+struct LiveActivityTokenDeleteResponse: Decodable, Equatable, Sendable {
+    let deleted: Int64
+}
+
+enum LiveActivitySimulationMode: String, Codable, CaseIterable, Equatable, Sendable, Identifiable {
+    case charging
+    case swapQueue
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .charging: return "模拟充电"
+        case .swapQueue: return "模拟换电排队"
+        }
+    }
+}
+
+struct LiveActivitySimulationRequest: Encodable, Equatable, Sendable {
+    let mode: LiveActivitySimulationMode
+    let intervalSeconds: Int
+    let steps: Int
+    let deviceID: String?
+
+    init(
+        mode: LiveActivitySimulationMode = .charging,
+        intervalSeconds: Int = 5,
+        steps: Int = 6,
+        deviceID: String? = nil
+    ) {
+        self.mode = mode
+        self.intervalSeconds = intervalSeconds
+        self.steps = steps
+        self.deviceID = deviceID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case intervalSeconds = "interval_seconds"
+        case steps
+        case deviceID = "device_id"
+    }
+}
+
+struct LiveActivitySimulationStopInput: Encodable, Equatable, Sendable {
+    let deviceID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+    }
+}
+
+struct LiveActivitySimulationSnapshot: Decodable, Equatable, Sendable {
+    let running: Bool
+    let simulationID: String?
+    let mode: LiveActivitySimulationMode?
+    let sessionKey: String?
+    let currentStep: Int
+    let totalSteps: Int
+    let intervalSeconds: Int
+    let startedAt: String?
+    let lastEvent: String?
+    let lastDeliveredCount: Int
+    let lastError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case running
+        case simulationID = "simulation_id"
+        case mode
+        case sessionKey = "session_key"
+        case currentStep = "current_step"
+        case totalSteps = "total_steps"
+        case intervalSeconds = "interval_seconds"
+        case startedAt = "started_at"
+        case lastEvent = "last_event"
+        case lastDeliveredCount = "last_delivered_count"
+        case lastError = "last_error"
+    }
+}
+
+struct LiveActivitySimulationOutcome: Decodable, Equatable, Sendable {
+    let started: Bool
+    let simulationID: String
+    let mode: LiveActivitySimulationMode
+    let sessionKey: String
+    let intervalSeconds: Int
+    let totalSteps: Int
+    let startTokensTargeted: Int
+    let startDelivered: Int
+    let updateTokensTargeted: Int
+    let updateDelivered: Int
+
+    enum CodingKeys: String, CodingKey {
+        case started
+        case simulationID = "simulation_id"
+        case mode
+        case sessionKey = "session_key"
+        case intervalSeconds = "interval_seconds"
+        case totalSteps = "total_steps"
+        case startTokensTargeted = "start_tokens_targeted"
+        case startDelivered = "start_delivered"
+        case updateTokensTargeted = "update_tokens_targeted"
+        case updateDelivered = "update_delivered"
+    }
+}
+
+struct LiveActivitySimulationStopOutcome: Decodable, Equatable, Sendable {
+    let stopped: Bool
+    let endedTokens: Int
+    let endDelivered: Int
+
+    enum CodingKeys: String, CodingKey {
+        case stopped
+        case endedTokens = "ended_tokens"
+        case endDelivered = "end_delivered"
+    }
+}
+
+struct LiveActivityPushStatus: Decodable, Equatable, Sendable {
+    let apnsConfigured: Bool
+    let bundleID: String?
+    let defaultEnvironment: LiveActivityAPNsEnvironment?
+    let pushToStartTokenCount: Int
+    let activityUpdateTokenCount: Int
+    let activeSessionKey: String?
+    let activeMode: LiveActivitySimulationMode?
+    let lastPushAt: String?
+    let simulation: LiveActivitySimulationSnapshot?
+
+    enum CodingKeys: String, CodingKey {
+        case apnsConfigured = "apns_configured"
+        case bundleID = "bundle_id"
+        case defaultEnvironment = "default_environment"
+        case pushToStartTokenCount = "push_to_start_token_count"
+        case activityUpdateTokenCount = "activity_update_token_count"
+        case activeSessionKey = "active_session_key"
+        case activeMode = "active_mode"
+        case lastPushAt = "last_push_at"
+        case simulation
+    }
+}
+
 private struct BackendErrorEnvelope: Decodable {
     let error: String
     let message: String
@@ -1703,6 +1933,84 @@ struct BackendClient: Sendable {
 
     func fetchServiceStatus() async throws -> BackendServiceStatus {
         try await fetch(path: "api/v1/status")
+    }
+
+    func fetchLiveActivityPushStatus() async throws -> LiveActivityPushStatus {
+        try await fetch(path: "api/v1/live-activities/status")
+    }
+
+    func makeRegisterLiveActivityTokenRequest(
+        _ input: LiveActivityTokenRegistration
+    ) throws -> URLRequest {
+        var request = makeRequest(path: "api/v1/live-activities/tokens")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(input)
+        return request
+    }
+
+    func registerLiveActivityToken(
+        _ input: LiveActivityTokenRegistration
+    ) async throws -> LiveActivityTokenResponse {
+        let request = try makeRegisterLiveActivityTokenRequest(input)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeDeleteLiveActivityTokenRequest(
+        _ input: LiveActivityTokenDeleteInput
+    ) throws -> URLRequest {
+        var request = makeRequest(path: "api/v1/live-activities/tokens")
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(input)
+        return request
+    }
+
+    func deleteLiveActivityToken(
+        _ input: LiveActivityTokenDeleteInput
+    ) async throws -> LiveActivityTokenDeleteResponse {
+        let request = try makeDeleteLiveActivityTokenRequest(input)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeStartLiveActivitySimulationRequest(
+        _ input: LiveActivitySimulationRequest
+    ) throws -> URLRequest {
+        var request = makeRequest(path: "api/v1/live-activities/simulation")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(input)
+        return request
+    }
+
+    func startLiveActivitySimulation(
+        _ input: LiveActivitySimulationRequest
+    ) async throws -> LiveActivitySimulationOutcome {
+        let request = try makeStartLiveActivitySimulationRequest(input)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
+    }
+
+    func makeStopLiveActivitySimulationRequest(
+        deviceID: String? = nil
+    ) throws -> URLRequest {
+        var request = makeRequest(path: "api/v1/live-activities/simulation")
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            LiveActivitySimulationStopInput(deviceID: deviceID)
+        )
+        return request
+    }
+
+    func stopLiveActivitySimulation(
+        deviceID: String? = nil
+    ) async throws -> LiveActivitySimulationStopOutcome {
+        let request = try makeStopLiveActivitySimulationRequest(deviceID: deviceID)
+        let (data, response) = try await session.data(for: request)
+        return try decode(data: data, response: response)
     }
 
     func makeSendNIOLoginSMSRequest(mobile: String) throws -> URLRequest {

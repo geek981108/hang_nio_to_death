@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use tracing::{info, warn};
 
 use crate::{
     events::EventHub,
+    live_activity_push::LiveActivityCoordinator,
     poller::{Poller, StationTarget},
     store::Store,
     vehicle::{
@@ -21,9 +22,11 @@ pub struct SwapMonitor {
     locked_interval: Duration,
     post_swap_poll_count: u32,
     events: EventHub,
+    live_activity: Arc<LiveActivityCoordinator>,
 }
 
 impl SwapMonitor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         vehicle: NioVehicleClient,
         poller: Poller,
@@ -33,6 +36,7 @@ impl SwapMonitor {
         locked_interval: Duration,
         post_swap_poll_count: u32,
         events: EventHub,
+        live_activity: Arc<LiveActivityCoordinator>,
     ) -> Self {
         Self {
             vehicle,
@@ -43,6 +47,7 @@ impl SwapMonitor {
             locked_interval,
             post_swap_poll_count,
             events,
+            live_activity,
         }
     }
 
@@ -95,6 +100,7 @@ impl SwapMonitor {
                     {
                         warn!(%error, "failed to persist monitored vehicle snapshot");
                     }
+                    let mut live_charging_energy_kwh = None;
                     if let Some(sample) = charging_sample_from_status(&payload) {
                         let charging = sample.charge_state == 1;
                         if let Some(event) = charging_tracker.observe(charging) {
@@ -106,15 +112,30 @@ impl SwapMonitor {
                                 warn!(%error, "failed to finalize charging-session energy");
                             }
                         }
-                        if charging
-                            && let Err(error) =
+                        if charging {
+                            if let Err(error) =
                                 self.store.insert_vehicle_charging_sample(&sample).await
-                        {
-                            warn!(%error, "failed to persist vehicle charging sample");
+                            {
+                                warn!(%error, "failed to persist vehicle charging sample");
+                            } else {
+                                match self
+                                    .store
+                                    .refresh_latest_vehicle_charging_session_energy()
+                                    .await
+                                {
+                                    Ok(energy) => live_charging_energy_kwh = energy,
+                                    Err(error) => {
+                                        warn!(%error, "failed to continuously update charging-session energy")
+                                    }
+                                }
+                            }
                         }
                     } else {
                         warn!("vehicle status did not contain a complete soc_status sample");
                     }
+                    self.live_activity
+                        .sync_live_state(Some(&payload), live_charging_energy_kwh)
+                        .await;
                     if let Some(swapping) = swapping_state(&payload) {
                         if let Some(trigger) =
                             tracker.observe(swapping, self.post_swap_poll_count, vehicle_soc)

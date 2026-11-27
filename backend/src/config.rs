@@ -77,6 +77,16 @@ pub struct Config {
     pub vehicle_login_seed: Option<VehicleLoginSeed>,
     pub login_profile: Option<crate::nio_login::LoginProfile>,
     pub service_orders: Option<ServiceOrderConfig>,
+    pub apns: Option<ApnsConfig>,
+}
+
+#[derive(Clone)]
+pub struct ApnsConfig {
+    pub team_id: String,
+    pub key_id: String,
+    pub private_key_pem: String,
+    pub bundle_id: String,
+    pub default_environment: crate::live_activity_push::ApnsEnvironment,
 }
 
 #[derive(Clone, Debug)]
@@ -169,6 +179,10 @@ pub enum ConfigError {
     MissingExternalApiKey,
     #[error("MCP_OAUTH_ISSUER and MCP_OAUTH_LOGIN_SECRET must be configured together")]
     PartialMcpOAuth,
+    #[error(
+        "APNS_TEAM_ID, APNS_KEY_ID and APNS_PRIVATE_KEY_P8 (or APNS_PRIVATE_KEY_PATH) must be configured together; missing: {missing} (in .env, wrap PEM values in double quotes or pass single-line base64)"
+    )]
+    PartialApns { missing: String },
 }
 
 impl Config {
@@ -443,6 +457,8 @@ impl Config {
             None => None,
         };
 
+        let apns = apns_from_env(&non_empty)?;
+
         Ok(Self {
             bind_addr,
             database_url,
@@ -462,8 +478,78 @@ impl Config {
             vehicle_login_seed,
             login_profile,
             service_orders,
+            apns,
         })
     }
+}
+
+fn apns_from_env(
+    non_empty: &impl Fn(&str) -> Option<String>,
+) -> Result<Option<ApnsConfig>, ConfigError> {
+    let team_id = non_empty("APNS_TEAM_ID");
+    let key_id = non_empty("APNS_KEY_ID");
+    let key_inline = non_empty("APNS_PRIVATE_KEY_P8");
+    let key_path = non_empty("APNS_PRIVATE_KEY_PATH");
+    if team_id.is_none() && key_id.is_none() && key_inline.is_none() && key_path.is_none() {
+        return Ok(None);
+    }
+    let (Some(team_id), Some(key_id), Some(private_key_source)) = (
+        team_id,
+        key_id,
+        key_inline
+            .map(Ok)
+            .or_else(|| key_path.map(Err)),
+    ) else {
+        let mut missing = Vec::new();
+        if non_empty("APNS_TEAM_ID").is_none() {
+            missing.push("APNS_TEAM_ID");
+        }
+        if non_empty("APNS_KEY_ID").is_none() {
+            missing.push("APNS_KEY_ID");
+        }
+        if non_empty("APNS_PRIVATE_KEY_P8").is_none()
+            && non_empty("APNS_PRIVATE_KEY_PATH").is_none()
+        {
+            missing.push("APNS_PRIVATE_KEY_P8/APNS_PRIVATE_KEY_PATH");
+        }
+        return Err(ConfigError::PartialApns {
+            missing: missing.join(", "),
+        });
+    };
+    let private_key_pem = match private_key_source {
+        Ok(inline) => inline,
+        Err(path) => std::fs::read_to_string(&path).map_err(|error| ConfigError::Invalid {
+            name: "APNS_PRIVATE_KEY_PATH",
+            message: format!("failed to read APNs key file: {error}"),
+        })?,
+    };
+    validate_identifier("APNS_TEAM_ID", &team_id)?;
+    validate_identifier("APNS_KEY_ID", &key_id)?;
+    let bundle_id = non_empty("APNS_BUNDLE_ID")
+        .unwrap_or_else(|| "com.shuto.happyvalley".to_owned());
+    let default_environment = match non_empty("APNS_ENVIRONMENT") {
+        Some(raw) => crate::live_activity_push::ApnsEnvironment::parse(&raw).ok_or_else(|| {
+            ConfigError::Invalid {
+                name: "APNS_ENVIRONMENT",
+                message: "use production or sandbox".to_owned(),
+            }
+        })?,
+        None => crate::live_activity_push::ApnsEnvironment::Production,
+    };
+    // Validate the PKCS#8 P-256 key at config load time so broken keys fail fast.
+    crate::live_activity_push::decode_p8_pkcs8_der(&private_key_pem).map_err(|error| {
+        ConfigError::Invalid {
+            name: "APNS_PRIVATE_KEY_P8",
+            message: error.to_string(),
+        }
+    })?;
+    Ok(Some(ApnsConfig {
+        team_id,
+        key_id,
+        private_key_pem,
+        bundle_id,
+        default_environment,
+    }))
 }
 
 fn station_template_from_env(
@@ -662,5 +748,19 @@ mod tests {
         assert_eq!(client_a.current_bearer_token(), "rotated-after-login");
         assert_eq!(client_b.current_bearer_token(), "rotated-after-login");
         assert_eq!(vehicle.current_bearer_token(), "rotated-after-login");
+    }
+
+    #[test]
+    fn partial_apns_reports_which_required_variables_are_missing() {
+        let mut overrides = HashMap::new();
+        overrides.insert("APNS_TEAM_ID".to_owned(), "A8686RABF4".to_owned());
+        overrides.insert("APNS_KEY_ID".to_owned(), "W6UG5S6A4S".to_owned());
+        let err = apns_from_env(&|name| overrides.get(name).cloned())
+            .err()
+            .expect("missing private key should return PartialApns");
+        let rendered = err.to_string();
+        assert!(rendered.contains("APNS_PRIVATE_KEY_P8/APNS_PRIVATE_KEY_PATH"));
+        assert!(!rendered.contains("A8686RABF4"));
+        assert!(!rendered.contains("W6UG5S6A4S"));
     }
 }

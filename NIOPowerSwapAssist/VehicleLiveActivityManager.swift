@@ -109,9 +109,29 @@ enum VehicleLiveActivityPlanner {
 final class VehicleLiveActivityManager {
     static let shared = VehicleLiveActivityManager()
 
+    private static let deviceIDDefaultsKey = "live_activity_device_id.v1"
+
+    private struct CachedActivityToken {
+        let token: String
+        let sessionKey: String
+        let mode: String
+    }
+
     private var manuallyDismissedSessionKey: String?
     private var lastPushedSessionKey: String?
     private var lastPushedState: NIOVehicleLiveActivityAttributes.ContentState?
+
+    private var isObservingPushTokens = false
+    private var pushToStartTask: Task<Void, Never>?
+    private var activityUpdatesTask: Task<Void, Never>?
+    private var activityTokenTasks: [String: Task<Void, Never>] = [:]
+    private var activityStateTasks: [String: Task<Void, Never>] = [:]
+    private var cachedPushToStartToken: String?
+    private var cachedActivityTokens: [String: CachedActivityToken] = [:]
+    private var lastUploadedSignature: [String: String] = [:]
+    private(set) var lastTokenUploadedAt: Date?
+    private(set) var lastTokenUploadError: String?
+
     #if DEBUG
     private var isSimulationActive = false
     #endif
@@ -120,9 +140,255 @@ final class VehicleLiveActivityManager {
         !Activity<NIOVehicleLiveActivityAttributes>.activities.isEmpty
     }
 
+    var areActivitiesEnabled: Bool {
+        ActivityAuthorizationInfo().areActivitiesEnabled
+    }
+
+    var hasPushToStartToken: Bool {
+        cachedPushToStartToken != nil
+    }
+
+    var activeActivityCount: Int {
+        Activity<NIOVehicleLiveActivityAttributes>.activities.count
+    }
+
+    var activeActivityPushTokenCount: Int {
+        cachedActivityTokens.count
+    }
+
+    var activeActivitySessionKeys: [String] {
+        Activity<NIOVehicleLiveActivityAttributes>.activities.map(\.attributes.sessionKey)
+    }
+
+    var deviceID: String {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: Self.deviceIDDefaultsKey), !existing.isEmpty {
+            return existing
+        }
+        let generated = UUID().uuidString.lowercased()
+        defaults.set(generated, forKey: Self.deviceIDDefaultsKey)
+        return generated
+    }
+
+    nonisolated static var currentAPNsEnvironment: LiveActivityAPNsEnvironment {
+        #if DEBUG
+        return .sandbox
+        #else
+        return .production
+        #endif
+    }
+
+    nonisolated static func hexEncodedPushToken(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Starts observing iOS 17.2+ Push-to-Start tokens, remotely/locally created Live Activities,
+    /// per-activity update tokens, and activity lifecycle ends so the Rust backend can remotely
+    /// start, continuously update, and end Live Activities over APNs.
+    func startPushTokenObservation() {
+        guard !isObservingPushTokens else { return }
+        isObservingPushTokens = true
+
+        if #available(iOS 17.2, *) {
+            pushToStartTask = Task { [weak self] in
+                for await tokenData in Activity<NIOVehicleLiveActivityAttributes>.pushToStartTokenUpdates {
+                    guard !Task.isCancelled, let self else { break }
+                    let hex = Self.hexEncodedPushToken(tokenData)
+                    self.cachedPushToStartToken = hex
+                    await self.uploadPushToStartToken(hex, force: false)
+                }
+            }
+        }
+
+        for activity in Activity<NIOVehicleLiveActivityAttributes>.activities {
+            observe(activity: activity)
+        }
+
+        activityUpdatesTask = Task { [weak self] in
+            for await activity in Activity<NIOVehicleLiveActivityAttributes>.activityUpdates {
+                guard !Task.isCancelled, let self else { break }
+                self.observe(activity: activity)
+            }
+        }
+    }
+
+    /// Re-uploads any cached Push-to-Start and active Live Activity update tokens to the currently
+    /// configured backend (for example after saving backend settings or returning to the foreground).
+    func syncRegisteredTokensIfNeeded(force: Bool = false) async {
+        startPushTokenObservation()
+        if let startToken = cachedPushToStartToken {
+            await uploadPushToStartToken(startToken, force: force)
+        }
+        for activity in Activity<NIOVehicleLiveActivityAttributes>.activities {
+            observe(activity: activity)
+            if let existing = activity.pushToken {
+                let hex = Self.hexEncodedPushToken(existing)
+                let mode = activity.content.state.mode.rawValue
+                cachedActivityTokens[activity.id] = CachedActivityToken(
+                    token: hex,
+                    sessionKey: activity.attributes.sessionKey,
+                    mode: mode
+                )
+            }
+            if let cached = cachedActivityTokens[activity.id] {
+                await uploadActivityUpdateToken(
+                    activityID: activity.id,
+                    token: cached.token,
+                    sessionKey: cached.sessionKey,
+                    mode: cached.mode,
+                    force: force
+                )
+            }
+        }
+    }
+
+    private func observe(activity: Activity<NIOVehicleLiveActivityAttributes>) {
+        let activityID = activity.id
+        let sessionKey = activity.attributes.sessionKey
+
+        if let initialToken = activity.pushToken {
+            let hex = Self.hexEncodedPushToken(initialToken)
+            let mode = activity.content.state.mode.rawValue
+            cachedActivityTokens[activityID] = CachedActivityToken(
+                token: hex,
+                sessionKey: sessionKey,
+                mode: mode
+            )
+            Task { [weak self] in
+                await self?.uploadActivityUpdateToken(
+                    activityID: activityID,
+                    token: hex,
+                    sessionKey: sessionKey,
+                    mode: mode,
+                    force: false
+                )
+            }
+        }
+
+        if activityTokenTasks[activityID] == nil {
+            activityTokenTasks[activityID] = Task { [weak self] in
+                for await tokenData in activity.pushTokenUpdates {
+                    guard !Task.isCancelled, let self else { break }
+                    let hex = Self.hexEncodedPushToken(tokenData)
+                    let mode = activity.content.state.mode.rawValue
+                    self.cachedActivityTokens[activityID] = CachedActivityToken(
+                        token: hex,
+                        sessionKey: sessionKey,
+                        mode: mode
+                    )
+                    await self.uploadActivityUpdateToken(
+                        activityID: activityID,
+                        token: hex,
+                        sessionKey: sessionKey,
+                        mode: mode,
+                        force: false
+                    )
+                }
+            }
+        }
+
+        if activityStateTasks[activityID] == nil {
+            activityStateTasks[activityID] = Task { [weak self] in
+                for await state in activity.activityStateUpdates {
+                    guard !Task.isCancelled, let self else { break }
+                    if state == .ended || state == .dismissed {
+                        self.cleanupObservedActivity(activityID: activityID)
+                        await self.unregisterActivityUpdateToken(activityID: activityID)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    private func cleanupObservedActivity(activityID: String) {
+        activityTokenTasks.removeValue(forKey: activityID)?.cancel()
+        activityStateTasks.removeValue(forKey: activityID)?.cancel()
+        cachedActivityTokens.removeValue(forKey: activityID)
+        lastUploadedSignature.removeValue(forKey: "activity:\(activityID)")
+    }
+
+    private func uploadPushToStartToken(_ token: String, force: Bool) async {
+        guard !token.isEmpty,
+              let config = try? BackendSettingsStore.shared.configuration() else {
+            return
+        }
+        let signature = "\(config.baseURL.absoluteString)|\(config.apiKey.hashValue)|\(token)"
+        if !force, lastUploadedSignature["start"] == signature {
+            return
+        }
+        let client = BackendClient(configuration: config)
+        let registration = LiveActivityTokenRegistration(
+            deviceID: deviceID,
+            tokenKind: .pushToStart,
+            pushToken: token,
+            bundleID: Bundle.main.bundleIdentifier,
+            apnsEnvironment: Self.currentAPNsEnvironment
+        )
+        do {
+            _ = try await client.registerLiveActivityToken(registration)
+            lastUploadedSignature["start"] = signature
+            lastTokenUploadedAt = Date()
+            lastTokenUploadError = nil
+        } catch {
+            lastTokenUploadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func uploadActivityUpdateToken(
+        activityID: String,
+        token: String,
+        sessionKey: String,
+        mode: String,
+        force: Bool
+    ) async {
+        guard !token.isEmpty,
+              let config = try? BackendSettingsStore.shared.configuration() else {
+            return
+        }
+        let cacheKey = "activity:\(activityID)"
+        let signature = "\(config.baseURL.absoluteString)|\(config.apiKey.hashValue)|\(token)|\(sessionKey)|\(mode)"
+        if !force, lastUploadedSignature[cacheKey] == signature {
+            return
+        }
+        let client = BackendClient(configuration: config)
+        let registration = LiveActivityTokenRegistration(
+            deviceID: deviceID,
+            tokenKind: .activityUpdate,
+            pushToken: token,
+            activityID: activityID,
+            sessionKey: sessionKey,
+            activityMode: mode,
+            bundleID: Bundle.main.bundleIdentifier,
+            apnsEnvironment: Self.currentAPNsEnvironment
+        )
+        do {
+            _ = try await client.registerLiveActivityToken(registration)
+            lastUploadedSignature[cacheKey] = signature
+            lastTokenUploadedAt = Date()
+            lastTokenUploadError = nil
+        } catch {
+            lastTokenUploadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func unregisterActivityUpdateToken(activityID: String) async {
+        guard let config = try? BackendSettingsStore.shared.configuration() else {
+            return
+        }
+        let client = BackendClient(configuration: config)
+        let input = LiveActivityTokenDeleteInput(
+            deviceID: deviceID,
+            tokenKind: .activityUpdate,
+            activityID: activityID
+        )
+        _ = try? await client.deleteLiveActivityToken(input)
+    }
+
     /// Synchronizes the system Live Activity with the latest vehicle/order state.
     /// Returns whether a Live Activity is active after synchronization.
     func synchronize(plan: VehicleLiveActivityPlan?, forceStart: Bool = false) async -> Bool {
+        startPushTokenObservation()
         #if DEBUG
         if isSimulationActive {
             return hasActiveActivity
@@ -138,10 +404,12 @@ final class VehicleLiveActivityManager {
             manuallyDismissedSessionKey = nil
             lastPushedSessionKey = nil
             lastPushedState = nil
-            for activity in activities {
-                await activity.end(nil, dismissalPolicy: .immediate)
+            // Keep backend-driven simulation activities (`sim:*`) alive so foreground refreshes
+            // do not prematurely terminate an active APNs push simulation.
+            for activity in activities where !activity.attributes.sessionKey.hasPrefix("sim:") {
+                await endActivityAndUnregister(activity)
             }
-            return false
+            return !Activity<NIOVehicleLiveActivityAttributes>.activities.isEmpty
         }
 
         if forceStart {
@@ -153,9 +421,10 @@ final class VehicleLiveActivityManager {
         }
 
         if let existing = activities.first(where: { $0.attributes.sessionKey == plan.sessionKey }) {
+            observe(activity: existing)
             // End any stale activities from previous sessions.
-            for stale in activities where stale.id != existing.id {
-                await stale.end(nil, dismissalPolicy: .immediate)
+            for stale in activities where stale.id != existing.id && !stale.attributes.sessionKey.hasPrefix("sim:") {
+                await endActivityAndUnregister(stale)
             }
             if lastPushedSessionKey == plan.sessionKey,
                let lastPushedState,
@@ -173,8 +442,8 @@ final class VehicleLiveActivityManager {
         }
 
         // Session changed: end older activities before starting the new one.
-        for stale in activities {
-            await stale.end(nil, dismissalPolicy: .immediate)
+        for stale in activities where !stale.attributes.sessionKey.hasPrefix("sim:") || plan.sessionKey.hasPrefix("sim:") {
+            await endActivityAndUnregister(stale)
         }
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
@@ -189,18 +458,38 @@ final class VehicleLiveActivityManager {
             state: plan.state,
             staleDate: Date().addingTimeInterval(20 * 60)
         )
+        let created: Activity<NIOVehicleLiveActivityAttributes>
         do {
-            _ = try Activity.request(
+            // Request an APNs push token so the Rust backend can keep updating this activity
+            // even after the app moves to the background. Fall back to local-only when push
+            // tokens are unavailable (e.g. Simulator or unsigned builds).
+            created = try Activity.request(
                 attributes: attributes,
                 content: content,
-                pushType: nil
+                pushType: .token
             )
-            lastPushedSessionKey = plan.sessionKey
-            lastPushedState = plan.state
-            return true
         } catch {
-            return false
+            do {
+                created = try Activity.request(
+                    attributes: attributes,
+                    content: content,
+                    pushType: nil
+                )
+            } catch {
+                return false
+            }
         }
+        observe(activity: created)
+        lastPushedSessionKey = plan.sessionKey
+        lastPushedState = plan.state
+        return true
+    }
+
+    private func endActivityAndUnregister(_ activity: Activity<NIOVehicleLiveActivityAttributes>) async {
+        let activityID = activity.id
+        cleanupObservedActivity(activityID: activityID)
+        await activity.end(nil, dismissalPolicy: .immediate)
+        await unregisterActivityUpdateToken(activityID: activityID)
     }
 
     func dismissCurrent(sessionKey: String?) async {
@@ -211,7 +500,7 @@ final class VehicleLiveActivityManager {
         lastPushedSessionKey = nil
         lastPushedState = nil
         for activity in Activity<NIOVehicleLiveActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
+            await endActivityAndUnregister(activity)
         }
     }
 

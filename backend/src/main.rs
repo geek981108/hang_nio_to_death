@@ -6,6 +6,7 @@ mod daily_checkin;
 mod detector;
 mod diesel_query;
 mod events;
+mod live_activity_push;
 mod models;
 mod nearby_stations;
 mod nio_login;
@@ -38,6 +39,7 @@ use actix_web::{App, HttpServer, middleware::Logger, web};
 use api::AppState;
 use config::{Config, StationConfig, StationTemplateConfig};
 use events::EventHub;
+use live_activity_push::{ApnsClient, LiveActivityCoordinator};
 use nearby_stations::NioNearbyStationClient;
 use poller::{Poller, StationTarget};
 use provider::NioStationProvider;
@@ -73,13 +75,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     }
-    dotenvy::dotenv().ok();
+    let dotenv_result = dotenvy::dotenv();
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("nio_swap_history_backend=info,actix_web=info")),
         )
         .init();
+    if let Err(dotenvy::Error::LineParse(_, column)) = dotenv_result {
+        tracing::warn!(
+            column,
+            "failed to parse .env file; wrap values containing spaces or newlines (such as APNS_PRIVATE_KEY_P8) in double quotes or use single-line base64"
+        );
+    }
     if cli_args
         .first()
         .is_some_and(|arg| arg == "verify-bootstrap")
@@ -267,6 +275,20 @@ async fn build_state(
         .transpose()?;
     let poller = Poller::new(provider, store.clone());
     let events = EventHub::new(store.clone());
+    let apns_client = config
+        .apns
+        .as_ref()
+        .map(ApnsClient::new)
+        .transpose()?
+        .map(Arc::new);
+    if let Some(apns) = &apns_client {
+        info!(
+            bundle_id = %apns.bundle_id,
+            default_environment = apns.default_environment.as_str(),
+            "APNs Live Activity push enabled"
+        );
+    }
+    let live_activity = Arc::new(LiveActivityCoordinator::new(store.clone(), apns_client));
     let station_target = StationTarget::default();
     let vehicle = config
         .vehicle
@@ -352,6 +374,7 @@ async fn build_state(
             config.vehicle_locked_poll_interval,
             config.post_swap_poll_count,
             events.clone(),
+            live_activity.clone(),
         );
         tokio::spawn(async move { monitor.run_forever().await });
     } else {
@@ -367,6 +390,7 @@ async fn build_state(
             station_target,
             config.service_order_poll_interval,
             events.clone(),
+            live_activity.clone(),
         );
         tokio::spawn(async move { monitor.run_forever().await });
     }
@@ -374,6 +398,7 @@ async fn build_state(
     let state = AppState {
         store: store.clone(),
         events,
+        live_activity,
         poller,
         api_key: config.api_key.map(Arc::from),
         tenant_mode,
