@@ -32,6 +32,8 @@ struct NIOPowerSwapAssistApp: App {
                 WatchConfigurationBridge.shared.sync(
                     BackendSettingsStore.shared.watchConfiguration()
                 )
+                VehicleLiveActivityManager.shared.startPushTokenObservation()
+                await VehicleLiveActivityManager.shared.syncRegisteredTokensIfNeeded()
                 #if DEBUG
                 if let preset = VehicleLiveActivityManager.debugSimulationPresetFromLaunchArgs() {
                     await VehicleLiveActivityManager.shared.applyDebugSimulation(preset)

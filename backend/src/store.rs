@@ -58,6 +58,8 @@ pub struct VehicleTripSyncState {
 #[derive(Debug, Deserialize)]
 struct ChargingSessionEnergyRow {
     energy_kwh: f64,
+    ended_at: DateTime<Utc>,
+    sample_count: i64,
 }
 
 #[derive(Debug, Error)]
@@ -562,6 +564,180 @@ impl Store {
         .bind(vehicle_id)
         .fetch_optional(&self.pool)
         .await?)
+    }
+
+    pub async fn latest_vehicle_profile(&self) -> Result<Option<StoredVehicleProfile>, StoreError> {
+        Ok(db::query_as::<StoredVehicleProfile>(
+            "SELECT vehicle_id, display_name, model_type, color, image_url, \
+                    (image_bytes IS NOT NULL) AS image_available, image_sha256, image_fetched_at \
+             FROM vehicle_profile ORDER BY updated_at DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn upsert_live_activity_token(
+        &self,
+        token_id: &str,
+        device_id: &str,
+        token_kind: &str,
+        push_token: &str,
+        activity_id: Option<&str>,
+        session_key: Option<&str>,
+        activity_mode: Option<&str>,
+        bundle_id: &str,
+        apns_environment: &str,
+    ) -> Result<(), StoreError> {
+        db::query(
+            r#"INSERT INTO live_activity_tokens (
+                 token_id, device_id, token_kind, push_token, activity_id,
+                 session_key, activity_mode, bundle_id, apns_environment,
+                 updated_at, invalidated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+               ON CONFLICT(token_id) DO UPDATE SET
+                 device_id = excluded.device_id,
+                 token_kind = excluded.token_kind,
+                 push_token = excluded.push_token,
+                 activity_id = excluded.activity_id,
+                 session_key = excluded.session_key,
+                 activity_mode = excluded.activity_mode,
+                 bundle_id = excluded.bundle_id,
+                 apns_environment = excluded.apns_environment,
+                 updated_at = excluded.updated_at,
+                 invalidated_at = NULL"#,
+        )
+        .bind(token_id)
+        .bind(device_id)
+        .bind(token_kind)
+        .bind(push_token)
+        .bind(activity_id)
+        .bind(session_key)
+        .bind(activity_mode)
+        .bind(bundle_id)
+        .bind(apns_environment)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_live_activity_tokens(
+        &self,
+        device_id: &str,
+        token_kind: Option<&str>,
+        activity_id: Option<&str>,
+    ) -> Result<u64, StoreError> {
+        let affected = match (token_kind, activity_id) {
+            (Some(kind), Some(act_id)) => db::query(
+                "DELETE FROM live_activity_tokens WHERE device_id = ? AND token_kind = ? AND activity_id = ?",
+            )
+            .bind(device_id)
+            .bind(kind)
+            .bind(act_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected(),
+            (Some(kind), None) => db::query(
+                "DELETE FROM live_activity_tokens WHERE device_id = ? AND token_kind = ?",
+            )
+            .bind(device_id)
+            .bind(kind)
+            .execute(&self.pool)
+            .await?
+            .rows_affected(),
+            (None, Some(act_id)) => db::query(
+                "DELETE FROM live_activity_tokens WHERE device_id = ? AND activity_id = ?",
+            )
+            .bind(device_id)
+            .bind(act_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected(),
+            (None, None) => db::query("DELETE FROM live_activity_tokens WHERE device_id = ?")
+                .bind(device_id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected(),
+        };
+        Ok(affected)
+    }
+
+    pub async fn list_active_live_activity_tokens(
+        &self,
+        token_kind: Option<&str>,
+    ) -> Result<Vec<crate::live_activity_push::LiveActivityTokenRecord>, StoreError> {
+        #[derive(Debug, Deserialize)]
+        struct TokenRow {
+            token_id: String,
+            device_id: String,
+            token_kind: String,
+            push_token: String,
+            activity_id: Option<String>,
+            session_key: Option<String>,
+            activity_mode: Option<String>,
+            bundle_id: String,
+            apns_environment: String,
+            updated_at: DateTime<Utc>,
+            last_pushed_at: Option<DateTime<Utc>>,
+        }
+        let rows = if let Some(kind) = token_kind {
+            db::query_as::<TokenRow>(
+                r#"SELECT token_id, device_id, token_kind, push_token, activity_id,
+                          session_key, activity_mode, bundle_id, apns_environment,
+                          updated_at, last_pushed_at
+                   FROM live_activity_tokens
+                   WHERE invalidated_at IS NULL AND token_kind = ?
+                   ORDER BY updated_at DESC"#,
+            )
+            .bind(kind)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            db::query_as::<TokenRow>(
+                r#"SELECT token_id, device_id, token_kind, push_token, activity_id,
+                          session_key, activity_mode, bundle_id, apns_environment,
+                          updated_at, last_pushed_at
+                   FROM live_activity_tokens
+                   WHERE invalidated_at IS NULL
+                   ORDER BY updated_at DESC"#,
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows
+            .into_iter()
+            .map(|r| crate::live_activity_push::LiveActivityTokenRecord {
+                token_id: r.token_id,
+                device_id: r.device_id,
+                token_kind: r.token_kind,
+                push_token: r.push_token,
+                activity_id: r.activity_id,
+                session_key: r.session_key,
+                activity_mode: r.activity_mode,
+                bundle_id: r.bundle_id,
+                apns_environment: r.apns_environment,
+                updated_at: r.updated_at,
+                last_pushed_at: r.last_pushed_at,
+            })
+            .collect())
+    }
+
+    pub async fn mark_live_activity_token_pushed(&self, token_id: &str) -> Result<(), StoreError> {
+        db::query("UPDATE live_activity_tokens SET last_pushed_at = ? WHERE token_id = ?")
+            .bind(Utc::now())
+            .bind(token_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn invalidate_live_activity_token(&self, token_id: &str) -> Result<(), StoreError> {
+        db::query("UPDATE live_activity_tokens SET invalidated_at = ? WHERE token_id = ?")
+            .bind(Utc::now())
+            .bind(token_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Cached image bytes with their content type and digest, read in native
@@ -2282,28 +2458,38 @@ impl Store {
             });
         };
         let session_id = charging_session_id(first);
-        let mut cached = self.charging_session_energy(&session_id).await?;
-        if cached.is_none()
-            && full_items
-                .last()
-                .is_some_and(|last| Utc::now() - last.sampled_at > chrono::Duration::minutes(15))
-        {
-            self.persist_charging_session_energy(&full_items).await?;
-            cached = self.charging_session_energy(&session_id).await?;
-        }
+        let energy_kwh = self
+            .resolve_and_sync_charging_session_energy(&session_id, &full_items)
+            .await?;
+        let is_settled = full_items
+            .last()
+            .is_some_and(|last| Utc::now() - last.sampled_at > chrono::Duration::minutes(15));
         let keep_from = full_items.len().saturating_sub(limit as usize);
         let items = full_items[keep_from..].to_vec();
         Ok(crate::models::VehicleChargingSamplePage {
-            energy_kwh: cached
-                .or_else(|| crate::analytics::integrated_charging_power_kwh(&full_items)),
-            energy_finalized: cached.is_some(),
+            energy_kwh,
+            energy_finalized: is_settled && energy_kwh.is_some(),
             items,
         })
     }
 
-    pub async fn finalize_latest_vehicle_charging_session(&self) -> Result<(), StoreError> {
+    /// Recomputes and persists the latest charging session's integrated energy
+    /// continuously while charging is in progress (and on session exit).
+    pub async fn refresh_latest_vehicle_charging_session_energy(
+        &self,
+    ) -> Result<Option<f64>, StoreError> {
         let items = self.latest_vehicle_charging_session_full().await?;
-        self.persist_charging_session_energy(&items).await
+        let Some(first) = items.first() else {
+            return Ok(None);
+        };
+        let session_id = charging_session_id(first);
+        self.resolve_and_sync_charging_session_energy(&session_id, &items)
+            .await
+    }
+
+    pub async fn finalize_latest_vehicle_charging_session(&self) -> Result<(), StoreError> {
+        let _ = self.refresh_latest_vehicle_charging_session_energy().await?;
+        Ok(())
     }
 
     async fn latest_vehicle_charging_session_full(
@@ -2323,14 +2509,40 @@ impl Store {
             .unwrap_or_default())
     }
 
-    async fn charging_session_energy(&self, session_id: &str) -> Result<Option<f64>, StoreError> {
-        Ok(db::query_as::<ChargingSessionEnergyRow>(
-            "SELECT energy_kwh FROM vehicle_charging_session_energy WHERE session_id = ?",
+    async fn charging_session_energy_row(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ChargingSessionEnergyRow>, StoreError> {
+        db::query_as::<ChargingSessionEnergyRow>(
+            "SELECT energy_kwh, ended_at, sample_count FROM vehicle_charging_session_energy WHERE session_id = ?",
         )
         .bind(session_id)
         .fetch_optional(&self.pool)
-        .await?
-        .map(|row| row.energy_kwh))
+        .await
+        .map_err(StoreError::Database)
+    }
+
+    async fn resolve_and_sync_charging_session_energy(
+        &self,
+        session_id: &str,
+        items_ascending: &[VehicleChargingSample],
+    ) -> Result<Option<f64>, StoreError> {
+        let Some(last) = items_ascending.last() else {
+            return Ok(None);
+        };
+        let cached = self.charging_session_energy_row(session_id).await?;
+        let is_fresh = cached.as_ref().is_some_and(|row| {
+            row.sample_count == items_ascending.len() as i64 && row.ended_at == last.sampled_at
+        });
+        if is_fresh {
+            return Ok(cached.map(|row| row.energy_kwh));
+        }
+        let computed = crate::analytics::integrated_charging_power_kwh(items_ascending);
+        if computed.is_some() {
+            self.persist_charging_session_energy(items_ascending).await?;
+            return Ok(computed);
+        }
+        Ok(cached.map(|row| row.energy_kwh))
     }
 
     async fn persist_charging_session_energy(
@@ -2410,13 +2622,25 @@ impl Store {
                 break;
             }
         }
-        let mut summaries = sessions
-            .into_iter()
-            .take(limit as usize)
-            .filter_map(|samples| charging_session_summary(&samples))
-            .collect::<Vec<_>>();
-        for summary in &mut summaries {
-            summary.energy_kwh = self.charging_session_energy(&summary.id).await?;
+        let mut summaries = Vec::with_capacity(sessions.len().min(limit as usize));
+        for mut samples_descending in sessions.into_iter().take(limit as usize) {
+            let Some(mut summary) = charging_session_summary(&samples_descending) else {
+                continue;
+            };
+            let cached = self.charging_session_energy_row(&summary.id).await?;
+            let is_fresh = cached.as_ref().is_some_and(|row| {
+                row.sample_count == samples_descending.len() as i64
+                    && row.ended_at == summary.ended_at
+            });
+            if is_fresh {
+                summary.energy_kwh = cached.map(|row| row.energy_kwh);
+            } else {
+                samples_descending.reverse();
+                summary.energy_kwh = self
+                    .resolve_and_sync_charging_session_energy(&summary.id, &samples_descending)
+                    .await?;
+            }
+            summaries.push(summary);
         }
         Ok(summaries)
     }
@@ -2487,18 +2711,15 @@ impl Store {
         let Some(items) = self.vehicle_charging_session(session_id).await? else {
             return Ok(None);
         };
-        let mut cached = self.charging_session_energy(session_id).await?;
-        if cached.is_none()
-            && items
-                .last()
-                .is_some_and(|last| Utc::now() - last.sampled_at > chrono::Duration::minutes(15))
-        {
-            self.persist_charging_session_energy(&items).await?;
-            cached = self.charging_session_energy(session_id).await?;
-        }
+        let energy_kwh = self
+            .resolve_and_sync_charging_session_energy(session_id, &items)
+            .await?;
+        let is_settled = items
+            .last()
+            .is_some_and(|last| Utc::now() - last.sampled_at > chrono::Duration::minutes(15));
         Ok(Some(crate::models::VehicleChargingSamplePage {
-            energy_kwh: cached.or_else(|| crate::analytics::integrated_charging_power_kwh(&items)),
-            energy_finalized: cached.is_some(),
+            energy_kwh,
+            energy_finalized: is_settled && energy_kwh.is_some(),
             items,
         }))
     }
@@ -3777,5 +3998,57 @@ mod tests {
         assert_eq!(stats.charging_sample_count, 2_050);
         assert_eq!(stats.charging_energy_kwh_estimated, Some(20.49));
         assert_eq!(stats.charging_segments_from_power, 2_049);
+    }
+
+    #[tokio::test]
+    async fn ongoing_charging_session_energy_updates_continuously_with_new_samples() {
+        let Ok(store) = Store::in_memory().await else {
+            return;
+        };
+        let now = Utc::now();
+        let s1 = VehicleChargingSample {
+            vehicle_id: "veh-live".to_owned(),
+            sampled_at: now - chrono::Duration::minutes(4),
+            soc: Some(40.0),
+            charge_state: 1,
+            charging_current: Some(150.0),
+            charging_power: Some(60_000.0),
+            charging_voltage: Some(400.0),
+        };
+        let s2 = VehicleChargingSample {
+            sampled_at: now - chrono::Duration::minutes(2),
+            soc: Some(43.0),
+            ..s1.clone()
+        };
+        let s3 = VehicleChargingSample {
+            sampled_at: now,
+            soc: Some(46.0),
+            ..s1.clone()
+        };
+
+        store.insert_vehicle_charging_sample(&s1).await.unwrap();
+        store.insert_vehicle_charging_sample(&s2).await.unwrap();
+        let first_kwh = store
+            .refresh_latest_vehicle_charging_session_energy()
+            .await
+            .unwrap();
+        assert_eq!(first_kwh, Some(2.0));
+        let page1 = store.latest_vehicle_charging_session_page(5_000).await.unwrap();
+        assert_eq!(page1.energy_kwh, Some(2.0));
+        assert!(!page1.energy_finalized);
+
+        // Append another live charging sample: energy must recalculate instead of staying frozen at 2.0 kWh.
+        store.insert_vehicle_charging_sample(&s3).await.unwrap();
+        let second_kwh = store
+            .refresh_latest_vehicle_charging_session_energy()
+            .await
+            .unwrap();
+        assert_eq!(second_kwh, Some(4.0));
+        let page2 = store.latest_vehicle_charging_session_page(5_000).await.unwrap();
+        assert_eq!(page2.energy_kwh, Some(4.0));
+        assert!(!page2.energy_finalized);
+
+        let sessions = store.list_vehicle_charging_sessions(10).await.unwrap();
+        assert_eq!(sessions.first().and_then(|s| s.energy_kwh), Some(4.0));
     }
 }

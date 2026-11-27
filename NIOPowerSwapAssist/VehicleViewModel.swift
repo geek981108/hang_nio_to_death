@@ -659,6 +659,11 @@ final class VehicleViewModel: ObservableObject {
         isConfigured = true
         isVehicleControlConfigured = !settingsStore.controlKey().isEmpty
         errorMessage = nil
+        if settingsStore === BackendSettingsStore.shared, injectedSession == nil {
+            Task { @MainActor in
+                await VehicleLiveActivityManager.shared.syncRegisteredTokensIfNeeded(force: true)
+            }
+        }
     }
 
     private func client(for configuration: BackendConfiguration) -> BackendClient {

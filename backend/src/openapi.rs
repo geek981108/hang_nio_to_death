@@ -21,7 +21,12 @@ pub fn export(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 pub fn document() -> Value {
     let mut paths = Map::new();
     let mut add = |path: &str, method: &str, operation: Value| {
-        paths.insert(path.to_owned(), json!({method: operation}));
+        let entry = paths
+            .entry(path.to_owned())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Value::Object(methods) = entry {
+            methods.insert(method.to_owned(), operation);
+        }
     };
     add(
         "/healthz",
@@ -753,6 +758,92 @@ pub fn document() -> Value {
     action["x-side-effects"] = json!("physical-vehicle-control");
     add("/api/v1/vehicle/action", "post", action);
 
+    let mut register_la_token = operation(
+        "registerLiveActivityToken",
+        "注册 iOS Live Activity APNs 推送令牌",
+        "上传设备的 pushToStartToken（iOS 17.2+ 远程启动实时活动）或单个活动专属的 pushToken（用于远程更新与结束活动）。服务端不会在日志或状态接口中暴露原始令牌。",
+        "车辆",
+        "LiveActivityTokenResponse",
+        true,
+    );
+    register_la_token["requestBody"] = request_body(
+        "LiveActivityTokenRegistration",
+        "设备标识、令牌类型（push_to_start 或 activity_update）、十六进制 APNs Token 与可选活动上下文。",
+    );
+    error(
+        &mut register_la_token,
+        "400",
+        "invalid_live_activity_token：device_id、push_token 或 activity_id 格式无效。",
+    );
+    add("/api/v1/live-activities/tokens", "post", register_la_token);
+
+    let mut delete_la_token = operation(
+        "deleteLiveActivityToken",
+        "注销 iOS Live Activity APNs 推送令牌",
+        "按 device_id（及可选 token_kind、activity_id）移除已注册的 Live Activity 推送令牌。",
+        "车辆",
+        "DeleteLiveActivityTokensResponse",
+        true,
+    );
+    delete_la_token["requestBody"] = request_body(
+        "LiveActivityTokenDeleteInput",
+        "需要注销的设备标识与可选活动过滤条件。",
+    );
+    error(
+        &mut delete_la_token,
+        "400",
+        "invalid_live_activity_token：device_id 或 activity_id 格式无效。",
+    );
+    add("/api/v1/live-activities/tokens", "delete", delete_la_token);
+
+    let la_status = operation(
+        "liveActivityStatus",
+        "查询 Live Activity APNs 推送状态",
+        "返回服务端 APNs 推送是否已配置、当前有效令牌数量、最近活跃会话摘要与模拟推送运行状态，不返回任何原始推送令牌。",
+        "车辆",
+        "LiveActivityPushStatus",
+        true,
+    );
+    add("/api/v1/live-activities/status", "get", la_status);
+
+    let mut start_la_sim = operation(
+        "startLiveActivitySimulation",
+        "启动 Live Activity 后端模拟推送测试",
+        "立即向已注册的 pushToStart 令牌发送模拟 start 推送，随后在后台按设定间隔连续发送多步 update 推送（如充电电量持续增长或换电排队倒计时）并自动发送 end 结束。运行期间暂停真实车况轮询对实时活动的覆盖。",
+        "车辆",
+        "LiveActivitySimulationOutcome",
+        true,
+    );
+    start_la_sim["requestBody"] = request_body(
+        "LiveActivitySimulationRequest",
+        "模拟模式（charging 或 swapQueue）、推送间隔、步数及可选目标设备 ID。",
+    );
+    error(
+        &mut start_la_sim,
+        "400",
+        "no_live_activity_tokens / invalid_live_activity_token：无有效推送令牌或参数无效。",
+    );
+    error(
+        &mut start_la_sim,
+        "503",
+        "apns_not_configured：服务端未配置 APNs 凭证。",
+    );
+    add("/api/v1/live-activities/simulation", "post", start_la_sim);
+
+    let mut stop_la_sim = operation(
+        "stopLiveActivitySimulation",
+        "停止 Live Activity 后端模拟推送测试",
+        "立即终止正在运行的后端模拟推送任务，并向活动更新令牌发送 APNs end 推送以关闭灵动岛与锁屏实时活动。",
+        "车辆",
+        "LiveActivitySimulationStopOutcome",
+        true,
+    );
+    stop_la_sim["requestBody"] = request_body(
+        "LiveActivitySimulationStopInput",
+        "可选目标设备 ID。",
+    );
+    add("/api/v1/live-activities/simulation", "delete", stop_la_sim);
+
     let mut poll = operation(
         "manualPoll",
         "手动站点轮询",
@@ -943,6 +1034,9 @@ fn nullable(schema: Value) -> Value {
 }
 fn text(description: &str) -> Value {
     json!({"type":"string","description":description})
+}
+fn text_enum(description: &str, values: &[&str]) -> Value {
+    json!({"type":"string","enum":values,"description":description})
 }
 fn number(description: &str) -> Value {
     json!({"type":"number","description":description})
@@ -3128,6 +3222,224 @@ fn schemas() -> Value {
             None,
         ),
     );
+    schemas.insert(
+        "LiveActivityTokenRegistration".into(),
+        object(
+            "iOS Live Activity APNs 推送令牌注册请求。",
+            &[
+                ("device_id", text("应用安装级设备标识（UUID）。")),
+                (
+                    "token_kind",
+                    text_enum(
+                        "令牌类型。",
+                        &["push_to_start", "activity_update"],
+                    ),
+                ),
+                ("push_token", text("十六进制 APNs Token（32~512 位）。")),
+                (
+                    "activity_id",
+                    opt(text("ActivityKit 活动 ID。"), "token_kind 为 activity_update 时必填。"),
+                ),
+                (
+                    "session_key",
+                    opt(text("活动会话键，如 charging:<vehicle_id> 或 swap:<order_no>。"), "可选。"),
+                ),
+                (
+                    "activity_mode",
+                    opt(
+                        text_enum("实时活动模式。", &["charging", "swapQueue"]),
+                        "可选。",
+                    ),
+                ),
+                (
+                    "bundle_id",
+                    opt(text("iOS 应用 Bundle ID。"), "留空则使用服务端默认 APNS_BUNDLE_ID。"),
+                ),
+                (
+                    "apns_environment",
+                    opt(
+                        text_enum("APNs 通道环境。", &["production", "sandbox"]),
+                        "留空则使用服务端默认 APNS_ENVIRONMENT。",
+                    ),
+                ),
+            ],
+            Some(&["device_id", "token_kind", "push_token"]),
+        ),
+    );
+    schemas.insert(
+        "LiveActivityTokenDeleteInput".into(),
+        object(
+            "注销 iOS Live Activity APNs 推送令牌请求。",
+            &[
+                ("device_id", text("应用安装级设备标识。")),
+                (
+                    "token_kind",
+                    opt(
+                        text_enum("令牌类型过滤。", &["push_to_start", "activity_update"]),
+                        "留空则删除该设备全部令牌。",
+                    ),
+                ),
+                (
+                    "activity_id",
+                    opt(text("活动 ID 过滤。"), "可选。"),
+                ),
+            ],
+            Some(&["device_id"]),
+        ),
+    );
+    schemas.insert(
+        "LiveActivityTokenResponse".into(),
+        object(
+            "Live Activity 推送令牌注册结果。",
+            &[
+                ("registered", boolean("是否已保存令牌。")),
+                ("apns_configured", boolean("服务端是否已配置 APNs .p8 凭证。")),
+                (
+                    "token_kind",
+                    text_enum("已注册令牌类型。", &["push_to_start", "activity_update"]),
+                ),
+                (
+                    "apns_environment",
+                    text_enum("生效的 APNs 环境。", &["production", "sandbox"]),
+                ),
+            ],
+            None,
+        ),
+    );
+    schemas.insert(
+        "DeleteLiveActivityTokensResponse".into(),
+        object(
+            "Live Activity 推送令牌注销结果。",
+            &[("deleted", integer("删除的令牌记录条数。"))],
+            None,
+        ),
+    );
+    schemas.insert(
+        "LiveActivityPushStatus".into(),
+        object(
+            "Live Activity 远程推送状态摘要（不含原始令牌）。",
+            &[
+                ("apns_configured", boolean("服务端是否已启用 APNs 推送。")),
+                ("bundle_id", opt(text("服务端默认 Bundle ID。"), "未配置 APNs 时为 null。")),
+                (
+                    "default_environment",
+                    opt(
+                        text_enum("默认 APNs 环境。", &["production", "sandbox"]),
+                        "未配置 APNs 时为 null。",
+                    ),
+                ),
+                ("push_to_start_token_count", integer("有效 Push-to-Start 令牌数量。")),
+                ("activity_update_token_count", integer("有效活动更新令牌数量。")),
+                ("active_session_key", opt(text("当前活跃实时活动会话键。"), "无活跃会话时为 null。")),
+                (
+                    "active_mode",
+                    opt(
+                        text_enum("当前活跃实时活动模式。", &["charging", "swapQueue"]),
+                        "无活跃会话时为 null。",
+                    ),
+                ),
+                ("last_push_at", opt(date_time("最近一次成功投递 APNs 推送时间。"), "尚未推送时为 null。")),
+                (
+                    "simulation",
+                    opt(
+                        reference("LiveActivitySimulationSnapshot"),
+                        "最近或当前运行的后端模拟推送状态。",
+                    ),
+                ),
+            ],
+            None,
+        ),
+    );
+    schemas.insert(
+        "LiveActivitySimulationRequest".into(),
+        object(
+            "启动 Live Activity 后端模拟推送测试请求。",
+            &[
+                (
+                    "mode",
+                    opt(
+                        text_enum("模拟模式。", &["charging", "swapQueue"]),
+                        "默认 charging。",
+                    ),
+                ),
+                (
+                    "interval_seconds",
+                    opt(integer("每步 update 推送间隔秒数（夹取到 3~30）。"), "默认 5。"),
+                ),
+                (
+                    "steps",
+                    opt(integer("后续 update 推送步数（夹取到 1~20）。"), "默认 6。"),
+                ),
+                (
+                    "device_id",
+                    opt(text("仅向指定 device_id 推送。"), "留空则向当前租户全部已注册设备推送。"),
+                ),
+            ],
+            Some(&[]),
+        ),
+    );
+    schemas.insert(
+        "LiveActivitySimulationStopInput".into(),
+        object(
+            "停止 Live Activity 后端模拟推送测试请求。",
+            &[("device_id", opt(text("可选目标设备 ID。"), "可选。"))],
+            Some(&[]),
+        ),
+    );
+    schemas.insert(
+        "LiveActivitySimulationSnapshot".into(),
+        object(
+            "Live Activity 后端模拟推送运行状态快照。",
+            &[
+                ("running", boolean("模拟推送是否正在运行。")),
+                ("simulation_id", opt(text("模拟任务 ID。"), "可选。")),
+                (
+                    "mode",
+                    opt(text_enum("模拟模式。", &["charging", "swapQueue"]), "可选。"),
+                ),
+                ("session_key", opt(text("模拟会话键（sim:*）。"), "可选。")),
+                ("current_step", integer("当前已推送步数（0 表示初始 start）。")),
+                ("total_steps", integer("计划总 update 步数。")),
+                ("interval_seconds", integer("每步推送间隔秒数。")),
+                ("started_at", opt(date_time("模拟启动时间。"), "可选。")),
+                ("last_event", opt(text("最近一次推送事件（start / update / end）。"), "可选。")),
+                ("last_delivered_count", integer("最近一步成功投递到 APNs 的设备数。")),
+                ("last_error", opt(text("最近一步的提示或错误信息。"), "可选。")),
+            ],
+            None,
+        ),
+    );
+    schemas.insert(
+        "LiveActivitySimulationOutcome".into(),
+        object(
+            "启动 Live Activity 后端模拟推送测试的立即响应。",
+            &[
+                ("started", boolean("是否已启动模拟任务。")),
+                ("simulation_id", text("模拟任务 ID。")),
+                ("mode", text_enum("模拟模式。", &["charging", "swapQueue"])),
+                ("session_key", text("模拟会话键。")),
+                ("interval_seconds", integer("每步推送间隔秒数。")),
+                ("total_steps", integer("后续 update 推送总步数。")),
+                ("start_tokens_targeted", integer("本次命中的 push_to_start 令牌数量。")),
+                ("start_delivered", integer("成功投递的 start 推送数量。")),
+                ("update_tokens_targeted", integer("直接命中的 activity_update 令牌数量。")),
+                ("update_delivered", integer("成功投递的初始 update 推送数量。")),
+            ],
+            None,
+        ),
+    );
+    schemas.insert(
+        "LiveActivitySimulationStopOutcome".into(),
+        object(
+            "停止 Live Activity 后端模拟推送测试结果。",
+            &[
+                ("stopped", boolean("是否停止了运行中的模拟任务或关闭了模拟活动。")),
+                ("ended_tokens", integer("本次尝试发送 end 的活动更新令牌数量。")),
+                ("end_delivered", integer("成功投递的 end 推送数量。")),
+            ],
+            None,
+        ),
+    );
     Value::Object(schemas)
 }
 
@@ -3176,6 +3488,8 @@ mod tests {
             let path = route.split('"').nth(1).unwrap();
             let method = if route.contains("web::post()") {
                 "post"
+            } else if route.contains("web::delete()") {
+                "delete"
             } else {
                 "get"
             };

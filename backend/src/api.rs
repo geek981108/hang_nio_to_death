@@ -14,6 +14,13 @@ use crate::{
     config::{StationConfig, StationTemplateConfig},
     daily_checkin::{self, DailyCheckInError},
     events::EventHub,
+    live_activity_push::{
+        LiveActivityCoordinator, LiveActivityPushStatus, LiveActivitySimulationOutcome,
+        LiveActivitySimulationRequest, LiveActivitySimulationStopInput,
+        LiveActivitySimulationStopOutcome, LiveActivityTokenDeleteInput, LiveActivityTokenKind,
+        LiveActivityTokenRegistration, LiveActivityTokenResponse, SimulationError,
+        validate_hex_token,
+    },
     models::{
         ActiveServiceOrderPage, ImportedBattery, ImportedOrder, NearestStationLive, ServiceStatus,
         StationLiveStatus, SwapEventPage, SwapStation, SwapStationPage, VehicleChargingSamplePage,
@@ -49,6 +56,7 @@ pub(crate) mod mcp_oauth;
 pub struct AppState {
     pub store: Store,
     pub events: EventHub,
+    pub live_activity: Arc<LiveActivityCoordinator>,
     pub poller: Poller,
     pub api_key: Option<Arc<str>>,
     pub tenant_mode: bool,
@@ -444,6 +452,26 @@ pub fn configure(config: &mut web::ServiceConfig) {
         .route(
             "/api/v1/vehicle/widget-info",
             web::get().to(vehicle_widget_info),
+        )
+        .route(
+            "/api/v1/live-activities/tokens",
+            web::post().to(register_live_activity_token),
+        )
+        .route(
+            "/api/v1/live-activities/tokens",
+            web::delete().to(delete_live_activity_token),
+        )
+        .route(
+            "/api/v1/live-activities/status",
+            web::get().to(live_activity_status),
+        )
+        .route(
+            "/api/v1/live-activities/simulation",
+            web::post().to(start_live_activity_simulation),
+        )
+        .route(
+            "/api/v1/live-activities/simulation",
+            web::delete().to(stop_live_activity_simulation),
         )
         .route("/api/v1/poll", web::post().to(manual_poll))
         .route("/api/v1/orders/import", web::post().to(import_order))
@@ -1770,6 +1798,220 @@ fn default_charging_session_limit() -> u32 {
     50
 }
 
+fn validate_live_activity_identifier(
+    field: &'static str,
+    raw: &str,
+    max_len: usize,
+) -> Result<String, ApiError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > max_len
+        || !trimmed
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            code: "invalid_live_activity_token",
+            message: format!("{field} contains invalid characters or length"),
+        });
+    }
+    Ok(trimmed.to_owned())
+}
+
+async fn register_live_activity_token(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    body: web::Json<LiveActivityTokenRegistration>,
+) -> Result<web::Json<LiveActivityTokenResponse>, ApiError> {
+    authorize(&state, &request)?;
+    let input = body.into_inner();
+    let device_id = validate_live_activity_identifier("device_id", &input.device_id, 128)?;
+    let push_token = validate_hex_token(&input.push_token).map_err(|message| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        code: "invalid_live_activity_token",
+        message: message.to_owned(),
+    })?;
+    let activity_id = match input.activity_id.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            Some(validate_live_activity_identifier("activity_id", raw, 128)?)
+        }
+        _ => None,
+    };
+    if input.token_kind == LiveActivityTokenKind::ActivityUpdate && activity_id.is_none() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            code: "invalid_live_activity_token",
+            message: "activity_id is required for activity_update tokens".to_owned(),
+        });
+    }
+    let session_key = match input.session_key.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            Some(validate_live_activity_identifier("session_key", raw, 160)?)
+        }
+        _ => None,
+    };
+    let activity_mode = match input.activity_mode.as_deref().map(str::trim) {
+        Some("charging") => Some("charging"),
+        Some("swapQueue") | Some("swap_queue") => Some("swapQueue"),
+        Some("") | None => None,
+        Some(_) => {
+            return Err(ApiError {
+                status: StatusCode::BAD_REQUEST,
+                code: "invalid_live_activity_token",
+                message: "activity_mode must be charging or swapQueue".to_owned(),
+            });
+        }
+    };
+    let bundle_id = match input.bundle_id.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            validate_live_activity_identifier("bundle_id", raw, 128)?
+        }
+        _ => state.live_activity.default_bundle_id(),
+    };
+    let apns_environment = input
+        .apns_environment
+        .unwrap_or_else(|| state.live_activity.default_environment());
+    let token_id = match input.token_kind {
+        LiveActivityTokenKind::PushToStart => format!("start:{device_id}"),
+        LiveActivityTokenKind::ActivityUpdate => format!(
+            "update:{device_id}:{}",
+            activity_id.as_deref().unwrap_or("default")
+        ),
+    };
+    state
+        .store
+        .upsert_live_activity_token(
+            &token_id,
+            &device_id,
+            input.token_kind.as_str(),
+            &push_token,
+            activity_id.as_deref(),
+            session_key.as_deref(),
+            activity_mode,
+            &bundle_id,
+            apns_environment.as_str(),
+        )
+        .await?;
+    tracing::info!(
+        token_kind = input.token_kind.as_str(),
+        apns_environment = apns_environment.as_str(),
+        "registered live activity APNs token"
+    );
+    Ok(web::Json(LiveActivityTokenResponse {
+        registered: true,
+        apns_configured: state.live_activity.is_apns_configured(),
+        token_kind: input.token_kind,
+        apns_environment,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteLiveActivityTokensResponse {
+    deleted: u64,
+}
+
+async fn delete_live_activity_token(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    body: web::Json<LiveActivityTokenDeleteInput>,
+) -> Result<web::Json<DeleteLiveActivityTokensResponse>, ApiError> {
+    authorize(&state, &request)?;
+    let input = body.into_inner();
+    let device_id = validate_live_activity_identifier("device_id", &input.device_id, 128)?;
+    let activity_id = match input.activity_id.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            Some(validate_live_activity_identifier("activity_id", raw, 128)?)
+        }
+        _ => None,
+    };
+    let deleted = state
+        .store
+        .delete_live_activity_tokens(
+            &device_id,
+            input.token_kind.map(LiveActivityTokenKind::as_str),
+            activity_id.as_deref(),
+        )
+        .await?;
+    Ok(web::Json(DeleteLiveActivityTokensResponse { deleted }))
+}
+
+async fn live_activity_status(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+) -> Result<web::Json<LiveActivityPushStatus>, ApiError> {
+    authorize(&state, &request)?;
+    Ok(web::Json(state.live_activity.status().await?))
+}
+
+async fn start_live_activity_simulation(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    body: Option<web::Json<LiveActivitySimulationRequest>>,
+) -> Result<web::Json<LiveActivitySimulationOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let mut input = body.map(web::Json::into_inner).unwrap_or(LiveActivitySimulationRequest {
+        mode: crate::live_activity_push::LiveActivityMode::Charging,
+        interval_seconds: 5,
+        steps: 6,
+        device_id: None,
+    });
+    if let Some(raw_device_id) = input.device_id.as_deref() {
+        if raw_device_id.trim().is_empty() {
+            input.device_id = None;
+        } else {
+            input.device_id = Some(validate_live_activity_identifier(
+                "device_id",
+                raw_device_id,
+                128,
+            )?);
+        }
+    }
+    let outcome = state
+        .live_activity
+        .start_simulation(input)
+        .await
+        .map_err(map_simulation_error)?;
+    Ok(web::Json(outcome))
+}
+
+async fn stop_live_activity_simulation(
+    state: web::Data<AppState>,
+    request: HttpRequest,
+    body: Option<web::Json<LiveActivitySimulationStopInput>>,
+) -> Result<web::Json<LiveActivitySimulationStopOutcome>, ApiError> {
+    authorize(&state, &request)?;
+    let input = body.map(web::Json::into_inner).unwrap_or_default();
+    let device_id = match input.device_id.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => {
+            Some(validate_live_activity_identifier("device_id", raw, 128)?)
+        }
+        _ => None,
+    };
+    let outcome = state
+        .live_activity
+        .stop_simulation(device_id.as_deref())
+        .await
+        .map_err(map_simulation_error)?;
+    Ok(web::Json(outcome))
+}
+
+fn map_simulation_error(error: SimulationError) -> ApiError {
+    match error {
+        SimulationError::ApnsNotConfigured => ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "apns_not_configured",
+            message: "服务端尚未配置 APNs .p8 凭证，请先在 .env 中设置 APNS_TEAM_ID / APNS_KEY_ID / APNS_PRIVATE_KEY_P8。".to_owned(),
+        },
+        SimulationError::NoRegisteredTokens => ApiError {
+            status: StatusCode::BAD_REQUEST,
+            code: "no_live_activity_tokens",
+            message: "当前没有已注册的 Live Activity 推送令牌，请先在真机上同步令牌后再试。".to_owned(),
+        },
+        SimulationError::Store(err) => err.into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1780,6 +2022,7 @@ mod tests {
         AppState {
             poller: Poller::new(None, store.clone()),
             events: EventHub::new(store.clone()),
+            live_activity: Arc::new(LiveActivityCoordinator::new(store.clone(), None)),
             store,
             api_key: Some(Arc::from(key)),
             tenant_mode: true,
@@ -1923,6 +2166,7 @@ mod tests {
         let state = web::Data::new(AppState {
             poller: Poller::new(None, store.clone()),
             events: EventHub::new(store.clone()),
+            live_activity: Arc::new(LiveActivityCoordinator::new(store.clone(), None)),
             store,
             api_key: Some(Arc::from("test-key")),
             tenant_mode: false,
@@ -2009,6 +2253,7 @@ mod tests {
         let state = web::Data::new(AppState {
             poller: Poller::new(None, store.clone()),
             events: EventHub::new(store.clone()),
+            live_activity: Arc::new(LiveActivityCoordinator::new(store.clone(), None)),
             store,
             api_key: Some(Arc::from("test-key")),
             tenant_mode: false,
@@ -2530,5 +2775,166 @@ mod tests {
         // Subsequent token refresh updates the same shared token without splitting clones.
         assert!(shared_cold_state.hot_reload_vehicle_token("second-login-token"));
         assert_eq!(first_vehicle.current_bearer_token(), "second-login-token");
+    }
+
+    #[actix_web::test]
+    async fn live_activity_token_endpoints_register_status_and_delete() {
+        let store = match Store::in_memory().await {
+            Ok(store) => store,
+            Err(_) if std::env::var_os("NIO_TEST_POSTGRES_URL").is_none() => return,
+            Err(error) => panic!("PostgreSQL test setup failed: {error}"),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(tenant_test_state(store, "la-key")))
+                .configure(configure),
+        )
+        .await;
+
+        // Auth is required.
+        let unauth = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api/v1/live-activities/status")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+        // Reject invalid hex push token.
+        let bad_token = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/v1/live-activities/tokens")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .set_json(serde_json::json!({
+                    "device_id": "iphone-1",
+                    "token_kind": "push_to_start",
+                    "push_token": "not-valid-hex!",
+                    "environment": "sandbox"
+                }))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(bad_token.status(), StatusCode::BAD_REQUEST);
+
+        // Register push-to-start token.
+        let register_start = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/v1/live-activities/tokens")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .set_json(serde_json::json!({
+                    "device_id": "iphone-1",
+                    "token_kind": "push_to_start",
+                    "push_token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    "environment": "sandbox"
+                }))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(register_start.status(), StatusCode::OK);
+        let start_body: serde_json::Value = test::read_body_json(register_start).await;
+        assert_eq!(start_body["token_kind"], "push_to_start");
+        assert_eq!(start_body["apns_configured"], false);
+
+        // Register activity update token.
+        let register_update = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/v1/live-activities/tokens")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .set_json(serde_json::json!({
+                    "device_id": "iphone-1",
+                    "token_kind": "activity_update",
+                    "push_token": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                    "activity_id": "act-1",
+                    "session_key": "charging:veh-1",
+                    "activity_mode": "charging",
+                    "environment": "sandbox"
+                }))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(register_update.status(), StatusCode::OK);
+
+        // Status reflects both active tokens.
+        let status = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api/v1/live-activities/status")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(status.status(), StatusCode::OK);
+        let status_body: serde_json::Value = test::read_body_json(status).await;
+        assert_eq!(status_body["apns_configured"], false);
+        assert_eq!(status_body["push_to_start_token_count"], 1);
+        assert_eq!(status_body["activity_update_token_count"], 1);
+
+        // Delete only activity_update token for act-1.
+        let delete_update = test::call_service(
+            &app,
+            test::TestRequest::delete()
+                .uri("/api/v1/live-activities/tokens")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .set_json(serde_json::json!({
+                    "device_id": "iphone-1",
+                    "token_kind": "activity_update",
+                    "activity_id": "act-1"
+                }))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(delete_update.status(), StatusCode::OK);
+        let delete_body: serde_json::Value = test::read_body_json(delete_update).await;
+        assert_eq!(delete_body["deleted"], 1);
+
+        let status_after = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api/v1/live-activities/status")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .to_request(),
+        )
+        .await;
+        let status_after_body: serde_json::Value = test::read_body_json(status_after).await;
+        assert_eq!(status_after_body["push_to_start_token_count"], 1);
+        assert_eq!(status_after_body["activity_update_token_count"], 0);
+
+        // Simulation requires auth and returns 503 when APNs is not configured.
+        let sim_unauth = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/v1/live-activities/simulation")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(sim_unauth.status(), StatusCode::UNAUTHORIZED);
+
+        let sim_no_apns = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri("/api/v1/live-activities/simulation")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .set_json(serde_json::json!({"mode": "charging", "interval_seconds": 5, "steps": 3}))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(sim_no_apns.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let sim_stop = test::call_service(
+            &app,
+            test::TestRequest::delete()
+                .uri("/api/v1/live-activities/simulation")
+                .insert_header((AUTHORIZATION, "Bearer la-key"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(sim_stop.status(), StatusCode::OK);
+        let sim_stop_body: serde_json::Value = test::read_body_json(sim_stop).await;
+        assert_eq!(sim_stop_body["stopped"], false);
     }
 }

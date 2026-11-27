@@ -1020,6 +1020,19 @@
         ],
         "type": "object"
       },
+      "DeleteLiveActivityTokensResponse": {
+        "description": "Live Activity 推送令牌注销结果。",
+        "properties": {
+          "deleted": {
+            "description": "删除的令牌记录条数。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
       "EnergyStats": {
         "description": "区间统计；known 字段只汇总有证据的记录，充电电量优先功率积分，缺功率时依据最近换上电池容量与 SOC 增量估算。",
         "properties": {
@@ -1419,6 +1432,566 @@
         "required": [
           "order_no",
           "occurred_at"
+        ],
+        "type": "object"
+      },
+      "LiveActivityPushStatus": {
+        "description": "Live Activity 远程推送状态摘要（不含原始令牌）。",
+        "properties": {
+          "active_mode": {
+            "anyOf": [
+              {
+                "description": "当前活跃实时活动模式。",
+                "enum": [
+                  "charging",
+                  "swapQueue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无活跃会话时为 null。"
+          },
+          "active_session_key": {
+            "anyOf": [
+              {
+                "description": "当前活跃实时活动会话键。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "无活跃会话时为 null。"
+          },
+          "activity_update_token_count": {
+            "description": "有效活动更新令牌数量。",
+            "type": "integer"
+          },
+          "apns_configured": {
+            "description": "服务端是否已启用 APNs 推送。",
+            "type": "boolean"
+          },
+          "bundle_id": {
+            "anyOf": [
+              {
+                "description": "服务端默认 Bundle ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未配置 APNs 时为 null。"
+          },
+          "default_environment": {
+            "anyOf": [
+              {
+                "description": "默认 APNs 环境。",
+                "enum": [
+                  "production",
+                  "sandbox"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未配置 APNs 时为 null。"
+          },
+          "last_push_at": {
+            "anyOf": [
+              {
+                "description": "最近一次成功投递 APNs 推送时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "尚未推送时为 null。"
+          },
+          "push_to_start_token_count": {
+            "description": "有效 Push-to-Start 令牌数量。",
+            "type": "integer"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveActivitySimulationSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近或当前运行的后端模拟推送状态。"
+          }
+        },
+        "required": [
+          "apns_configured",
+          "bundle_id",
+          "default_environment",
+          "push_to_start_token_count",
+          "activity_update_token_count",
+          "active_session_key",
+          "active_mode",
+          "last_push_at",
+          "simulation"
+        ],
+        "type": "object"
+      },
+      "LiveActivitySimulationOutcome": {
+        "description": "启动 Live Activity 后端模拟推送测试的立即响应。",
+        "properties": {
+          "interval_seconds": {
+            "description": "每步推送间隔秒数。",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "模拟模式。",
+            "enum": [
+              "charging",
+              "swapQueue"
+            ],
+            "type": "string"
+          },
+          "session_key": {
+            "description": "模拟会话键。",
+            "type": "string"
+          },
+          "simulation_id": {
+            "description": "模拟任务 ID。",
+            "type": "string"
+          },
+          "start_delivered": {
+            "description": "成功投递的 start 推送数量。",
+            "type": "integer"
+          },
+          "start_tokens_targeted": {
+            "description": "本次命中的 push_to_start 令牌数量。",
+            "type": "integer"
+          },
+          "started": {
+            "description": "是否已启动模拟任务。",
+            "type": "boolean"
+          },
+          "total_steps": {
+            "description": "后续 update 推送总步数。",
+            "type": "integer"
+          },
+          "update_delivered": {
+            "description": "成功投递的初始 update 推送数量。",
+            "type": "integer"
+          },
+          "update_tokens_targeted": {
+            "description": "直接命中的 activity_update 令牌数量。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "started",
+          "simulation_id",
+          "mode",
+          "session_key",
+          "interval_seconds",
+          "total_steps",
+          "start_tokens_targeted",
+          "start_delivered",
+          "update_tokens_targeted",
+          "update_delivered"
+        ],
+        "type": "object"
+      },
+      "LiveActivitySimulationRequest": {
+        "description": "启动 Live Activity 后端模拟推送测试请求。",
+        "properties": {
+          "device_id": {
+            "anyOf": [
+              {
+                "description": "仅向指定 device_id 推送。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "留空则向当前租户全部已注册设备推送。"
+          },
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "description": "每步 update 推送间隔秒数（夹取到 3~30）。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 5。"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "模拟模式。",
+                "enum": [
+                  "charging",
+                  "swapQueue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 charging。"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "description": "后续 update 推送步数（夹取到 1~20）。",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 6。"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "LiveActivitySimulationSnapshot": {
+        "description": "Live Activity 后端模拟推送运行状态快照。",
+        "properties": {
+          "current_step": {
+            "description": "当前已推送步数（0 表示初始 start）。",
+            "type": "integer"
+          },
+          "interval_seconds": {
+            "description": "每步推送间隔秒数。",
+            "type": "integer"
+          },
+          "last_delivered_count": {
+            "description": "最近一步成功投递到 APNs 的设备数。",
+            "type": "integer"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "description": "最近一步的提示或错误信息。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "last_event": {
+            "anyOf": [
+              {
+                "description": "最近一次推送事件（start / update / end）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "description": "模拟模式。",
+                "enum": [
+                  "charging",
+                  "swapQueue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "running": {
+            "description": "模拟推送是否正在运行。",
+            "type": "boolean"
+          },
+          "session_key": {
+            "anyOf": [
+              {
+                "description": "模拟会话键（sim:*）。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "simulation_id": {
+            "anyOf": [
+              {
+                "description": "模拟任务 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "description": "模拟启动时间。",
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "total_steps": {
+            "description": "计划总 update 步数。",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "running",
+          "simulation_id",
+          "mode",
+          "session_key",
+          "current_step",
+          "total_steps",
+          "interval_seconds",
+          "started_at",
+          "last_event",
+          "last_delivered_count",
+          "last_error"
+        ],
+        "type": "object"
+      },
+      "LiveActivitySimulationStopInput": {
+        "description": "停止 Live Activity 后端模拟推送测试请求。",
+        "properties": {
+          "device_id": {
+            "anyOf": [
+              {
+                "description": "可选目标设备 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "LiveActivitySimulationStopOutcome": {
+        "description": "停止 Live Activity 后端模拟推送测试结果。",
+        "properties": {
+          "end_delivered": {
+            "description": "成功投递的 end 推送数量。",
+            "type": "integer"
+          },
+          "ended_tokens": {
+            "description": "本次尝试发送 end 的活动更新令牌数量。",
+            "type": "integer"
+          },
+          "stopped": {
+            "description": "是否停止了运行中的模拟任务或关闭了模拟活动。",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stopped",
+          "ended_tokens",
+          "end_delivered"
+        ],
+        "type": "object"
+      },
+      "LiveActivityTokenDeleteInput": {
+        "description": "注销 iOS Live Activity APNs 推送令牌请求。",
+        "properties": {
+          "activity_id": {
+            "anyOf": [
+              {
+                "description": "活动 ID 过滤。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "device_id": {
+            "description": "应用安装级设备标识。",
+            "type": "string"
+          },
+          "token_kind": {
+            "anyOf": [
+              {
+                "description": "令牌类型过滤。",
+                "enum": [
+                  "push_to_start",
+                  "activity_update"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "留空则删除该设备全部令牌。"
+          }
+        },
+        "required": [
+          "device_id"
+        ],
+        "type": "object"
+      },
+      "LiveActivityTokenRegistration": {
+        "description": "iOS Live Activity APNs 推送令牌注册请求。",
+        "properties": {
+          "activity_id": {
+            "anyOf": [
+              {
+                "description": "ActivityKit 活动 ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "token_kind 为 activity_update 时必填。"
+          },
+          "activity_mode": {
+            "anyOf": [
+              {
+                "description": "实时活动模式。",
+                "enum": [
+                  "charging",
+                  "swapQueue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "apns_environment": {
+            "anyOf": [
+              {
+                "description": "APNs 通道环境。",
+                "enum": [
+                  "production",
+                  "sandbox"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "留空则使用服务端默认 APNS_ENVIRONMENT。"
+          },
+          "bundle_id": {
+            "anyOf": [
+              {
+                "description": "iOS 应用 Bundle ID。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "留空则使用服务端默认 APNS_BUNDLE_ID。"
+          },
+          "device_id": {
+            "description": "应用安装级设备标识（UUID）。",
+            "type": "string"
+          },
+          "push_token": {
+            "description": "十六进制 APNs Token（32~512 位）。",
+            "type": "string"
+          },
+          "session_key": {
+            "anyOf": [
+              {
+                "description": "活动会话键，如 charging:<vehicle_id> 或 swap:<order_no>。",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选。"
+          },
+          "token_kind": {
+            "description": "令牌类型。",
+            "enum": [
+              "push_to_start",
+              "activity_update"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "token_kind",
+          "push_token"
+        ],
+        "type": "object"
+      },
+      "LiveActivityTokenResponse": {
+        "description": "Live Activity 推送令牌注册结果。",
+        "properties": {
+          "apns_configured": {
+            "description": "服务端是否已配置 APNs .p8 凭证。",
+            "type": "boolean"
+          },
+          "apns_environment": {
+            "description": "生效的 APNs 环境。",
+            "enum": [
+              "production",
+              "sandbox"
+            ],
+            "type": "string"
+          },
+          "registered": {
+            "description": "是否已保存令牌。",
+            "type": "boolean"
+          },
+          "token_kind": {
+            "description": "已注册令牌类型。",
+            "enum": [
+              "push_to_start",
+              "activity_update"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "registered",
+          "apns_configured",
+          "token_kind",
+          "apns_environment"
         ],
         "type": "object"
       },
@@ -5903,6 +6476,336 @@
         "summary": "订阅租户车辆与进行中订单变化",
         "tags": [
           "服务"
+        ]
+      }
+    },
+    "/api/v1/live-activities/simulation": {
+      "delete": {
+        "description": "立即终止正在运行的后端模拟推送任务，并向活动更新令牌发送 APNs end 推送以关闭灵动岛与锁屏实时活动。",
+        "operationId": "stopLiveActivitySimulation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveActivitySimulationStopInput"
+              }
+            }
+          },
+          "description": "可选目标设备 ID。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveActivitySimulationStopOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "停止 Live Activity 后端模拟推送测试",
+        "tags": [
+          "车辆"
+        ]
+      },
+      "post": {
+        "description": "立即向已注册的 pushToStart 令牌发送模拟 start 推送，随后在后台按设定间隔连续发送多步 update 推送（如充电电量持续增长或换电排队倒计时）并自动发送 end 结束。运行期间暂停真实车况轮询对实时活动的覆盖。",
+        "operationId": "startLiveActivitySimulation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveActivitySimulationRequest"
+              }
+            }
+          },
+          "description": "模拟模式（charging 或 swapQueue）、推送间隔、步数及可选目标设备 ID。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveActivitySimulationOutcome"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "no_live_activity_tokens / invalid_live_activity_token：无有效推送令牌或参数无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "apns_not_configured：服务端未配置 APNs 凭证。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "启动 Live Activity 后端模拟推送测试",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/live-activities/status": {
+      "get": {
+        "description": "返回服务端 APNs 推送是否已配置、当前有效令牌数量、最近活跃会话摘要与模拟推送运行状态，不返回任何原始推送令牌。",
+        "operationId": "liveActivityStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveActivityPushStatus"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "查询 Live Activity APNs 推送状态",
+        "tags": [
+          "车辆"
+        ]
+      }
+    },
+    "/api/v1/live-activities/tokens": {
+      "delete": {
+        "description": "按 device_id（及可选 token_kind、activity_id）移除已注册的 Live Activity 推送令牌。",
+        "operationId": "deleteLiveActivityToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveActivityTokenDeleteInput"
+              }
+            }
+          },
+          "description": "需要注销的设备标识与可选活动过滤条件。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteLiveActivityTokensResponse"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_live_activity_token：device_id 或 activity_id 格式无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "注销 iOS Live Activity APNs 推送令牌",
+        "tags": [
+          "车辆"
+        ]
+      },
+      "post": {
+        "description": "上传设备的 pushToStartToken（iOS 17.2+ 远程启动实时活动）或单个活动专属的 pushToken（用于远程更新与结束活动）。服务端不会在日志或状态接口中暴露原始令牌。",
+        "operationId": "registerLiveActivityToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveActivityTokenRegistration"
+              }
+            }
+          },
+          "description": "设备标识、令牌类型（push_to_start 或 activity_update）、十六进制 APNs Token 与可选活动上下文。",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveActivityTokenResponse"
+                }
+              }
+            },
+            "description": "请求成功。"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "invalid_live_activity_token：device_id、push_token 或 activity_id 格式无效。"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "unauthorized：普通 API Key 缺失/不匹配。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "database_error：本地数据库操作失败。"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "注册 iOS Live Activity APNs 推送令牌",
+        "tags": [
+          "车辆"
         ]
       }
     },

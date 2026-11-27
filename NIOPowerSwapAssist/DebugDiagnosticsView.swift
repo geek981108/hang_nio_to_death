@@ -50,9 +50,153 @@ final class DebugNetworkMonitor: ObservableObject {
     }
 }
 
+@MainActor
+final class DebugLiveActivityPushTester: ObservableObject {
+    @Published var mode: LiveActivitySimulationMode = .charging
+    @Published var intervalSeconds: Int = 5
+    @Published var steps: Int = 6
+    @Published private(set) var pushStatus: LiveActivityPushStatus?
+    @Published private(set) var isBusy = false
+    @Published private(set) var feedbackMessage: String?
+    @Published private(set) var errorMessage: String?
+
+    private var pollTask: Task<Void, Never>?
+
+    deinit {
+        pollTask?.cancel()
+    }
+
+    var isBackendSimulationRunning: Bool {
+        pushStatus?.simulation?.running == true
+    }
+
+    func refreshStatus() async {
+        guard let config = try? BackendSettingsStore.shared.configuration() else {
+            pushStatus = nil
+            return
+        }
+        let client = BackendClient(configuration: config)
+        do {
+            let status = try await client.fetchLiveActivityPushStatus()
+            pushStatus = status
+            if status.simulation?.running == true {
+                startPollingIfNeeded()
+            } else {
+                stopPolling()
+            }
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    func syncTokensAndRefresh() async {
+        isBusy = true
+        errorMessage = nil
+        feedbackMessage = nil
+        defer { isBusy = false }
+
+        await VehicleLiveActivityManager.shared.syncRegisteredTokensIfNeeded(force: true)
+        await refreshStatus()
+        if let uploadError = VehicleLiveActivityManager.shared.lastTokenUploadError {
+            errorMessage = "本机令牌上传失败：\(uploadError)"
+        } else if !VehicleLiveActivityManager.shared.hasPushToStartToken {
+            feedbackMessage = "已刷新后端状态；本机尚未拿到 pushToStartToken（请使用真机运行并开启实时活动权限）。"
+        } else {
+            feedbackMessage = "本机 Push-to-Start / 活动更新令牌已同步至后端。"
+        }
+    }
+
+    func startBackendSimulation() async {
+        guard let config = try? BackendSettingsStore.shared.configuration() else {
+            errorMessage = "请先配置后端地址与 API Key。"
+            return
+        }
+        isBusy = true
+        errorMessage = nil
+        feedbackMessage = nil
+        defer { isBusy = false }
+
+        // Ensure the latest pushToStart / update token is registered before asking Rust to push.
+        await VehicleLiveActivityManager.shared.syncRegisteredTokensIfNeeded(force: true)
+        let client = BackendClient(configuration: config)
+        do {
+            let request = LiveActivitySimulationRequest(
+                mode: mode,
+                intervalSeconds: intervalSeconds,
+                steps: steps,
+                deviceID: VehicleLiveActivityManager.shared.deviceID
+            )
+            let outcome = try await client.startLiveActivitySimulation(request)
+            let delivered = outcome.startDelivered + outcome.updateDelivered
+            let targeted = outcome.startTokensTargeted + outcome.updateTokensTargeted
+            if delivered > 0 {
+                feedbackMessage = "后端已投递初始推送（\(delivered)/\(targeted)），接下来每 \(outcome.intervalSeconds) 秒自动推送 1 次更新，共 \(outcome.totalSteps) 步后自动结束。可立即切回桌面或锁屏观察灵动岛变化。"
+            } else {
+                errorMessage = "模拟任务已创建，但初始 APNs 推送投递数为 0/\(targeted)，请检查后端 APNs 日志与沙盒/生产环境配置。"
+            }
+            await refreshStatus()
+            startPollingIfNeeded()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            await refreshStatus()
+        }
+    }
+
+    func stopBackendSimulation() async {
+        guard let config = try? BackendSettingsStore.shared.configuration() else {
+            return
+        }
+        isBusy = true
+        errorMessage = nil
+        defer { isBusy = false }
+
+        stopPolling()
+        let client = BackendClient(configuration: config)
+        do {
+            let outcome = try await client.stopLiveActivitySimulation(
+                deviceID: VehicleLiveActivityManager.shared.deviceID
+            )
+            feedbackMessage = outcome.stopped
+                ? "已停止后端模拟推送，并向 \(outcome.endDelivered)/\(outcome.endedTokens) 个活动发送 APNs end。"
+                : "当前没有运行中的后端模拟推送。"
+            await refreshStatus()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func startPollingIfNeeded() {
+        guard pollTask == nil else { return }
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self else { break }
+                guard let config = try? BackendSettingsStore.shared.configuration() else { break }
+                let client = BackendClient(configuration: config)
+                if let status = try? await client.fetchLiveActivityPushStatus() {
+                    self.pushStatus = status
+                    if status.simulation?.running != true {
+                        self.feedbackMessage = "后端模拟推送已自动完成并发送 end。"
+                        break
+                    }
+                }
+            }
+            await MainActor.run { [weak self] in
+                self?.pollTask = nil
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+}
+
 struct DebugDiagnosticsView: View {
     @ObservedObject var viewModel: VehicleViewModel
     @StateObject private var network = DebugNetworkMonitor()
+    @StateObject private var pushTester = DebugLiveActivityPushTester()
     @Environment(\.dismiss) private var dismiss
 
     private var appVersion: String {
@@ -111,6 +255,133 @@ struct DebugDiagnosticsView: View {
                     }
                 }
 
+                Section("灵动岛与实时活动（Rust APNs 模拟推送）") {
+                    statusRow(
+                        "实时活动系统权限",
+                        value: VehicleLiveActivityManager.shared.areActivitiesEnabled ? "已开启" : "未开启",
+                        healthy: VehicleLiveActivityManager.shared.areActivitiesEnabled
+                    )
+                    statusRow(
+                        "本机 Push-to-Start 令牌",
+                        value: VehicleLiveActivityManager.shared.hasPushToStartToken
+                            ? "已获取 (\(VehicleLiveActivityManager.currentAPNsEnvironment.rawValue))"
+                            : "等待系统下发（需真机）",
+                        healthy: VehicleLiveActivityManager.shared.hasPushToStartToken
+                    )
+                    valueRow(
+                        "本机活动 / 更新令牌",
+                        "\(VehicleLiveActivityManager.shared.activeActivityCount) 个活动 · \(VehicleLiveActivityManager.shared.activeActivityPushTokenCount) 个更新令牌"
+                    )
+                    if let status = pushTester.pushStatus {
+                        statusRow(
+                            "后端 APNs 通道",
+                            value: status.apnsConfigured
+                                ? "已配置 (\(status.defaultEnvironment?.rawValue ?? "—"))"
+                                : "未配置",
+                            healthy: status.apnsConfigured
+                        )
+                        valueRow(
+                            "后端已登记令牌",
+                            "Start \(status.pushToStartTokenCount) · Update \(status.activityUpdateTokenCount)"
+                        )
+                        if let sim = status.simulation {
+                            statusRow(
+                                "后端模拟推送状态",
+                                value: sim.running
+                                    ? "运行中 · 第 \(sim.currentStep + 1)/\(sim.totalSteps + 1) 步 (\(sim.lastEvent ?? "start"))"
+                                    : "已结束 (\(sim.lastEvent ?? "end"))",
+                                healthy: sim.running || sim.lastError == nil
+                            )
+                            valueRow("最近投递成功数", "\(sim.lastDeliveredCount)")
+                            if let simError = sim.lastError {
+                                diagnosticMessage(simError)
+                            }
+                        }
+                    } else if viewModel.isConfigured {
+                        valueRow("后端 APNs 状态", "读取中…")
+                    }
+
+                    Picker("模拟场景", selection: $pushTester.mode) {
+                        ForEach(LiveActivitySimulationMode.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("推送间隔", selection: $pushTester.intervalSeconds) {
+                        Text("5 秒").tag(5)
+                        Text("8 秒").tag(8)
+                        Text("12 秒").tag(12)
+                    }
+
+                    Button {
+                        Task { await pushTester.startBackendSimulation() }
+                    } label: {
+                        HStack {
+                            Label(
+                                pushTester.isBackendSimulationRunning
+                                    ? "重新开启后端模拟推送"
+                                    : "开启 Rust 后端模拟推送",
+                                systemImage: "paperplane.circle.fill"
+                            )
+                            Spacer()
+                            if pushTester.isBusy {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(!viewModel.isConfigured || pushTester.isBusy)
+
+                    Button(role: .destructive) {
+                        Task { await pushTester.stopBackendSimulation() }
+                    } label: {
+                        Label("停止后端模拟推送（发送 End）", systemImage: "stop.circle")
+                    }
+                    .disabled(!viewModel.isConfigured || pushTester.isBusy)
+
+                    Button {
+                        Task { await pushTester.syncTokensAndRefresh() }
+                    } label: {
+                        Label("同步本机令牌并刷新 APNs 状态", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(!viewModel.isConfigured || pushTester.isBusy)
+
+                    #if DEBUG
+                    HStack(spacing: 10) {
+                        Button("本地预览充电") {
+                            Task { await VehicleLiveActivityManager.shared.applyDebugSimulation(.charging) }
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.caption)
+
+                        Button("本地预览换电") {
+                            Task { await VehicleLiveActivityManager.shared.applyDebugSimulation(.swap) }
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.caption)
+
+                        Button("清除本地") {
+                            Task { await VehicleLiveActivityManager.shared.applyDebugSimulation(.end) }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .font(.caption)
+                    }
+                    #endif
+
+                    if let uploadError = VehicleLiveActivityManager.shared.lastTokenUploadError {
+                        diagnosticMessage("令牌上传异常：\(uploadError)")
+                    }
+                    if let errorMessage = pushTester.errorMessage {
+                        diagnosticMessage(errorMessage)
+                    }
+                    if let feedback = pushTester.feedbackMessage {
+                        Text(feedback)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("App") {
                     valueRow("版本", appVersion)
                     valueRow("系统", "iOS \(UIDevice.current.systemVersion)")
@@ -135,6 +406,12 @@ struct DebugDiagnosticsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
                 }
+            }
+            .task {
+                await pushTester.refreshStatus()
+            }
+            .onDisappear {
+                pushTester.stopPolling()
             }
         }
     }
